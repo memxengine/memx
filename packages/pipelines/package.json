@@ -1,22 +1,18 @@
 {
-  "name": "@memx/server",
+  "name": "@memx/pipelines",
   "version": "0.0.1",
   "private": true,
   "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
   "scripts": {
-    "dev": "bun run --watch src/index.ts",
-    "start": "bun run src/index.ts",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist .turbo"
   },
   "dependencies": {
-    "@memx/db": "workspace:*",
-    "@memx/pipelines": "workspace:*",
     "@memx/shared": "workspace:*",
     "@memx/storage": "workspace:*",
-    "drizzle-orm": "^0.45.2",
-    "hono": "^4.6.0",
-    "zod": "^3.23.8"
+    "pdfjs-dist": "^4.7.76"
   },
   "devDependencies": {
     "@types/bun": "^1.1.0",

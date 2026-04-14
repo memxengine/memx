@@ -2,9 +2,11 @@ import { Hono } from 'hono';
 import { db, documents, knowledgeBases } from '@memx/db';
 import { eq, and } from 'drizzle-orm';
 import { requireAuth, getUser, getTenant } from '../middleware/auth.js';
+import { processPdf } from '@memx/pipelines';
 import { storage, sourcePath } from '../lib/storage.js';
 import { chunkText, storeChunks } from '../services/chunker.js';
 import { triggerIngest } from '../services/ingest.js';
+import { createVisionBackend } from '../services/vision.js';
 
 const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
 const ALLOWED_EXTENSIONS = new Set([
@@ -79,9 +81,25 @@ uploadRoutes.post('/knowledge-bases/:kbId/documents/upload', async (c) => {
     }
   }
 
-  // PDF / image / office extraction happens in the pipelines package (added in a
-  // later task). Binary uploads land with status='pending' until a pipeline picks
-  // them up.
+  // PDF → async pipeline: extract text, write page-N-img-N.png via storage,
+  // optionally annotate each image with vision. When the pipeline finishes,
+  // the document goes ready and ingest is triggered.
+  if (ext === 'pdf') {
+    processPdfAsync(docId, tenant.id, kbId, user.id, file.name, buffer).catch((err) => {
+      console.error(`[pdf] pipeline failed for ${file.name}:`, err);
+      db.update(documents)
+        .set({
+          status: 'failed',
+          errorMessage: String(err).slice(0, 1000),
+          updatedAt: new Date().toISOString(),
+        })
+        .where(eq(documents.id, docId))
+        .run();
+    });
+  }
+
+  // Other binary uploads (office, images, …) land with status='pending' until
+  // a pipeline picks them up.
 
   const doc = db.select().from(documents).where(eq(documents.id, docId)).get();
 
@@ -92,6 +110,54 @@ uploadRoutes.post('/knowledge-bases/:kbId/documents/upload', async (c) => {
 
   return c.json(doc, 201);
 });
+
+async function processPdfAsync(
+  docId: string,
+  tenantId: string,
+  kbId: string,
+  userId: string,
+  filename: string,
+  buffer: Buffer,
+): Promise<void> {
+  db.update(documents)
+    .set({ status: 'processing', updatedAt: new Date().toISOString() })
+    .where(eq(documents.id, docId))
+    .run();
+
+  console.log(`[pdf] processing ${filename}...`);
+  const result = await processPdf({
+    pdfBytes: buffer,
+    storage,
+    imagePrefix: `${tenantId}/${kbId}/${docId}/images`,
+    imageUrlPrefix: `/api/v1/documents/${docId}/images`,
+    describe: createVisionBackend() ?? undefined,
+  });
+  const describedCount = result.images.filter((i) => i.description).length;
+  console.log(
+    `[pdf] ${filename}: ${result.pageCount} pages, ${result.images.length} images ` +
+      `(${describedCount} described)`,
+  );
+
+  const title = filename.replace(/\.pdf$/i, '');
+  db.update(documents)
+    .set({
+      content: result.markdown,
+      title,
+      pageCount: result.pageCount,
+      status: 'ready',
+      version: 1,
+      updatedAt: new Date().toISOString(),
+    })
+    .where(eq(documents.id, docId))
+    .run();
+
+  if (result.markdown.trim()) {
+    const chunks = chunkText(result.markdown);
+    storeChunks(docId, tenantId, kbId, chunks);
+  }
+
+  triggerIngest({ docId, kbId, tenantId, userId });
+}
 
 function extractTitle(content: string): string | null {
   const match = content.match(/^#\s+(.+)$/m);
