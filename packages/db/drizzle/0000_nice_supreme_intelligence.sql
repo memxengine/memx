@@ -17,6 +17,23 @@ CREATE TABLE `document_chunks` (
 --> statement-breakpoint
 CREATE UNIQUE INDEX `idx_chunks_doc_index` ON `document_chunks` (`document_id`,`chunk_index`);--> statement-breakpoint
 CREATE INDEX `idx_chunks_kb` ON `document_chunks` (`knowledge_base_id`);--> statement-breakpoint
+CREATE TABLE `document_references` (
+	`id` text PRIMARY KEY NOT NULL,
+	`tenant_id` text NOT NULL,
+	`knowledge_base_id` text NOT NULL,
+	`wiki_document_id` text NOT NULL,
+	`source_document_id` text NOT NULL,
+	`claim_anchor` text,
+	`created_at` text DEFAULT (datetime('now')) NOT NULL,
+	FOREIGN KEY (`tenant_id`) REFERENCES `tenants`(`id`) ON UPDATE no action ON DELETE cascade,
+	FOREIGN KEY (`knowledge_base_id`) REFERENCES `knowledge_bases`(`id`) ON UPDATE no action ON DELETE cascade,
+	FOREIGN KEY (`wiki_document_id`) REFERENCES `documents`(`id`) ON UPDATE no action ON DELETE cascade,
+	FOREIGN KEY (`source_document_id`) REFERENCES `documents`(`id`) ON UPDATE no action ON DELETE cascade
+);
+--> statement-breakpoint
+CREATE INDEX `idx_refs_wiki` ON `document_references` (`wiki_document_id`);--> statement-breakpoint
+CREATE INDEX `idx_refs_source` ON `document_references` (`source_document_id`);--> statement-breakpoint
+CREATE UNIQUE INDEX `idx_refs_triple` ON `document_references` (`wiki_document_id`,`source_document_id`,`claim_anchor`);--> statement-breakpoint
 CREATE TABLE `documents` (
 	`id` text PRIMARY KEY NOT NULL,
 	`tenant_id` text NOT NULL,
@@ -38,6 +55,7 @@ CREATE TABLE `documents` (
 	`version` integer DEFAULT 0 NOT NULL,
 	`sort_order` integer DEFAULT 0 NOT NULL,
 	`archived` integer DEFAULT false NOT NULL,
+	`is_canonical` integer DEFAULT false NOT NULL,
 	`created_at` text DEFAULT (datetime('now')) NOT NULL,
 	`updated_at` text DEFAULT (datetime('now')) NOT NULL,
 	FOREIGN KEY (`tenant_id`) REFERENCES `tenants`(`id`) ON UPDATE no action ON DELETE cascade,
@@ -50,6 +68,7 @@ CREATE INDEX `idx_docs_kb` ON `documents` (`knowledge_base_id`);--> statement-br
 CREATE INDEX `idx_docs_kb_kind` ON `documents` (`knowledge_base_id`,`kind`);--> statement-breakpoint
 CREATE INDEX `idx_docs_kb_path` ON `documents` (`knowledge_base_id`,`path`);--> statement-breakpoint
 CREATE INDEX `idx_docs_status` ON `documents` (`knowledge_base_id`,`status`);--> statement-breakpoint
+CREATE INDEX `idx_docs_kb_canonical` ON `documents` (`knowledge_base_id`,`is_canonical`);--> statement-breakpoint
 CREATE TABLE `knowledge_bases` (
 	`id` text PRIMARY KEY NOT NULL,
 	`tenant_id` text NOT NULL,
@@ -80,6 +99,7 @@ CREATE TABLE `queue_candidates` (
 	`created_by` text,
 	`reviewed_by` text,
 	`reviewed_at` text,
+	`auto_approved_at` text,
 	`rejection_reason` text,
 	`resulting_document_id` text,
 	`created_at` text DEFAULT (datetime('now')) NOT NULL,
@@ -133,10 +153,15 @@ CREATE TABLE `wiki_events` (
 	`new_version` integer,
 	`summary` text,
 	`metadata` text,
+	`prev_event_id` text,
+	`source_candidate_id` text,
+	`content_snapshot` text,
 	`created_at` text DEFAULT (datetime('now')) NOT NULL,
 	FOREIGN KEY (`tenant_id`) REFERENCES `tenants`(`id`) ON UPDATE no action ON DELETE cascade,
 	FOREIGN KEY (`document_id`) REFERENCES `documents`(`id`) ON UPDATE no action ON DELETE cascade,
-	FOREIGN KEY (`actor_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE no action
+	FOREIGN KEY (`actor_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE no action,
+	FOREIGN KEY (`source_candidate_id`) REFERENCES `queue_candidates`(`id`) ON UPDATE no action ON DELETE set null
 );
 --> statement-breakpoint
-CREATE INDEX `idx_events_doc` ON `wiki_events` (`document_id`);
+CREATE INDEX `idx_events_doc` ON `wiki_events` (`document_id`);--> statement-breakpoint
+CREATE INDEX `idx_events_doc_prev` ON `wiki_events` (`document_id`,`prev_event_id`);

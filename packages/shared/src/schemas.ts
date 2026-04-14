@@ -69,6 +69,7 @@ export const DocumentSchema = z.object({
   version: z.number().int(),
   sortOrder: z.number().int(),
   archived: z.boolean(),
+  isCanonical: z.boolean(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -83,13 +84,17 @@ export const CreateNoteSchema = z.object({
 
 export const QueueCandidateKindEnum = z.enum([
   'chat-answer',
-  'auto-summary',
+  'ingest-summary',
+  'ingest-page-update',
   'cross-ref-suggestion',
   'contradiction-alert',
   'gap-detection',
   'user-correction',
+  'reader-feedback',
   'external-feed',
   'version-conflict',
+  'source-retraction',
+  'scheduled-recompile',
 ]);
 
 export const QueueCandidateStatusEnum = z.enum([
@@ -113,8 +118,21 @@ export const QueueCandidateSchema = z.object({
   createdBy: z.string().nullable(),
   reviewedBy: z.string().nullable(),
   reviewedAt: z.string().nullable(),
+  autoApprovedAt: z.string().nullable(),
   rejectionReason: z.string().nullable(),
   resultingDocumentId: z.string().nullable(),
+  createdAt: z.string(),
+});
+
+// ── Document References (bidirectional wiki ↔ source) ─────────────────────────
+
+export const DocumentReferenceSchema = z.object({
+  id: z.string(),
+  tenantId: z.string(),
+  knowledgeBaseId: z.string(),
+  wikiDocumentId: z.string(),
+  sourceDocumentId: z.string(),
+  claimAnchor: z.string().nullable(),
   createdAt: z.string(),
 });
 

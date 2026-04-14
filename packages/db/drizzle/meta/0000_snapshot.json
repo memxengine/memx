@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "ed3e9264-2fa4-40b1-b8af-c79da2feb032",
+  "id": "0be4c776-e2d1-4d5f-a8b3-1f2b7e18d382",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "document_chunks": {
@@ -136,6 +136,143 @@
           "tableTo": "knowledge_bases",
           "columnsFrom": [
             "knowledge_base_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "document_references": {
+      "name": "document_references",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "knowledge_base_id": {
+          "name": "knowledge_base_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "wiki_document_id": {
+          "name": "wiki_document_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "source_document_id": {
+          "name": "source_document_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "claim_anchor": {
+          "name": "claim_anchor",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(datetime('now'))"
+        }
+      },
+      "indexes": {
+        "idx_refs_wiki": {
+          "name": "idx_refs_wiki",
+          "columns": [
+            "wiki_document_id"
+          ],
+          "isUnique": false
+        },
+        "idx_refs_source": {
+          "name": "idx_refs_source",
+          "columns": [
+            "source_document_id"
+          ],
+          "isUnique": false
+        },
+        "idx_refs_triple": {
+          "name": "idx_refs_triple",
+          "columns": [
+            "wiki_document_id",
+            "source_document_id",
+            "claim_anchor"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "document_references_tenant_id_tenants_id_fk": {
+          "name": "document_references_tenant_id_tenants_id_fk",
+          "tableFrom": "document_references",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "document_references_knowledge_base_id_knowledge_bases_id_fk": {
+          "name": "document_references_knowledge_base_id_knowledge_bases_id_fk",
+          "tableFrom": "document_references",
+          "tableTo": "knowledge_bases",
+          "columnsFrom": [
+            "knowledge_base_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "document_references_wiki_document_id_documents_id_fk": {
+          "name": "document_references_wiki_document_id_documents_id_fk",
+          "tableFrom": "document_references",
+          "tableTo": "documents",
+          "columnsFrom": [
+            "wiki_document_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "document_references_source_document_id_documents_id_fk": {
+          "name": "document_references_source_document_id_documents_id_fk",
+          "tableFrom": "document_references",
+          "tableTo": "documents",
+          "columnsFrom": [
+            "source_document_id"
           ],
           "columnsTo": [
             "id"
@@ -297,6 +434,14 @@
           "autoincrement": false,
           "default": false
         },
+        "is_canonical": {
+          "name": "is_canonical",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "text",
@@ -350,6 +495,14 @@
           "columns": [
             "knowledge_base_id",
             "status"
+          ],
+          "isUnique": false
+        },
+        "idx_docs_kb_canonical": {
+          "name": "idx_docs_kb_canonical",
+          "columns": [
+            "knowledge_base_id",
+            "is_canonical"
           ],
           "isUnique": false
         }
@@ -609,6 +762,13 @@
         },
         "reviewed_at": {
           "name": "reviewed_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "auto_approved_at": {
+          "name": "auto_approved_at",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
@@ -999,6 +1159,27 @@
           "notNull": false,
           "autoincrement": false
         },
+        "prev_event_id": {
+          "name": "prev_event_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "source_candidate_id": {
+          "name": "source_candidate_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "content_snapshot": {
+          "name": "content_snapshot",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "text",
@@ -1013,6 +1194,14 @@
           "name": "idx_events_doc",
           "columns": [
             "document_id"
+          ],
+          "isUnique": false
+        },
+        "idx_events_doc_prev": {
+          "name": "idx_events_doc_prev",
+          "columns": [
+            "document_id",
+            "prev_event_id"
           ],
           "isUnique": false
         }
@@ -1055,6 +1244,19 @@
             "id"
           ],
           "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "wiki_events_source_candidate_id_queue_candidates_id_fk": {
+          "name": "wiki_events_source_candidate_id_queue_candidates_id_fk",
+          "tableFrom": "wiki_events",
+          "tableTo": "queue_candidates",
+          "columnsFrom": [
+            "source_candidate_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
           "onUpdate": "no action"
         }
       },

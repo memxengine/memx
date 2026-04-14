@@ -86,6 +86,9 @@ export const documents = sqliteTable(
     version: integer('version').notNull().default(0),
     sortOrder: integer('sort_order').notNull().default(0),
     archived: integer('archived', { mode: 'boolean' }).notNull().default(false),
+    // Meaningful when kind='source': marks the document as authoritative for its topic.
+    // Used later for trust-tier rules (e.g. reject auto-approval of contradicting sources).
+    isCanonical: integer('is_canonical', { mode: 'boolean' }).notNull().default(false),
     createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
     updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
   },
@@ -95,6 +98,7 @@ export const documents = sqliteTable(
     index('idx_docs_kb_kind').on(table.knowledgeBaseId, table.kind),
     index('idx_docs_kb_path').on(table.knowledgeBaseId, table.path),
     index('idx_docs_status').on(table.knowledgeBaseId, table.status),
+    index('idx_docs_kb_canonical').on(table.knowledgeBaseId, table.isCanonical),
   ],
 );
 
@@ -132,13 +136,17 @@ export const queueCandidates = sqliteTable(
     kind: text('kind', {
       enum: [
         'chat-answer',
-        'auto-summary',
+        'ingest-summary',
+        'ingest-page-update',
         'cross-ref-suggestion',
         'contradiction-alert',
         'gap-detection',
         'user-correction',
+        'reader-feedback',
         'external-feed',
         'version-conflict',
+        'source-retraction',
+        'scheduled-recompile',
       ],
     }).notNull(),
     title: text('title').notNull(),
@@ -150,6 +158,9 @@ export const queueCandidates = sqliteTable(
     createdBy: text('created_by').references(() => users.id),
     reviewedBy: text('reviewed_by').references(() => users.id),
     reviewedAt: text('reviewed_at'),
+    // Set when the approval happened via policy (not a human click). Distinct from reviewedAt,
+    // which is set for both human and auto approvals.
+    autoApprovedAt: text('auto_approved_at'),
     rejectionReason: text('rejection_reason'),
     resultingDocumentId: text('resulting_document_id').references(() => documents.id),
     createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
@@ -176,9 +187,40 @@ export const wikiEvents = sqliteTable(
     newVersion: integer('new_version'),
     summary: text('summary'),
     metadata: text('metadata'),
+    // Replay-chain pointer: previous event on this document. Nullable for the first event.
+    prevEventId: text('prev_event_id'),
+    // Which queue candidate caused this event, if any. Null for user-initiated edits.
+    sourceCandidateId: text('source_candidate_id').references(() => queueCandidates.id, { onDelete: 'set null' }),
+    // Full content snapshot at this event (not a diff). Enables replay and time-travel without
+    // reconstructing from the current document.
+    contentSnapshot: text('content_snapshot'),
     createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
   },
   (table) => [
     index('idx_events_doc').on(table.documentId),
+    index('idx_events_doc_prev').on(table.documentId, table.prevEventId),
+  ],
+);
+
+// ── Document References (bidirectional wiki ↔ source index) ───────────────────
+
+export const documentReferences = sqliteTable(
+  'document_references',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+    knowledgeBaseId: text('knowledge_base_id').notNull().references(() => knowledgeBases.id, { onDelete: 'cascade' }),
+    // The wiki page making the reference.
+    wikiDocumentId: text('wiki_document_id').notNull().references(() => documents.id, { onDelete: 'cascade' }),
+    // The source being referenced.
+    sourceDocumentId: text('source_document_id').notNull().references(() => documents.id, { onDelete: 'cascade' }),
+    // Optional claim-level anchor (e.g. `claim-01`). Null = page-level reference.
+    claimAnchor: text('claim_anchor'),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (table) => [
+    index('idx_refs_wiki').on(table.wikiDocumentId),
+    index('idx_refs_source').on(table.sourceDocumentId),
+    uniqueIndex('idx_refs_triple').on(table.wikiDocumentId, table.sourceDocumentId, table.claimAnchor),
   ],
 );
