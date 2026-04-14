@@ -6,6 +6,9 @@ import { authRoutes } from './routes/auth.js';
 import { kbRoutes } from './routes/knowledge-bases.js';
 import { documentRoutes } from './routes/documents.js';
 import { uploadRoutes } from './routes/uploads.js';
+import { searchRoutes } from './routes/search.js';
+import { userRoutes } from './routes/user.js';
+import { imageRoutes } from './routes/images.js';
 
 export function createApp(): Hono {
   const app = new Hono();
@@ -26,6 +29,9 @@ export function createApp(): Hono {
   app.route('/api/v1', kbRoutes);
   app.route('/api/v1', documentRoutes);
   app.route('/api/v1', uploadRoutes);
+  app.route('/api/v1', searchRoutes);
+  app.route('/api/v1', userRoutes);
+  app.route('/api/v1', imageRoutes);
 
   return app;
 }
