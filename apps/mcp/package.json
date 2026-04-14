@@ -1,0 +1,23 @@
+{
+  "name": "@memx/mcp",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "bun run src/index.ts",
+    "dev": "bun run --watch src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist .turbo"
+  },
+  "dependencies": {
+    "@memx/db": "workspace:*",
+    "@memx/shared": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "drizzle-orm": "^0.45.2",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.1.0",
+    "typescript": "^5.5.0"
+  }
+}
