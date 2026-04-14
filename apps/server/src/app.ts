@@ -4,6 +4,8 @@ import { logger } from 'hono/logger';
 import { healthRoutes } from './routes/health.js';
 import { authRoutes } from './routes/auth.js';
 import { kbRoutes } from './routes/knowledge-bases.js';
+import { documentRoutes } from './routes/documents.js';
+import { uploadRoutes } from './routes/uploads.js';
 
 export function createApp(): Hono {
   const app = new Hono();
@@ -22,6 +24,8 @@ export function createApp(): Hono {
   app.route('/api', healthRoutes);
   app.route('/api/auth', authRoutes);
   app.route('/api/v1', kbRoutes);
+  app.route('/api/v1', documentRoutes);
+  app.route('/api/v1', uploadRoutes);
 
   return app;
 }

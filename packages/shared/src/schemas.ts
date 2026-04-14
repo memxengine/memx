@@ -86,6 +86,19 @@ export const CreateNoteSchema = z.object({
   content: z.string().default(''),
 });
 
+export const UpdateDocumentSchema = z.object({
+  filename: z.string().min(1).optional(),
+  path: z.string().optional(),
+  title: z.string().nullable().optional(),
+  tags: z.string().nullable().optional(),
+  date: z.string().nullable().optional(),
+  metadata: z.string().nullable().optional(),
+});
+
+export const UpdateContentSchema = z.object({
+  content: z.string(),
+});
+
 // ── Curation Queue ────────────────────────────────────────────────────────────
 
 export const QueueCandidateKindEnum = z.enum([
