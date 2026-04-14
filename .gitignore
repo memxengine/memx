@@ -137,3 +137,14 @@ dist
 # Vite logs files
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# memx-specific
+data/
+*.db
+*.db-wal
+*.db-shm
+.turbo/
+.mcp.json
+.env
+.env.*
+!.env.example

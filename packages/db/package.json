@@ -1,0 +1,23 @@
+{
+  "name": "@memx/db",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "bun run src/migrate.ts",
+    "clean": "rm -rf dist .turbo"
+  },
+  "dependencies": {
+    "@memx/shared": "workspace:*",
+    "drizzle-orm": "^0.36.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.1.0",
+    "drizzle-kit": "^0.28.0",
+    "typescript": "^5.5.0"
+  }
+}
