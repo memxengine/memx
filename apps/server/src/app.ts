@@ -9,6 +9,9 @@ import { uploadRoutes } from './routes/uploads.js';
 import { searchRoutes } from './routes/search.js';
 import { userRoutes } from './routes/user.js';
 import { imageRoutes } from './routes/images.js';
+import { chatRoutes } from './routes/chat.js';
+import { ingestRoutes } from './routes/ingest.js';
+import { streamRoutes } from './routes/stream.js';
 
 export function createApp(): Hono {
   const app = new Hono();
@@ -32,6 +35,9 @@ export function createApp(): Hono {
   app.route('/api/v1', searchRoutes);
   app.route('/api/v1', userRoutes);
   app.route('/api/v1', imageRoutes);
+  app.route('/api/v1', chatRoutes);
+  app.route('/api/v1', ingestRoutes);
+  app.route('/api/v1', streamRoutes);
 
   return app;
 }

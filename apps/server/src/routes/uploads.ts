@@ -4,6 +4,7 @@ import { eq, and } from 'drizzle-orm';
 import { requireAuth, getUser, getTenant } from '../middleware/auth.js';
 import { storage, sourcePath } from '../lib/storage.js';
 import { chunkText, storeChunks } from '../services/chunker.js';
+import { triggerIngest } from '../services/ingest.js';
 
 const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
 const ALLOWED_EXTENSIONS = new Set([
@@ -80,9 +81,15 @@ uploadRoutes.post('/knowledge-bases/:kbId/documents/upload', async (c) => {
 
   // PDF / image / office extraction happens in the pipelines package (added in a
   // later task). Binary uploads land with status='pending' until a pipeline picks
-  // them up. Ingest-to-wiki is triggered by the ingest service, not here.
+  // them up.
 
   const doc = db.select().from(documents).where(eq(documents.id, docId)).get();
+
+  // Auto-trigger wiki ingest for text sources that are ready to compile.
+  if (isText) {
+    triggerIngest({ docId, kbId, tenantId: tenant.id, userId: user.id });
+  }
+
   return c.json(doc, 201);
 });
 
