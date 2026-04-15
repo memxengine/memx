@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="docs/assets/logo.svg" alt="memx" width="80" height="80" />
+  <img src="docs/assets/trail-logo.svg" alt="trail" width="80" height="80" />
 </p>
 
-<h1 align="center">memx</h1>
+<h1 align="center">trail</h1>
 
 <p align="center">
   The next-generation knowledge infrastructure engine.<br/>
@@ -16,11 +16,11 @@
 
 ---
 
-## What is memx?
+## What is trail?
 
-**memx** is a knowledge infrastructure engine that turns your sources into a persistent, compounding wiki — maintained by an LLM on your behalf.
+**trail** is a knowledge infrastructure engine that turns your sources into a persistent, compounding wiki — maintained by an LLM on your behalf.
 
-Unlike traditional RAG, which fragments your documents and retrieves chunks at query time, memx compiles your knowledge into a structured wiki at ingest time. Every new source makes the whole system smarter. Good chat answers feed back into the wiki. Contradictions get flagged. Orphans get linked.
+Unlike traditional RAG, which fragments your documents and retrieves chunks at query time, trail compiles your knowledge into a structured wiki at ingest time. Every new source makes the whole system smarter. Good chat answers feed back into the wiki. Contradictions get flagged. Orphans get linked.
 
 It's what Vannevar Bush dreamed of in 1945, finally made practical by LLMs.
 
@@ -38,15 +38,15 @@ Phase 1 MVP in progress. First customer: Sanne Andersen (healing practice with 2
 
 ## Architecture
 
-memx is a pnpm + Turbo monorepo:
+trail is a pnpm + Turbo monorepo:
 
 ```
-memx/
+trail/
 ├── apps/
 │   ├── server/    # Hono API (core engine)
 │   ├── admin/     # Curator dashboard (Vite+Preact)
 │   ├── mcp/       # MCP server for LLM integrations
-│   └── widget/    # Embeddable <memx-chat> web component
+│   └── widget/    # Embeddable <trail-chat> web component
 ├── packages/
 │   ├── core/      # Ingest, compile, query, lint
 │   ├── db/        # Drizzle + SQLite schema
@@ -61,10 +61,10 @@ memx/
 
 **FSL-1.1-Apache-2.0** — Functional Source License, converts to Apache 2.0 after 2 years.
 
-You can use memx freely for your own knowledge bases, research, and internal tools. You cannot offer memx as a competing commercial SaaS. See [LICENSE](./LICENSE) for details.
+You can use trail freely for your own knowledge bases, research, and internal tools. You cannot offer trail as a competing commercial SaaS. See [LICENSE](./LICENSE) for details.
 
 ## Related
 
-- [memxcloud.com](https://memxcloud.com) — managed SaaS (coming soon)
-- [memx.wiki](https://memx.wiki) — documentation (coming soon)
-- [@webhouse/cms](https://webhouse.app) — CMS with memx adapter (Phase 2)
+- [trailcloud.com](https://trailcloud.com) — managed SaaS (coming soon)
+- [trail.wiki](https://trail.wiki) — documentation (coming soon)
+- [@webhouse/cms](https://webhouse.app) — CMS with trail adapter (Phase 2)

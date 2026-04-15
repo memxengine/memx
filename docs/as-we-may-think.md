@@ -1,8 +1,8 @@
 ---
-title: "As We May Think: The 1945 Vision That Became memx"
+title: "As We May Think: The 1945 Vision That Became trail"
 slug: as-we-may-think-vannevar-bush-memex
 locale: en
-author: memx team
+author: trail team
 publishedAt: 2026-04-14
 excerpt: "In July 1945, an American engineer named Vannevar Bush sketched a machine that would change how humanity thinks about knowledge. He called it the memex. Eighty-one years later, we are finally building it."
 tags:
@@ -17,7 +17,7 @@ cover: /images/posts/memex-desk.svg
 
 # As We May Think
 
-## The 1945 vision that became memx
+## The 1945 vision that became trail
 
 In July 1945, with the Second World War still grinding toward its final weeks, *The Atlantic Monthly* published an essay by a man who had just spent four years coordinating the work of six thousand American scientists. His name was Vannevar Bush. The essay was called **"As We May Think."** It would become one of the quietly most influential pieces of writing in the twentieth century.
 
@@ -283,7 +283,7 @@ Bush never built the memex. His group prototyped parts of it, but the machine wa
 But the essay had planted a seed.
 
 <figure>
-<svg viewBox="55 60 775 200" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Timeline from 1945 memex to 2026 memx">
+<svg viewBox="55 60 775 200" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Timeline from 1945 memex to 2026 trail">
   <!-- Main line -->
   <line x1="60" y1="150" x2="840" y2="150" stroke="#1a1715" stroke-width="1.5"/>
 
@@ -327,13 +327,13 @@ But the essay had planted a seed.
   <text x="680" y="73"  font-family="monospace" font-size="10" fill="#1a1715" text-anchor="middle" letter-spacing="0.5">LLM WIKI</text>
   <text x="680" y="185" font-family="monospace" font-size="8"  fill="#1a1715" text-anchor="middle" opacity="0.6">Karpathy</text>
 
-  <!-- 2026 memx -->
+  <!-- 2026 trail -->
   <circle cx="800" cy="150" r="8" fill="#e8a87c"/>
   <circle cx="800" cy="150" r="14" fill="none" stroke="#e8a87c" stroke-width="0.7" opacity="0.6"/>
   <circle cx="800" cy="150" r="20" fill="none" stroke="#e8a87c" stroke-width="0.4" opacity="0.3"/>
   <line x1="800" y1="135" x2="800" y2="100" stroke="#e8a87c" stroke-width="1"/>
   <text x="800" y="88"  font-family="monospace" font-size="11" fill="#1a1715" text-anchor="middle" font-weight="bold">2026</text>
-  <text x="800" y="73"  font-family="monospace" font-size="10" fill="#1a1715" text-anchor="middle" letter-spacing="0.5">memx</text>
+  <text x="800" y="73"  font-family="monospace" font-size="10" fill="#1a1715" text-anchor="middle" letter-spacing="0.5">trail</text>
   <text x="800" y="185" font-family="monospace" font-size="8"  fill="#1a1715" text-anchor="middle" opacity="0.6">WebHouse</text>
 
   <!-- Caption -->
@@ -358,13 +358,13 @@ Retrieval-augmented generation, the dominant AI pattern of the early 2020s, took
 
 Bush would have recognized the problem immediately. This is not how the mind works. This is not what he drew.
 
-## From Memex to memx
+## From Memex to trail
 
 In October 2025, Andrej Karpathy described a different pattern: the **LLM Wiki**. Instead of retrieving fragments at query time, a language model compiles knowledge at *ingest* time into a persistent, cross-referenced wiki — a living document that an AI maintains on behalf of a human curator. Every new source is not just stored, it is *integrated*. The wiki accumulates. Knowledge compounds. Curators review what the machine proposes and approve what is worth keeping.
 
 This is the memex. Not metaphorically — structurally. The associative trails are wiki links. The ingest pipeline is the transparent platen. The curator is the human operator choosing which trails to preserve. Even the critique of hierarchy versus association is the same, eighty-one years later.
 
-That is what **memx** is. The name is deliberate. We are not building another search engine, and we are not building another RAG layer. We are building the machine Vannevar Bush described in July 1945, using the one technology he could not have anticipated: large language models capable of reading, understanding, and compiling human knowledge into the associative structures he imagined.
+That is what **trail** is. The name is deliberate. We are not building another search engine, and we are not building another RAG layer. We are building the machine Vannevar Bush described in July 1945, using the one technology he could not have anticipated: large language models capable of reading, understanding, and compiling human knowledge into the associative structures he imagined.
 
 > *The applications of science ... may yet allow [humanity] truly to encompass the great record and to grow in the wisdom of race experience.*
 > — Vannevar Bush, *As We May Think*, 1945

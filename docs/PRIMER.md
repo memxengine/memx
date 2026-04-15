@@ -6,16 +6,16 @@ Dette er ikke længere et hobby projekt. Dette bliver skabelonen for den AI/Brai
 
   Dette skal IKKE være en quick fix løsning, og vi bliver nok nødt til at lave en bredere plan for hvordan motoren skal
   fungere på et abitrært antal sites, som et CMS modul der kan opdateres selvstændigt eller sammen med CMS, og også
-  anvendes selvstændigt, og vi skal have en SaaS model hvor små kunder kan anvende vores Mem3x ("Memex"/Memx) engine
-  memxcloud.com (SaaS) + memxengine.com (OS Engine).
+  anvendes selvstændigt, og vi skal have en SaaS model hvor små kunder kan anvende vores Mem3x ("Memex"/Trail) engine
+  trailcloud.com (SaaS) + broberg-ai.com (OS Engine).
 
   Jeg lå i nat og tænke på feedback loopet der skal sende de gode svar tilbage til source ingestion og compilation at når
-   vi har installeret memxengine i et site og en chat retriever content, så gemmes svar i en kø hvor curator (admin - vi
+   vi har installeret broberg-ai i et site og en chat retriever content, så gemmes svar i en kø hvor curator (admin - vi
   har allerede Curation Queue i CMS) kan review svaret og hvis svaret vurderes værdifuldt, klik en knap og det sendes
   tilbage til ingestion etc ...
 
   Hvad tænker du? Tænker du lige så stort som jeg? Teknikken skal være mission critical og helt i top, det kan blive
-  rigtigt stort det her ... Kom med dine ideer oven på mine først, og derefter laver du en ny samlet plan for memxengine
+  rigtigt stort det her ... Kom med dine ideer oven på mine først, og derefter laver du en ny samlet plan for broberg-ai
   (den kan have flere frontend interfaces eks. alm. search og chat og bare visualisering af Wiki index som en klikbar
   Wikipedia)
 
@@ -118,10 +118,10 @@ Dette er ikke længere et hobby projekt. Dette bliver skabelonen for den AI/Brai
 
   8. Embeddable interfaces — alt er en widget
 
-  <memx-chat tenant="sanne" />
-  <memx-search tenant="sanne" placeholder="..." />
-  <memx-wiki-graph tenant="sanne" />
-  <memx-page tenant="sanne" slug="zoneterapi" />
+  <trail-chat tenant="sanne" />
+  <trail-search tenant="sanne" placeholder="..." />
+  <trail-wiki-graph tenant="sanne" />
+  <trail-page tenant="sanne" slug="zoneterapi" />
 
   Alle frontends konsumerer samme API. Web component standard = virker på alle sites, alle frameworks. Brand-tema via
   CSS-variabler.
@@ -137,7 +137,7 @@ Dette er ikke længere et hobby projekt. Dette bliver skabelonen for den AI/Brai
   Enterprise tier: Dedikeret PostgreSQL instans per tenant. Compliance-ready.
   Dev tier: Shared SQLite med tenant_id-kolonne. Lokal udvikling.
 
-  R2 storage scoped per tenant: r2://memxcloud/{tenant-id}/{kb-id}/{doc-id}/...
+  R2 storage scoped per tenant: r2://trailcloud/{tenant-id}/{kb-id}/{doc-id}/...
 
   ---
   Min dom: Ja, dette er stort
@@ -164,14 +164,14 @@ Dette er ikke længere et hobby projekt. Dette bliver skabelonen for den AI/Brai
 
   Product Line
 
-  memxengine.com         — OSS, AGPL, GitHub, Docker-deployable
-  memxcloud.com          — SaaS, managed, Cloudflare + Fly.io
-  memx.dev               — Developer portal, API docs, SDK downloads
-  memx.wiki              — Public wiki af vores egen dogfood-wiki om Mem3x
+  broberg-ai.com         — OSS, AGPL, GitHub, Docker-deployable
+  trailcloud.com          — SaaS, managed, Cloudflare + Fly.io
+  trail.dev               — Developer portal, API docs, SDK downloads
+  trail.wiki              — Public wiki af vores egen dogfood-wiki om Mem3x
 
   Repository Structure
 
-  memxengine/ (monorepo, AGPL)
+  broberg-ai/ (monorepo, AGPL)
   ├── apps/
   │   ├── server/              # Hono API (core engine)
   │   ├── web/                 # Vite+Preact admin UI (curator dashboard)
@@ -192,7 +192,7 @@ Dette er ikke længere et hobby projekt. Dette bliver skabelonen for den AI/Brai
   │   ├── contentful/          # Contentful webhook
   │   ├── notion/              # Notion sync
   │   └── obsidian/            # Obsidian plugin
-  ├── docs/                    # memx.dev docs
+  ├── docs/                    # trail.dev docs
   └── infra/                   # Terraform for SaaS deployment
 
   Core Data Model
@@ -230,15 +230,15 @@ Dette er ikke længere et hobby projekt. Dette bliver skabelonen for den AI/Brai
   Claims as first-class entities. Source versioning. Trust tiers. Cascading re-reviews when sources change.
 
   Phase 5 — Widget + SDK (3 weeks)
-  Web components (<memx-chat>, <memx-search>, <memx-wiki-graph>). JS/Python/Go SDKs. Embed on external sites. First CMS
+  Web components (<trail-chat>, <trail-search>, <trail-wiki-graph>). JS/Python/Go SDKs. Embed on external sites. First CMS
   adapter (WordPress).
 
   Phase 6 — SaaS infrastructure (3 weeks)
-  memxcloud.com signup flow. Billing (Stripe). Tenant provisioning. R2 setup. Fly.io deployment. Usage metering. Domain
+  trailcloud.com signup flow. Billing (Stripe). Tenant provisioning. R2 setup. Fly.io deployment. Usage metering. Domain
   mapping.
 
   Phase 7 — Launch Sanne + pitch.broberg.dk (2 weeks)
-  Deploy first two customers on memxcloud. Stress test. Real-world feedback. Case studies.
+  Deploy first two customers on trailcloud. Stress test. Real-world feedback. Case studies.
 
   Phase 8 — Enterprise features (ongoing)
   SSO (SAML). Audit logs. On-premises deployment. Azure OpenAI support. SLA-contracts. Compliance certifications (SOC 2).
@@ -279,15 +279,15 @@ Dette er ikke længere et hobby projekt. Dette bliver skabelonen for den AI/Brai
 
   Licensing Strategy
 
-  - memxengine (OSS): AGPL-3.0 (forcer large players til at købe commercial license)
-  - memxcloud (SaaS): Proprietær
-  - Commercial license for memxengine: Tilgængelig for companies der ikke vil AGPL
+  - broberg-ai (OSS): AGPL-3.0 (forcer large players til at købe commercial license)
+  - trailcloud (SaaS): Proprietær
+  - Commercial license for broberg-ai: Tilgængelig for companies der ikke vil AGPL
 
   Dette er Redis/Mongo/Elastic-modellen. Lever af både OSS-community og enterprise-contracts.
 
   Økonomi
 
-  memxcloud pricing:
+  trailcloud pricing:
   - Hobby: Free, 1 KB, 100 sources, 100 queries/mo
   - Pro: $29/mo, 5 KBs, 1K sources, 5K queries/mo, curator queue
   - Business: $199/mo, unlimited KBs, 10K sources, 50K queries/mo, SSO, priority support
@@ -349,11 +349,11 @@ Dette er ikke længere et hobby projekt. Dette bliver skabelonen for den AI/Brai
   ┌────────────────────────────────────┬───────────────────────────────────────────────────────────┐
   │               Bruger               │                         Kan gøre                          │
   ├────────────────────────────────────┼───────────────────────────────────────────────────────────┤
-  │ Community                          │ Bruge memx til egne knowledge bases, forke, bidrage       │
+  │ Community                          │ Bruge trail til egne knowledge bases, forke, bidrage       │
   ├────────────────────────────────────┼───────────────────────────────────────────────────────────┤
-  │ Os på memxcloud                    │ Deploy proprietære tilføjelser uden at dele dem           │
+  │ Os på trailcloud                    │ Deploy proprietære tilføjelser uden at dele dem           │
   ├────────────────────────────────────┼───────────────────────────────────────────────────────────┤
-  │ Konkurrent der vil clone memxcloud │ Blokeret i 2-4 år — kan først "SaaS'e det" efter perioden │
+  │ Konkurrent der vil clone trailcloud │ Blokeret i 2-4 år — kan først "SaaS'e det" efter perioden │
   ├────────────────────────────────────┼───────────────────────────────────────────────────────────┤
   │ Enterprise der vil selvhosste      │ Bruge OSS'en frit til eget brug                           │
   ├────────────────────────────────────┼───────────────────────────────────────────────────────────┤
@@ -367,20 +367,20 @@ Dette er ikke længere et hobby projekt. Dette bliver skabelonen for den AI/Brai
 
   Alle fem er brugbare, men min anbefaling:
 
-  - memx.wiki → hovedside for public-facing engine + dokumentation (memx.wiki/docs)
-  - memxcloud.com → SaaS (login.memxcloud.com, app.memxcloud.com)
-  - memxengine.com → Redirect til memx.wiki eller brug som enterprise-side (memxengine.com/enterprise)
-  - memxdev.com → Developer portal, API docs, SDK downloads
-  - mem3x.com → Park den som defensive + redirect
+  - trail.wiki → hovedside for public-facing engine + dokumentation (trail.wiki/docs)
+  - trailcloud.com → SaaS (login.trailcloud.com, app.trailcloud.com)
+  - broberg-ai.com → Redirect til trail.wiki eller brug som enterprise-side (broberg-ai.com/enterprise)
+  - traildev.com → Developer portal, API docs, SDK downloads
+  - trail.dev → Park den som defensive + redirect
 
-  memx.wiki er genialt fordi det er bogstaveligt talt hvad produktet ER. Brug den som flagship domain.
+  trail.wiki er genialt fordi det er bogstaveligt talt hvad produktet ER. Brug den som flagship domain.
 
   @webhouse/cms adapter
 
   Godt fanget — den er den strategisk vigtigste adapter fordi den er vores egen stak. Tilføjet til planen. Når jeg kigger
   nu:
 
-  Det betyder at enhver WebHouse-kunde (Sanne, FysioDK, dine LightSail-instanser) får memx-integration gratis via CMS'et.
+  Det betyder at enhver WebHouse-kunde (Sanne, FysioDK, dine LightSail-instanser) får trail-integration gratis via CMS'et.
   Det er en kæmpe force multiplier.
 
   Approach: Greenfield + Sanne first
@@ -389,12 +389,12 @@ Dette er ikke længere et hobby projekt. Dette bliver skabelonen for den AI/Brai
 
   Phase 1 — MVP (Sanne only, single-tenant, local FS)
 
-  memx/                        # New greenfield repo
+  trail/                        # New greenfield repo
   ├── apps/
   │   ├── server/              # Core engine (Hono)
   │   ├── admin/               # Curator dashboard (Vite+Preact)
   │   ├── mcp/                 # MCP server
-  │   └── widget/              # <memx-chat> web component (Lit)
+  │   └── widget/              # <trail-chat> web component (Lit)
   ├── packages/
   │   ├── core/                # Ingest, compile, query, lint
   │   ├── db/                  # Drizzle + SQLite
@@ -410,9 +410,9 @@ Dette er ikke længere et hobby projekt. Dette bliver skabelonen for den AI/Brai
   - Chat med citations til wiki-sider (har vi)
   - Curation queue (ny — chat-answer → review → approve → ingest back)
   - Basic admin UI for Sanne
-  - <memx-chat> embeddable widget
+  - <trail-chat> embeddable widget
   - Google OAuth (har vi)
-  - Deploy på Fly.io (arn) under sanne.memxcloud.com eller lignende
+  - Deploy på Fly.io (arn) under sanne.trailcloud.com eller lignende
 
   Phase 2 — Business (multi-tenant SaaS)
   - R2 storage
@@ -433,12 +433,12 @@ Dette er ikke længere et hobby projekt. Dette bliver skabelonen for den AI/Brai
 
   Tre konkrete næste skridt
 
-  1. Jeg opretter organization memxengine på GitHub (du logger ind og jeg guider via gh CLI), eller du opretter den først
-  2. Opretter memx repo under org'et
+  1. Jeg opretter organization broberg-ai på GitHub (du logger ind og jeg guider via gh CLI), eller du opretter den først
+  2. Opretter trail repo under org'et
   3. Jeg bygger PLAN.md ind i repo'et som levende spec + starter Phase 1 scaffolding
   
   
-Minimalist vector logo for "memx" — a next-generation knowledge
+Minimalist vector logo for "trail" — a next-generation knowledge
   infrastructure engine. Symbol combining three interconnected nodes
   forming an abstract "m" shape, suggesting a neural network or knowledge
   graph. Geometric, clean lines, evoking Vannevar Bush's 1945 Memex
@@ -458,7 +458,7 @@ Minimalist vector logo for "memx" — a next-generation knowledge
 
   Hvorfor det virker som brand:
   - "Wiki" bærer Wikipedia-bagage — fællesredigering, encyklopædisk, consumer-reference. Det
-  undersælger hvad memx faktisk er
+  undersælger hvad trail faktisk er
   - Vannevar Bush's oprindelige vision handlede om trails og associative links, ikke artikler. "Node +
    neuron" fanger det bedre
   - Hjerne-metaforen har indbygget kompositionalitet: Sources = input/stimuli, Neurons = compilede
@@ -470,7 +470,7 @@ Minimalist vector logo for "memx" — a next-generation knowledge
   Hvorfor jeg IKKE vil ændre engine-schemaet:
   1. "Node" er overbelastet i tech. Node.js, DOM node, graph node, Kubernetes node, network node.
   Udviklere skal disambiguere hver gang. "knowledge_base" er kedeligt men uambigøst
-  2. Engine-semantik er en kontrakt. @webhouse/cms, memxcloud, self-hosted kunder og adaptere
+  2. Engine-semantik er en kontrakt. @webhouse/cms, trailcloud, self-hosted kunder og adaptere
   importerer det samme schema. Hvis engine kalder det node, er alle consumers låst til
   brand-terminologien — også dem der vil kalde det noget andet. En chiropraktik-klinik vil måske kalde
    det "journaler", en advokat "sager"
@@ -490,7 +490,7 @@ Minimalist vector logo for "memx" — a next-generation knowledge
   ├────────────────────┼──────────────────────────────────────────────────────────────────────────┤
   │ Demo-site UI       │ 100% Nodes og Neurons — intet "wiki" nogensinde                          │
   ├────────────────────┼──────────────────────────────────────────────────────────────────────────┤
-  │ memxcloud          │ "Give your site a brain" — Nodes, Neurons, evt. "Synapses" for           │
+  │ trailcloud          │ "Give your site a brain" — Nodes, Neurons, evt. "Synapses" for           │
   │ marketing          │ cross-refs                                                               │
   └────────────────────┴──────────────────────────────────────────────────────────────────────────┘
 

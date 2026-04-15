@@ -1,12 +1,12 @@
 import { Hono } from 'hono';
-import { db, documents, knowledgeBases, documentChunks } from '@memx/db';
+import { db, documents, knowledgeBases, documentChunks } from '@trail/db';
 import {
   CreateNoteSchema,
   UpdateDocumentSchema,
   UpdateContentSchema,
   BulkDeleteSchema,
   DocumentKindEnum,
-} from '@memx/shared';
+} from '@trail/shared';
 import { eq, and, inArray } from 'drizzle-orm';
 import { requireAuth, getUser, getTenant } from '../middleware/auth.js';
 import { chunkText, storeChunks } from '../services/chunker.js';

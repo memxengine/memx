@@ -1,11 +1,11 @@
-# memx — Plan
+# trail — Plan
 
 > The next-generation knowledge infrastructure engine.
 > Realizing Vannevar Bush's 1945 Memex vision with modern LLMs.
 
 **Status:** Phase 1 (MVP) in progress
 **License:** FSL-1.1-Apache-2.0 (converts to Apache 2.0 after 2 years)
-**Organization:** [memxengine](https://github.com/memxengine)
+**Organization:** [broberg-ai](https://github.com/broberg-ai)
 
 ---
 
@@ -13,9 +13,9 @@
 
 Knowledge accumulates. Questions compound answers. Every source makes the system smarter — not via retrieval of fragments at query time, but via a persistent, cross-referenced wiki that an LLM maintains on behalf of a human curator.
 
-memx is the engine. It powers:
+trail is the engine. It powers:
 
-- **memxcloud** — our managed SaaS
+- **trailcloud** — our managed SaaS
 - **Customer installations** — WebHouse customers (Sanne, FysioDK, etc.)
 - **Self-hosted deployments** — any team wanting knowledge infrastructure
 - **CMS modules** — embedded in @webhouse/cms and other platforms
@@ -37,9 +37,9 @@ memx is the engine. It powers:
 - **Curate** — review chat answers, suggestions, candidates → approve → feed back
 - **Lint** — periodic health-check: contradictions, orphans, gaps, missing cross-refs
 
-### What Makes memx Different from RAG
+### What Makes trail Different from RAG
 
-| | RAG | memx |
+| | RAG | trail |
 |---|---|---|
 | Model | Search engine | Encyclopedia |
 | Work happens | Query time | Ingest time |
@@ -59,7 +59,7 @@ memx is the engine. It powers:
 First customer: Sanne Andersen. Goal: validate pattern end-to-end with real domain knowledge.
 
 **Phase 2 — Business (Multi-tenant SaaS)**
-Launch memxcloud.com. Onboard FysioDK Aalborg as customer #2. @webhouse/cms adapter. Stripe billing.
+Launch trailcloud.com. Onboard FysioDK Aalborg as customer #2. @webhouse/cms adapter. Stripe billing.
 
 **Phase 3 — Enterprise/Scale**
 SSO, audit logs, on-premises, SOC 2, event sourcing, real-time collaboration.
@@ -69,7 +69,7 @@ SSO, audit logs, on-premises, SOC 2, event sourcing, real-time collaboration.
 ## Phase 1 — MVP Deliverables
 
 ### Customer target
-Sanne Andersen. Single-tenant. Deployed on Fly.io arn as `sanne.memxcloud.com` (or similar).
+Sanne Andersen. Single-tenant. Deployed on Fly.io arn as `sanne.trailcloud.com` (or similar).
 
 ### Features
 
@@ -88,7 +88,7 @@ Sanne Andersen. Single-tenant. Deployed on Fly.io arn as `sanne.memxcloud.com` (
 - [ ] Curation Queue: chat-answer → review → approve → compile back into wiki
 - [ ] Admin UI: sidebar with wiki tree + sources, chat panel, curator queue
 - [ ] MCP server: `guide`, `search`, `read`, `write`, `delete`, `queue` tools
-- [ ] Embeddable widget: `<memx-chat tenant="..." kb="...">` web component
+- [ ] Embeddable widget: `<trail-chat tenant="..." kb="...">` web component
 - [ ] Deploy: Fly.io arn, Google OAuth production credentials
 
 ### Tech Stack (Phase 1)
@@ -122,7 +122,7 @@ Sanne Andersen. Single-tenant. Deployed on Fly.io arn as `sanne.memxcloud.com` (
 ## Phase 2 — Business (Multi-tenant SaaS)
 
 ### Customer targets
-- memxcloud.com launches
+- trailcloud.com launches
 - FysioDK Aalborg
 - Open to signups for waitlist
 
@@ -184,12 +184,12 @@ Sanne Andersen. Single-tenant. Deployed on Fly.io arn as `sanne.memxcloud.com` (
 ## Repository Structure
 
 ```
-memx/
+trail/
 ├── apps/
 │   ├── server/              # Hono API (core engine)
 │   ├── admin/               # Curator dashboard (Vite+Preact)
 │   ├── mcp/                 # MCP server (stdio)
-│   └── widget/              # Embeddable <memx-chat> web component (Lit)
+│   └── widget/              # Embeddable <trail-chat> web component (Lit)
 ├── packages/
 │   ├── core/                # Engine: ingest, compile, query, lint
 │   ├── db/                  # Drizzle + SQLite schema + migrations
@@ -214,30 +214,30 @@ memx/
 
 ### Related repositories
 
-- `memxengine/memx` — this repo (FSL-1.1-Apache-2.0)
-- `memxengine/memxcloud` — SaaS platform (private, proprietary)
-- `memxengine/memx-enterprise` — Phase 3 enterprise features (private, proprietary)
-- `memxengine/memx-docs` — memx.wiki docs site (Apache 2.0)
+- `broberg-ai/trail` — this repo (FSL-1.1-Apache-2.0)
+- `broberg-ai/trailcloud` — SaaS platform (private, proprietary)
+- `broberg-ai/trail-enterprise` — Phase 3 enterprise features (private, proprietary)
+- `broberg-ai/trail-docs` — trail.wiki docs site (Apache 2.0)
 
 ---
 
 ## Brand and Domains
 
-- **memx.wiki** — flagship/docs site (our own dogfood wiki)
-- **memxcloud.com** — SaaS
-- **memxengine.com** — enterprise portal
-- **memxdev.com** — developer docs + SDK downloads
-- **mem3x.com** — defensive, redirect
+- **trail.wiki** — flagship/docs site (our own dogfood wiki)
+- **trailcloud.com** — SaaS
+- **broberg-ai.com** — enterprise portal
+- **traildev.com** — developer docs + SDK downloads
+- **trail.dev** — defensive, redirect
 
 ---
 
 ## Naming Conventions
 
-- Product: **memx** (lowercase, single word)
-- Company/org: **memxengine** (on GitHub)
-- Shell command: `memx` (future CLI)
+- Product: **trail** (lowercase, single word)
+- Company/org: **broberg-ai** (on GitHub)
+- Shell command: `trail` (future CLI)
 - API prefix: `/api/v1/`
-- Database: `memx.db` (SQLite default)
+- Database: `trail.db` (SQLite default)
 
 ---
 

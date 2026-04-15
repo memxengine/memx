@@ -1,4 +1,4 @@
-import { db, documentChunks } from '@memx/db';
+import { db, documentChunks } from '@trail/db';
 
 const CHUNK_SIZE = 512;
 const CHUNK_OVERLAP = 128;

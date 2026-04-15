@@ -1,4 +1,4 @@
-import type { Storage } from '@memx/storage';
+import type { Storage } from '@trail/storage';
 import type { PDFPageProxy } from 'pdfjs-dist';
 import { rgbaToPng } from './png.js';
 

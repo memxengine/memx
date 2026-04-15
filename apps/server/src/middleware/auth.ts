@@ -1,6 +1,6 @@
 import type { Context, Next } from 'hono';
 import { getCookie } from 'hono/cookie';
-import { db, sessions, users, tenants } from '@memx/db';
+import { db, sessions, users, tenants } from '@trail/db';
 import { and, eq, gt } from 'drizzle-orm';
 
 export interface AuthUser {

@@ -1,5 +1,5 @@
 {
-  "name": "@memx/storage",
+  "name": "@trail/storage",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -10,7 +10,7 @@
     "clean": "rm -rf dist .turbo"
   },
   "dependencies": {
-    "@memx/shared": "workspace:*"
+    "@trail/shared": "workspace:*"
   },
   "devDependencies": {
     "@types/bun": "^1.1.0",

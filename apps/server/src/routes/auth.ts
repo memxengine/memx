@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
-import { db, users, sessions, tenants } from '@memx/db';
+import { db, users, sessions, tenants } from '@trail/db';
 import { and, eq, gt } from 'drizzle-orm';
 import { slugify } from '../lib/slug.js';
 

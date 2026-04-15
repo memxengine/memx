@@ -12,7 +12,7 @@ import {
   initFTS,
   searchDocuments,
   searchChunks,
-} from '@memx/db';
+} from '@trail/db';
 import { eq, and, like } from 'drizzle-orm';
 
 // Ensure DB is ready (MCP server may be spawned before or after apps/server).
@@ -20,15 +20,15 @@ runMigrations();
 initFTS();
 
 const server = new McpServer({
-  name: 'memx',
+  name: 'trail',
   version: '0.0.1',
 });
 
 // Context is injected via env when apps/server spawns the MCP for an ingest run.
 // For interactive use (Christian curating via `cc`), the env is set manually.
-const TENANT_ID = process.env.MEMX_TENANT_ID ?? '';
-const DEFAULT_KB_ID = process.env.MEMX_KNOWLEDGE_BASE_ID ?? '';
-const ACTOR_USER_ID = process.env.MEMX_USER_ID ?? '';
+const TENANT_ID = process.env.TRAIL_TENANT_ID ?? '';
+const DEFAULT_KB_ID = process.env.TRAIL_KNOWLEDGE_BASE_ID ?? '';
+const ACTOR_USER_ID = process.env.TRAIL_USER_ID ?? '';
 
 interface ResolvedContext {
   tenantId: string;
@@ -39,7 +39,7 @@ interface ResolvedContext {
 function requireContext(): ResolvedContext {
   if (!TENANT_ID) {
     throw new Error(
-      'MCP server needs MEMX_TENANT_ID in the environment. ' +
+      'MCP server needs TRAIL_TENANT_ID in the environment. ' +
         'Set it to the tenant ID you want to operate against (see `SELECT id FROM tenants` in the DB).',
     );
   }
@@ -56,7 +56,7 @@ function requireContext(): ResolvedContext {
       .get();
     if (!owner) {
       throw new Error(
-        `No user found for tenant ${tenant.name}. Set MEMX_USER_ID or create an owner first.`,
+        `No user found for tenant ${tenant.name}. Set TRAIL_USER_ID or create an owner first.`,
       );
     }
     userId = owner.id;
@@ -94,7 +94,7 @@ function resolveKB(nameOrSlug: string | undefined, tenantId: string) {
 }
 
 // ── guide ──────────────────────────────────────────────────────────────────────
-server.tool('guide', 'List knowledge bases and explain how memx works', {}, () => {
+server.tool('guide', 'List knowledge bases and explain how trail works', {}, () => {
   const ctx = requireContext();
 
   const kbs = rawDb
@@ -120,7 +120,7 @@ server.tool('guide', 'List knowledge bases and explain how memx works', {}, () =
     wikiPageCount: number;
   }>;
 
-  let text = `# memx — How It Works
+  let text = `# trail — How It Works
 
 You maintain a persistent, compounding knowledge base. Three layers:
 1. **Sources** — immutable raw materials (PDFs, articles, notes)
@@ -163,7 +163,7 @@ server.tool(
     knowledge_base: z
       .string()
       .optional()
-      .describe('Name, slug or id of the KB. Omit to use MEMX_KNOWLEDGE_BASE_ID.'),
+      .describe('Name, slug or id of the KB. Omit to use TRAIL_KNOWLEDGE_BASE_ID.'),
     mode: z.enum(['list', 'search']).default('list').describe('list = file tree, search = FTS'),
     query: z.string().optional().describe('Search query (required for search mode)'),
     path: z.string().default('*').describe('Path filter glob (e.g. "/wiki/*", "/")'),
@@ -609,6 +609,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  console.error('memx MCP error:', err);
+  console.error('trail MCP error:', err);
   process.exit(1);
 });

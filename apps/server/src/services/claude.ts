@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 
 const CLAUDE_BIN = process.env.CLAUDE_BIN ?? 'claude';
-const PROJECT_ROOT = process.env.MEMX_PROJECT_ROOT ?? process.cwd();
+const PROJECT_ROOT = process.env.TRAIL_PROJECT_ROOT ?? process.cwd();
 
 export interface SpawnOptions {
   timeoutMs: number;

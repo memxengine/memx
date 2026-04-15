@@ -1,5 +1,5 @@
 {
-  "name": "@memx/db",
+  "name": "@trail/db",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -12,7 +12,7 @@
     "clean": "rm -rf dist .turbo"
   },
   "dependencies": {
-    "@memx/shared": "workspace:*",
+    "@trail/shared": "workspace:*",
     "drizzle-orm": "^0.45.2"
   },
   "devDependencies": {

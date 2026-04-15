@@ -1,5 +1,5 @@
-import { processPdf } from '@memx/pipelines';
-import { LocalStorage } from '@memx/storage';
+import { processPdf } from '@trail/pipelines';
+import { LocalStorage } from '@trail/storage';
 import { readFileSync } from 'node:fs';
 
 const pdfPath = process.argv[2];
@@ -11,7 +11,7 @@ if (!pdfPath) {
 const pdfBytes = readFileSync(pdfPath);
 console.log(`PDF size: ${pdfBytes.length} bytes`);
 
-const storage = new LocalStorage('/tmp/memx-pdf-test');
+const storage = new LocalStorage('/tmp/trail-pdf-test');
 const started = Date.now();
 
 const result = await processPdf({

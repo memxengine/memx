@@ -1,11 +1,11 @@
 import { join } from 'node:path';
-import { DATA_DIR } from '@memx/db';
-import { LocalStorage } from '@memx/storage';
+import { DATA_DIR } from '@trail/db';
+import { LocalStorage } from '@trail/storage';
 
 // Phase 1: local filesystem under the same DATA_DIR as the SQLite DB.
 // The uploads subdir mirrors the future R2 layout ({tenantId}/{kbId}/{docId}/...)
 // so migrating to R2 in Phase 2 is a prefix swap.
-const UPLOADS_ROOT = process.env.MEMX_UPLOADS_DIR ?? join(DATA_DIR, 'uploads');
+const UPLOADS_ROOT = process.env.TRAIL_UPLOADS_DIR ?? join(DATA_DIR, 'uploads');
 
 export const storage = new LocalStorage(UPLOADS_ROOT);
 

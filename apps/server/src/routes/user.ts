@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { db, users, documents, tenants } from '@memx/db';
+import { db, users, documents, tenants } from '@trail/db';
 import { eq, and, sql } from 'drizzle-orm';
 import { requireAuth, getUser, getTenant } from '../middleware/auth.js';
 

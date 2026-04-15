@@ -1,4 +1,4 @@
-import type { DescribeImage } from '@memx/pipelines';
+import type { DescribeImage } from '@trail/pipelines';
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY ?? '';
 const VISION_MODEL = process.env.VISION_MODEL ?? 'claude-haiku-4-5-20251001';

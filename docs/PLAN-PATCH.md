@@ -139,15 +139,15 @@ Makes curation 10× faster than reviewing full pages. Costs a diff library. Requ
 
 ### ★ 3.3 Reader feedback → queue (closes the embed loop)
 
-The `<memx-chat>` widget in Phase 2 should have a 👎 button that opens a "tell us what was wrong" textbox. That submission becomes a `reader_feedback` candidate in the queue with the full chat context attached.
+The `<trail-chat>` widget in Phase 2 should have a 👎 button that opens a "tell us what was wrong" textbox. That submission becomes a `reader_feedback` candidate in the queue with the full chat context attached.
 
 This completes Christian's original feedback-loop insight from PRIMER.md. Without it, embedded widgets are read-only — huge missed opportunity. Cost: one endpoint, one button. Benefit: every embed is a crowd-sourced quality improvement channel.
 
 Phase 1 note: even though the widget is Phase 2, the `reader_feedback` candidate kind should exist in the Phase 1 schema. Zero cost, no migration.
 
-### ★ 3.4 Dogfooding: memx.wiki is built from memx docs
+### ★ 3.4 Dogfooding: trail.wiki is built from trail docs
 
-Every commit to `memx/docs/**` triggers an ingest into a public memx.wiki instance. The memx homepage IS a memx wiki. We use our own product to document our own product.
+Every commit to `trail/docs/**` triggers an ingest into a public trail.wiki instance. The trail homepage IS a trail wiki. We use our own product to document our own product.
 
 Linear's trick, Vercel's trick, Cloudflare's trick. Gives us: live demo that's always up to date, stress test on real content, credibility, compounding SEO. Cost: a GitHub Action + a dedicated tenant. Benefit: marketing + QA + demo + docs site, all from one pipeline.
 
@@ -173,17 +173,17 @@ Each wiki page has `last_compiled_at` and `last_curated_at`. The lint pass surfa
 
 Every 90 days, re-compile each wiki page from its backing sources. LLM capabilities improve over time; a page compiled with Sonnet 4 in Phase 1 and re-compiled with a Phase 3 model may catch nuances the first pass missed. The re-compilation produces a `scheduled_recompile` candidate — if nothing changes, auto-dismissed; if meaningful differences, curator reviews.
 
-This is how memx compounds not just with new sources but with better models. "Knowledge that gets smarter even without new input."
+This is how trail compounds not just with new sources but with better models. "Knowledge that gets smarter even without new input."
 
-### ☆ 3.9 Federated memx (long-term, but design for it now)
+### ☆ 3.9 Federated trail (long-term, but design for it now)
 
-A memx instance can subscribe to another instance's public wiki. Sanne's wiki can cite (via `[[ext:fysiodk/zoneterapi]]`) FysioDK's wiki page on the same topic. Sync via a public `/api/v1/wiki/public/:page` endpoint and ETags.
+A trail instance can subscribe to another instance's public wiki. Sanne's wiki can cite (via `[[ext:fysiodk/zoneterapi]]`) FysioDK's wiki page on the same topic. Sync via a public `/api/v1/wiki/public/:page` endpoint and ETags.
 
 Why pitch now: it affects the wiki-link syntax. If `[[zoneterapi]]` is always intra-KB, we paint ourselves into a corner. Use `[[zoneterapi]]` (intra-KB), `[[kb:other-kb/zoneterapi]]` (cross-KB same tenant), `[[ext:tenant/kb/zoneterapi]]` (federated). Design the link parser once, forever.
 
 ### ☆ 3.10 CLI for curators
 
-`memx queue list`, `memx queue approve <id>`, `memx source add <path>`. Thin wrapper around the MCP tools. Some curators prefer terminals (Christian certainly does). Cost: negligible once MCP server exists. Benefit: keyboard-driven curation for power users, and a way for Christian to curate Sanne's wiki from `cc` while working on the engine.
+`trail queue list`, `trail queue approve <id>`, `trail source add <path>`. Thin wrapper around the MCP tools. Some curators prefer terminals (Christian certainly does). Cost: negligible once MCP server exists. Benefit: keyboard-driven curation for power users, and a way for Christian to curate Sanne's wiki from `cc` while working on the engine.
 
 ### ☆ 3.11 "Ask to ingest" — gap detection as a first-class loop
 
@@ -193,7 +193,7 @@ Turns user queries into a content roadmap. Single most useful analytics feature 
 
 ### ☆ 3.12 Per-KB encryption at rest
 
-For healthcare and legal tenants, offer a per-KB encryption key held by the tenant. memx stores ciphertext; decryption happens in-memory per-request with the tenant's key supplied at session start. Not SOC 2 by itself but a strong story for regulated industries.
+For healthcare and legal tenants, offer a per-KB encryption key held by the tenant. trail stores ciphertext; decryption happens in-memory per-request with the tenant's key supplied at session start. Not SOC 2 by itself but a strong story for regulated industries.
 
 Phase 1: design the storage interface so content passes through an `encrypt/decrypt` middleware, even if it's a no-op by default. Zero cost now, unlocks Phase 3 compliance story.
 
@@ -216,14 +216,14 @@ Phase 1: design the storage interface so content passes through an `encrypt/decr
 - [ ] Gap suggestions from low-confidence queries
 
 **Phase 2 — new:**
-- [ ] Reader feedback button in `<memx-chat>` widget → queue
-- [ ] Dogfooding pipeline: memx.wiki built from `memx/docs/**`
+- [ ] Reader feedback button in `<trail-chat>` widget → queue
+- [ ] Dogfooding pipeline: trail.wiki built from `trail/docs/**`
 - [ ] Wiki freshness scoring in lint
 
 **Phase 3 — clarified:**
 - [ ] Event-sourcing becomes a feature (replay, time-travel, undo) because the stream already exists
 - [ ] Claims table joins on the existing `{#claim-xx}` anchors — no re-parsing
-- [ ] Federated memx via `[[ext:...]]` links
+- [ ] Federated trail via `[[ext:...]]` links
 - [ ] Per-KB encryption at rest
 - [ ] Scheduled wiki re-compilation
 
@@ -234,7 +234,7 @@ Phase 1: design the storage interface so content passes through an `encrypt/decr
 1. Is `wiki_events` currently shaped as audit log or event stream? If audit log, is a Phase 1 schema adjustment acceptable?
 2. Does `queue_candidates` already have `kind`, `confidence`, `impact_score`? If not, add now.
 3. Is the curator UI in Phase 1 scoped for queue-first workflow or traditional wiki editing? This patch argues for the former.
-4. Dogfooding: do we want memx.wiki as a public tenant on memxcloud, or self-hosted on Fly.io? (Recommend: self-hosted so memxcloud has no single-tenant special cases.)
+4. Dogfooding: do we want trail.wiki as a public tenant on trailcloud, or self-hosted on Fly.io? (Recommend: self-hosted so trailcloud has no single-tenant special cases.)
 5. Canonical sources: does Sanne mark her own material as canonical explicitly, or should the curator role imply canonicality? (Recommend: explicit flag, because not all of Sanne's material is canonical for all topics.)
 
 ---

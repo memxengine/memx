@@ -9,8 +9,8 @@ import * as schema from './schema.js';
 export * from './schema.js';
 export { schema };
 
-const DATA_DIR = process.env.MEMX_DATA_DIR ?? join(process.cwd(), 'data');
-const DB_PATH = process.env.MEMX_DB_PATH ?? join(DATA_DIR, 'memx.db');
+const DATA_DIR = process.env.TRAIL_DATA_DIR ?? join(process.cwd(), 'data');
+const DB_PATH = process.env.TRAIL_DB_PATH ?? join(DATA_DIR, 'trail.db');
 
 mkdirSync(DATA_DIR, { recursive: true });
 

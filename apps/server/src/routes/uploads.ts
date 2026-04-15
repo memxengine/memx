@@ -1,8 +1,8 @@
 import { Hono } from 'hono';
-import { db, documents, knowledgeBases } from '@memx/db';
+import { db, documents, knowledgeBases } from '@trail/db';
 import { eq, and } from 'drizzle-orm';
 import { requireAuth, getUser, getTenant } from '../middleware/auth.js';
-import { processPdf } from '@memx/pipelines';
+import { processPdf } from '@trail/pipelines';
 import { storage, sourcePath } from '../lib/storage.js';
 import { chunkText, storeChunks } from '../services/chunker.js';
 import { triggerIngest } from '../services/ingest.js';

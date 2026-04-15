@@ -1,9 +1,9 @@
 import { Hono } from 'hono';
-import { db, knowledgeBases, searchChunks, searchDocuments } from '@memx/db';
+import { db, knowledgeBases, searchChunks, searchDocuments } from '@trail/db';
 import { eq } from 'drizzle-orm';
 import { requireAuth, getTenant } from '../middleware/auth.js';
 import { spawnClaude, extractAssistantText } from '../services/claude.js';
-import { ChatRequestSchema } from '@memx/shared';
+import { ChatRequestSchema } from '@trail/shared';
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY ?? '';
 const CHAT_MODEL = process.env.CHAT_MODEL ?? 'claude-haiku-4-5-20251001';
@@ -57,7 +57,7 @@ ${context}
 - If the context doesn't contain enough information, say so honestly`;
 
   // Dev default: claude -p subprocess. Prod will flip to direct API once stable.
-  if (ANTHROPIC_API_KEY && process.env.MEMX_CHAT_BACKEND === 'api') {
+  if (ANTHROPIC_API_KEY && process.env.TRAIL_CHAT_BACKEND === 'api') {
     try {
       const answer = await callAnthropicAPI(systemPrompt, body.message);
       return c.json({ answer, citations });

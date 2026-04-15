@@ -1,18 +1,18 @@
 # Session Start — Read This First
 
-You are continuing work on **memx**, a mission-critical knowledge infrastructure engine. This document brings you up to speed. Read it fully before doing anything else.
+You are continuing work on **trail**, a mission-critical knowledge infrastructure engine. This document brings you up to speed. Read it fully before doing anything else.
 
 ---
 
 ## The Project
 
-**memx** is the next-generation knowledge infrastructure engine. It turns sources into a persistent, compounding wiki maintained by an LLM. Unlike traditional RAG (fragments retrieved at query time), memx compiles knowledge into a structured wiki at ingest time.
+**trail** is the next-generation knowledge infrastructure engine. It turns sources into a persistent, compounding wiki maintained by an LLM. Unlike traditional RAG (fragments retrieved at query time), trail compiles knowledge into a structured wiki at ingest time.
 
 Based on Andrej Karpathy's LLM Wiki pattern (Oct 2025), which in turn realizes Vannevar Bush's Memex vision from 1945.
 
 **License:** FSL-1.1-Apache-2.0 (converts to Apache 2.0 after 2 years)
-**GitHub:** https://github.com/memxengine/memx
-**Local:** `/Users/cb/Apps/memxengine/memx`
+**GitHub:** https://github.com/broberg-ai/trail
+**Local:** `/Users/cb/Apps/broberg-ai/trail`
 **Owner:** Christian Broberg (WebHouse ApS)
 
 ---
@@ -39,10 +39,10 @@ Based on Andrej Karpathy's LLM Wiki pattern (Oct 2025), which in turn realizes V
 **Customer:** Sanne Andersen (healing/zoneterapi practice, Aalborg, 25 years of clinical material)
 **Storage:** Local filesystem
 **Tenancy:** Single-tenant (schema is tenant-aware from day 1, but only one tenant exists)
-**Deploy:** Fly.io arn as `sanne.memxcloud.com` or similar
+**Deploy:** Fly.io arn as `sanne.trailcloud.com` or similar
 
 ### Phase 2 — Business SaaS
-**Domain:** memxcloud.com
+**Domain:** trailcloud.com
 **Customer #2:** FysioDK Aalborg (sport.fdaalborg.dk's "Digital Univers")
 **Storage:** Cloudflare R2
 **Multi-tenant:** LibSQL/Turso per-tenant OR Postgres RLS
@@ -60,7 +60,7 @@ A working prototype at `/Users/cb/Apps/cbroberg/llmwiki-ts` (GitHub: cbroberg/ll
 
 **Use it as reference, not to rename.** We copy what works, leave what doesn't.
 
-What works in llmwiki-ts (migrate or port to memx):
+What works in llmwiki-ts (migrate or port to trail):
 - Hono API with Google OAuth + session cookies
 - PDF pipeline (pdfjs-dist text + image extraction, custom PNG encoder, no heavy deps)
 - MCP server (stdio, 5 tools: guide/search/read/write/delete)
@@ -69,7 +69,7 @@ What works in llmwiki-ts (migrate or port to memx):
 - Markdown renderer with `[[wiki-links]]` and `[text|display]` pipe support
 - ChatPanel with Save-to-wiki + KB picker dropdown
 - FTS5 search
-- Drizzle + SQLite schema (llmwiki-ts has older schema — memx has new tenant-aware one)
+- Drizzle + SQLite schema (llmwiki-ts has older schema — trail has new tenant-aware one)
 
 What's broken or needs improvement (do NOT copy blindly):
 - Model default hardcoded to Sonnet-4-5 which isn't on Max plan → now empty default
@@ -80,12 +80,12 @@ What's broken or needs improvement (do NOT copy blindly):
 
 ---
 
-## Current State of memx Repo
+## Current State of trail Repo
 
 Already done (commits: `b256b04`, `0e11795`, `d8e6112`):
 
 ```
-memx/
+trail/
 ├── LICENSE                 ✓ FSL-1.1-Apache-2.0
 ├── README.md               ✓ With logo, overview, architecture
 ├── package.json            ✓ pnpm + Turbo root
@@ -120,7 +120,7 @@ What's NOT yet done:
 - `apps/server/` — empty (migrate Hono API from llmwiki-ts with new schema)
 - `apps/admin/` — empty (curator dashboard with queue UI)
 - `apps/mcp/` — empty (MCP server — can port from llmwiki-ts)
-- `apps/widget/` — empty (Phase 2: embeddable `<memx-chat>` Lit web component)
+- `apps/widget/` — empty (Phase 2: embeddable `<trail-chat>` Lit web component)
 - `pnpm install` never run → no node_modules
 - No `drizzle generate` run → no migrations
 - No tests
@@ -134,7 +134,7 @@ What's NOT yet done:
 
 2. **Port PDF pipeline to `packages/pipelines/`** + **add vision AI** for image descriptions. Currently llmwiki-ts extracts images as PNGs but doesn't describe them. Use Claude vision (via claude-p or API) to describe each image during ingest. Store description as `{image}.txt` next to PNG.
 
-3. **Build Curation Queue** — backend + UI. This is the new feature that distinguishes memx from llmwiki-ts:
+3. **Build Curation Queue** — backend + UI. This is the new feature that distinguishes trail from llmwiki-ts:
    - Chat answer → candidate in queue
    - Auto-summaries with confidence score
    - Contradiction alerts (LLM detects when a new source conflicts with existing wiki)
@@ -178,7 +178,7 @@ Following the pattern from llmwiki-ts (3020/3021):
 - Main branch: `main`
 - All commits co-authored with `Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>`
 - Never force-push, never skip hooks (--no-verify) unless explicitly requested
-- memxcloud (private repo) will live at `memxengine/memxcloud` for SaaS platform layer
+- trailcloud (private repo) will live at `broberg-ai/trailcloud` for SaaS platform layer
 - Deploy flow (Phase 1): `fly deploy` from `apps/server`, static web from `apps/admin` to Fly or Cloudflare Pages
 
 ---
@@ -207,7 +207,7 @@ Your job: execute Step 1 from "Agreed Next Steps" — migrate the core of llmwik
 4. Skim `/Users/cb/Apps/cbroberg/llmwiki-ts/apps/server/` to see what's being migrated
 
 **Then:**
-1. Run `pnpm install` in memx repo root
+1. Run `pnpm install` in trail repo root
 2. Generate Drizzle migrations: `cd packages/db && npx drizzle-kit generate`
 3. Create `apps/server/` with package.json, tsconfig.json, src/index.ts, src/app.ts
 4. Port routes from llmwiki-ts, adapting to new schema (add tenantId everywhere, use documents.kind column for source/wiki distinction)

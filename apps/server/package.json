@@ -1,5 +1,5 @@
 {
-  "name": "@memx/server",
+  "name": "@trail/server",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -10,10 +10,10 @@
     "clean": "rm -rf dist .turbo"
   },
   "dependencies": {
-    "@memx/db": "workspace:*",
-    "@memx/pipelines": "workspace:*",
-    "@memx/shared": "workspace:*",
-    "@memx/storage": "workspace:*",
+    "@trail/db": "workspace:*",
+    "@trail/pipelines": "workspace:*",
+    "@trail/shared": "workspace:*",
+    "@trail/storage": "workspace:*",
     "drizzle-orm": "^0.45.2",
     "hono": "^4.6.0",
     "zod": "^3.23.8"

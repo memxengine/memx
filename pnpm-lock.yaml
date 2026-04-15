@@ -17,15 +17,15 @@ importers:
 
   apps/mcp:
     dependencies:
-      '@memx/db':
-        specifier: workspace:*
-        version: link:../../packages/db
-      '@memx/shared':
-        specifier: workspace:*
-        version: link:../../packages/shared
       '@modelcontextprotocol/sdk':
         specifier: ^1.12.0
         version: 1.29.0(zod@3.25.76)
+      '@trail/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@trail/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       drizzle-orm:
         specifier: ^0.45.2
         version: 0.45.2(bun-types@1.3.12)
@@ -42,16 +42,16 @@ importers:
 
   apps/server:
     dependencies:
-      '@memx/db':
+      '@trail/db':
         specifier: workspace:*
         version: link:../../packages/db
-      '@memx/pipelines':
+      '@trail/pipelines':
         specifier: workspace:*
         version: link:../../packages/pipelines
-      '@memx/shared':
+      '@trail/shared':
         specifier: workspace:*
         version: link:../../packages/shared
-      '@memx/storage':
+      '@trail/storage':
         specifier: workspace:*
         version: link:../../packages/storage
       drizzle-orm:
@@ -73,7 +73,7 @@ importers:
 
   packages/db:
     dependencies:
-      '@memx/shared':
+      '@trail/shared':
         specifier: workspace:*
         version: link:../shared
       drizzle-orm:
@@ -92,10 +92,10 @@ importers:
 
   packages/pipelines:
     dependencies:
-      '@memx/shared':
+      '@trail/shared':
         specifier: workspace:*
         version: link:../shared
-      '@memx/storage':
+      '@trail/storage':
         specifier: workspace:*
         version: link:../storage
       pdfjs-dist:
@@ -121,7 +121,7 @@ importers:
 
   packages/storage:
     dependencies:
-      '@memx/shared':
+      '@trail/shared':
         specifier: workspace:*
         version: link:../shared
     devDependencies:

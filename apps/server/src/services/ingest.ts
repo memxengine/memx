@@ -1,4 +1,4 @@
-import { db, documents, knowledgeBases, DATA_DIR } from '@memx/db';
+import { db, documents, knowledgeBases, DATA_DIR } from '@trail/db';
 import { eq } from 'drizzle-orm';
 import { broadcaster } from './broadcast.js';
 import { spawnClaude } from './claude.js';
@@ -113,7 +113,7 @@ IMPORTANT RULES:
     '--mcp-config',
     mcpConfigPath,
     '--allowedTools',
-    'mcp__memx__guide,mcp__memx__search,mcp__memx__read,mcp__memx__write',
+    'mcp__trail__guide,mcp__trail__search,mcp__trail__read,mcp__trail__write',
     '--dangerously-skip-permissions',
     '--max-turns',
     '25',
@@ -126,10 +126,10 @@ IMPORTANT RULES:
     await spawnClaude(args, {
       timeoutMs: INGEST_TIMEOUT_MS,
       env: {
-        MEMX_TENANT_ID: job.tenantId,
-        MEMX_USER_ID: job.userId,
-        MEMX_KNOWLEDGE_BASE_ID: job.kbId,
-        MEMX_DATA_DIR: DATA_DIR,
+        TRAIL_TENANT_ID: job.tenantId,
+        TRAIL_USER_ID: job.userId,
+        TRAIL_KNOWLEDGE_BASE_ID: job.kbId,
+        TRAIL_DATA_DIR: DATA_DIR,
       },
     });
 

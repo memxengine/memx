@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
-import { db, rawDb, knowledgeBases, documents } from '@memx/db';
-import { CreateKBSchema, UpdateKBSchema } from '@memx/shared';
+import { db, rawDb, knowledgeBases, documents } from '@trail/db';
+import { CreateKBSchema, UpdateKBSchema } from '@trail/shared';
 import { eq, and } from 'drizzle-orm';
 import { requireAuth, getUser, getTenant } from '../middleware/auth.js';
 import { uniqueSlug } from '../lib/slug.js';

@@ -1,5 +1,5 @@
 {
-  "name": "@memx/pipelines",
+  "name": "@trail/pipelines",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -10,8 +10,8 @@
     "clean": "rm -rf dist .turbo"
   },
   "dependencies": {
-    "@memx/shared": "workspace:*",
-    "@memx/storage": "workspace:*",
+    "@trail/shared": "workspace:*",
+    "@trail/storage": "workspace:*",
     "pdfjs-dist": "^4.7.76"
   },
   "devDependencies": {

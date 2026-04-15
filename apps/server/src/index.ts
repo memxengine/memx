@@ -1,4 +1,4 @@
-import { runMigrations, initFTS } from '@memx/db';
+import { runMigrations, initFTS } from '@trail/db';
 import { createApp } from './app.js';
 
 const PORT = Number(process.env.PORT ?? 3031);
@@ -13,4 +13,4 @@ const server = Bun.serve({
   fetch: app.fetch,
 });
 
-console.log(`memx server running on http://localhost:${server.port}`);
+console.log(`trail server running on http://localhost:${server.port}`);
