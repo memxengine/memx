@@ -24,7 +24,7 @@ In July 1945, with the Second World War still grinding toward its final weeks, *
 Bush had a problem on his mind — not the war, but what should come after it.
 
 <figure>
-<svg viewBox="0 0 800 520" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Schematic of the Memex desk">
+<svg viewBox="60 140 720 345" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Schematic of the Memex desk">
   <!-- Base rectangular portion -->
   <path d="M 200 240 L 200 400 L 600 400 L 600 240 Z" fill="none" stroke="#1a1715" stroke-width="1.5"/>
   <!-- Slanted top -->
@@ -97,7 +97,7 @@ Bush argued that the total record of human knowledge was expanding far faster th
 The problem, Bush said, was not storage — microfilm was already compact enough to fit the Encyclopædia Britannica into a matchbox. The problem was *retrieval*. Traditional library classification systems forced knowledge into rigid hierarchies, tree structures that bore no resemblance to how the human mind actually works.
 
 <figure>
-<svg viewBox="0 0 800 440" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Tree classification versus associative graph">
+<svg viewBox="25 45 715 370" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Tree classification versus associative graph">
   <!-- LEFT: Tree -->
   <g fill="none" stroke="#1a1715" stroke-width="1">
     <rect x="150" y="60" width="60" height="22"/>
@@ -192,7 +192,7 @@ Bush gave a concrete example. Imagine a user interested in why the short Turkish
 > *First he runs through an encyclopedia, finds an interesting but sketchy article, leaves it projected. Next, in a history, he finds another pertinent item, and ties the two together. Thus he goes, building a trail of many items. Occasionally he inserts a comment of his own... When it becomes evident that the elastic properties of available materials had a great deal to do with the bow, he branches off on a side trail which takes him through textbooks on elasticity...*
 
 <figure>
-<svg viewBox="0 0 800 420" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Three linked documents forming an associative trail">
+<svg viewBox="55 80 690 330" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Three linked documents forming an associative trail">
   <!-- Document 1: Encyclopedia -->
   <g fill="none" stroke="#1a1715" stroke-width="1.2">
     <rect x="60" y="130" width="160" height="190"/>
@@ -283,7 +283,7 @@ Bush never built the memex. His group prototyped parts of it, but the machine wa
 But the essay had planted a seed.
 
 <figure>
-<svg viewBox="0 0 900 280" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Timeline from 1945 memex to 2026 memx">
+<svg viewBox="55 60 775 200" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Timeline from 1945 memex to 2026 memx">
   <!-- Main line -->
   <line x1="60" y1="150" x2="840" y2="150" stroke="#1a1715" stroke-width="1.5"/>
 

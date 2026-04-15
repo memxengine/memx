@@ -436,3 +436,74 @@ Dette er ikke længere et hobby projekt. Dette bliver skabelonen for den AI/Brai
   1. Jeg opretter organization memxengine på GitHub (du logger ind og jeg guider via gh CLI), eller du opretter den først
   2. Opretter memx repo under org'et
   3. Jeg bygger PLAN.md ind i repo'et som levende spec + starter Phase 1 scaffolding
+  
+  
+Minimalist vector logo for "memx" — a next-generation knowledge
+  infrastructure engine. Symbol combining three interconnected nodes
+  forming an abstract "m" shape, suggesting a neural network or knowledge
+  graph. Geometric, clean lines, evoking Vannevar Bush's 1945 Memex
+  concept reimagined for the AI era. Warm off-white background (#FAF9F5),
+  deep charcoal nodes (#1a1715) connected by thin precise lines, with a
+  single accent node in warm amber (#e8a87c). Retro-futuristic feel,
+  reminiscent of Bauhaus design meets modern tech brand. Square format,
+  suitable for favicon and app icon. No text, just the symbol. Style
+  inspiration: Linear, Vercel, Supabase, Railway.
+  
+❯ Jeg fik ikke fat i dit svar omkring "Nodes" i stedet for Wikis - hvad tænker du om det? Nodes med
+  neurons (wikis)
+
+⏺ Jeg har faktisk en ret stærk mening her. Kort:
+
+  Ja til "Nodes + Neurons" som brand/UX-sprog. Nej til at ændre schemaet.
+
+  Hvorfor det virker som brand:
+  - "Wiki" bærer Wikipedia-bagage — fællesredigering, encyklopædisk, consumer-reference. Det
+  undersælger hvad memx faktisk er
+  - Vannevar Bush's oprindelige vision handlede om trails og associative links, ikke artikler. "Node +
+   neuron" fanger det bedre
+  - Hjerne-metaforen har indbygget kompositionalitet: Sources = input/stimuli, Neurons = compilede
+  hukommelser, Node = et bounded brain, Queue = "tanker der endnu ikke er færdigbehandlede"
+  - Differentiering: alle RAG-værktøjer kalder ting for "documents". "Nodes med neurons" er
+  distinctivt, signalerer brain-engine, ikke search engine
+  - "Your site gets a brain" slår "Your site gets a wiki" 10/10
+
+  Hvorfor jeg IKKE vil ændre engine-schemaet:
+  1. "Node" er overbelastet i tech. Node.js, DOM node, graph node, Kubernetes node, network node.
+  Udviklere skal disambiguere hver gang. "knowledge_base" er kedeligt men uambigøst
+  2. Engine-semantik er en kontrakt. @webhouse/cms, memxcloud, self-hosted kunder og adaptere
+  importerer det samme schema. Hvis engine kalder det node, er alle consumers låst til
+  brand-terminologien — også dem der vil kalde det noget andet. En chiropraktik-klinik vil måske kalde
+   det "journaler", en advokat "sager"
+  3. DB-etiketten kind='wiki' er 100% intern. Ingen bruger ser den. Ændringen ville kun være kosmetik
+  4. Linear's model: internt hedder det issue. Brand-copy siger "your workflow". Stripe: internt
+  charge, brand: "payments". Separation af lagene gør at branding kan udvikle sig uden migrationer
+
+  Konkret anbefaling
+
+  ┌────────────────────┬──────────────────────────────────────────────────────────────────────────┐
+  │        Lag         │                               Terminologi                                │
+  ├────────────────────┼──────────────────────────────────────────────────────────────────────────┤
+  │ Engine DB + API    │ knowledge_base / documents.kind='source'/'wiki' (stabilt)                │
+  ├────────────────────┼──────────────────────────────────────────────────────────────────────────┤
+  │ Engine copy        │ "Nodes" og "Neurons" som hoved-label, med "(technically: knowledge base  │
+  │ (README, docs)     │ / wiki page)" i teknisk reference                                        │
+  ├────────────────────┼──────────────────────────────────────────────────────────────────────────┤
+  │ Demo-site UI       │ 100% Nodes og Neurons — intet "wiki" nogensinde                          │
+  ├────────────────────┼──────────────────────────────────────────────────────────────────────────┤
+  │ memxcloud          │ "Give your site a brain" — Nodes, Neurons, evt. "Synapses" for           │
+  │ marketing          │ cross-refs                                                               │
+  └────────────────────┴──────────────────────────────────────────────────────────────────────────┘
+
+  Tillægsmuligheder hvis du vil gå all-in på metaforen:
+  - /wiki/ path-prefix → /neurons/ i demo UI (engine kan mappe ved API-responses hvis nødvendigt)
+  - Curation queue = "Subconscious" eller "Incoming thoughts" (dem der venter på bevidst godkendelse)
+  - [[wiki-links]] → "synapses" i brand-copy (men behold [[slug]]-syntaxen)
+  - Kategorier: Sources/Concepts/Entities → kunne være Senses/Memories/Characters — men her begynder
+  metaforen at blive corny. Jeg ville stoppe før
+
+  Risiko: metaforen kan blive gimmicky hvis du over-commiter. "Vi har ikke en database, vi har et
+  hjernekammer" — no. Brug den hvor den tilføjer klarhed, ikke hvor den bliver kostume.
+
+  Kort version: brand it as Nodes+Neurons, code it as knowledge_base+documents. Engine forbliver en
+  seriøs teknisk kontrakt. Brand fortæller historien.
+
