@@ -99,7 +99,7 @@ The remaining Phase 1 scope, ordered by leverage and dependency.
 
 | # | Feature | Depends On | Effort |
 |---|---------|------------|--------|
-| F36 | `trail.wiki` from `trail/docs/**` | F33, F17 | Small |
+| F36 | `docs.trailmem.com` as a Trail Brain | F17, F28, F33, F40 | Medium |
 
 ---
 
@@ -111,13 +111,19 @@ Multi-tenant SaaS, billing, richer pipelines, first 3rd-party adapters.
 
 | # | Feature | Priority |
 |---|---------|----------|
-| F40 | Multi-Tenancy (LibSQL/Turso or Postgres RLS) | Must |
+| F40 | Multi-Tenancy on `app.trailmem.com` (LibSQL/Turso or Postgres RLS) | Must |
 | F41 | Tenant Provisioning + Signup Flow | Must |
 | F42 | Cloudflare R2 Storage Adapter | Must |
 | F43 | Stripe Billing (Hobby / Pro / Business) | Must |
 | F44 | Usage Metering | Must |
 | F53 | Custom Subdomains per Tenant | Should |
-| F61 | SaaS Domain Pick (memxcloud-replacement) | Must — blocks F41 |
+| F61 | ~~SaaS Domain Pick~~ — **Done: `trailmem.com`** | — |
+
+### SaaS Product UX
+
+| # | Feature | Priority |
+|---|---------|----------|
+| F38 | Cross-Trail Search + Chat (Frontpage) | Must — this is the SaaS product |
 
 ### Strategic Adapter + Customer #2
 
@@ -229,6 +235,11 @@ F28 Pipeline interface ─┬─► F24 DOCX
 F29 Widget + F31 Feedback ─► Phase 2-ready consumer story
 
 F45 @webhouse/cms adapter + F40 Multi-tenancy ─► F52 FysioDK
+
+F40 Multi-tenancy ─┬─► F38 Cross-Trail search/chat ─► app.trailmem.com
+                   └─► F36 docs.trailmem.com (Trail brain of our docs)
+
+Landing: F34 (trailmem.com + www.trailmem.com + trail.broberg.ai, one artifact)
 ```
 
 F17, F18, F33 are the three commits that turn Phase 1 from "feature-complete server stack" into "shippable to first customer". Everything else on the Phase-1 list is quality + pipeline width.
@@ -238,9 +249,13 @@ F17, F18, F33 are the three commits that turn Phase 1 from "feature-complete ser
 ## Decisions still owed
 
 1. **F40 — Multi-tenancy strategy** — LibSQL/Turso per-tenant (cleaner isolation, easier backups per customer) vs Postgres with RLS (single DB, simpler ops). Call before F41 design starts.
-2. **F61 — SaaS domain name** — post-memxcloud rebrand. Gates F41 signup flow, F53 subdomains, DNS work.
-3. **F36 — Dogfood wiki hosting** — own tenant on the SaaS vs. dedicated self-hosted instance. Recommend self-hosted so SaaS has no one-off tenant.
-4. **F37 — Sanne deploy topology** — single-tenant on her own subdomain (`sanne.trail.broberg.ai`) vs. multi-tenant from day 1 with her as the first tenant. Recommend single-tenant Fly.io app while F40 is still being designed.
+2. **F37 — Sanne deploy topology** — single-tenant on her own subdomain (`sanne.trail.broberg.ai`) vs. dedicated tenant on `app.trailmem.com` once F40 lands. Recommend single-tenant Fly.io app while F40 is still being designed, then migrate into the SaaS once multi-tenancy is real.
+3. **Brand naming** — user-facing label for a knowledge-base/wiki container. F38's plan doc assumes **Trail** / **Neuron**. Flagged as still open on user's side; lock in before F38 copy ships.
+
+## Decisions resolved
+
+- **F61 — SaaS domain** — `trailmem.com` registered at Cloudflare (2026-04-16). Subdomain map: `trailmem.com` + `www.trailmem.com` = landing (F34), `docs.trailmem.com` = docs-as-Trail (F36), `app.trailmem.com` = SaaS engine (F40/F41). `trail.broberg.ai` remains as the engine-facing mirror of the landing.
+- **F36 — Dogfood hosting** — tenant on `app.trailmem.com` (`trailwiki` tenant). Not self-hosted. Justification: the dogfood is more credible when it runs on the same multi-tenant infrastructure customers do.
 
 ---
 

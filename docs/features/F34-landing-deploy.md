@@ -1,14 +1,21 @@
-# F34 — Landing Site Deploy (`trail.broberg.ai`)
+# F34 — Landing Site Deploy (`trailmem.com` + `trail.broberg.ai`)
 
-> The static landing site already builds clean from `@webhouse/cms examples/static/trail`. This feature is the deploy recipe — DNS, hosting, CI, and the single-source-of-truth wiring between landing content and build.
+> The static landing site already builds clean from `@webhouse/cms examples/static/trail`. This feature is the deploy recipe — DNS, hosting, CI, and the wiring between three hostnames that all serve the same landing: `trailmem.com`, `www.trailmem.com`, `trail.broberg.ai`.
 
 ## Problem
 
-Landing site content + build pipeline is mature (commits across `webhousecode/cms` in April 2026). It's served at `localhost:3026` via sirv during development but has no production host. No one can share a link yet. This also blocks F36 (dogfooding wiki, whose own landing page will follow the same pattern).
+Landing site content + build pipeline is mature (commits across `webhousecode/cms` in April 2026). It's served at `localhost:3026` via sirv during development but has no production host. No one can share a link yet. This also blocks F36 (docs.trailmem.com, whose scope differs but shares the static deploy pattern).
+
+Three hostnames need to resolve to the same artifact:
+
+- **`trailmem.com`** and **`www.trailmem.com`** — primary SaaS identity; evolves over time to include concept + tech + data + posts, and later the signup path into `app.trailmem.com` (F40).
+- **`trail.broberg.ai`** — engine-facing identity; serves the landing so visitors finding Trail through the broberg-ai GitHub org land somewhere real.
 
 ## Solution
 
-Deploy the static site to Fly.io static (`arn`) or Cloudflare Pages. DNS from `broberg-ai.com`'s nameservers points `trail.broberg.ai` at it. CI is a GitHub Action in the `webhousecode/cms` repo that rebuilds on pushes to `examples/static/trail/**` and redeploys.
+Deploy the static site once to Fly.io static (`arn`) or Cloudflare Pages. Point all three hostnames at the same target via CNAMEs on Cloudflare (both `trailmem.com` and `broberg.ai` are on Cloudflare). CI is a GitHub Action in the `webhousecode/cms` repo that rebuilds on pushes to `examples/static/trail/**` and redeploys — all three hosts pick up the new content simultaneously.
+
+The landing content itself is one build, three hostnames. No content fork.
 
 ## Technical Design
 
@@ -33,17 +40,26 @@ The @webhouse/cms static-site generator (`examples/static/trail/build.ts`) alrea
 
 ### DNS
 
-Root domain `broberg.ai` is on WebHouse DNS. Add:
+Both `trailmem.com` and `broberg.ai` are on Cloudflare. Configure via the internal DNS MCP (`mcp__dns-manager__dns_upsert_record`). Target is the Fly.io static app's `*.fly.dev` hostname once F33-equivalent static deploy exists.
 
 ```
-trail.broberg.ai   CNAME   trail-landing.fly.dev.
+# trailmem.com zone
+@           CNAME   trail-landing.fly.dev.     (apex flattened by Cloudflare)
+www         CNAME   trail-landing.fly.dev.
+
+# broberg.ai zone
+trail       CNAME   trail-landing.fly.dev.
 ```
 
 Fly TLS:
 
 ```
-fly certs create trail.broberg.ai -a trail-landing
+fly certs create trailmem.com       -a trail-landing
+fly certs create www.trailmem.com   -a trail-landing
+fly certs create trail.broberg.ai   -a trail-landing
 ```
+
+For the apex record (`trailmem.com`), Cloudflare CNAME flattening handles the CNAME-at-apex restriction automatically — no need to manually resolve to an A record.
 
 ### CI
 
@@ -107,12 +123,13 @@ None — this is a new surface.
 ### Test plan
 
 - [ ] `flyctl deploy --config examples/static/trail/fly.toml` succeeds
-- [ ] `https://trail.broberg.ai/` returns 200, renders home hero
-- [ ] `https://trail.broberg.ai/the-1945-concept/` renders essay with 4 SVG figures
-- [ ] `https://trail.broberg.ai/trails/` renders category index
+- [ ] `https://trailmem.com/` returns 200, renders home hero
+- [ ] `https://www.trailmem.com/` returns 200, identical content
+- [ ] `https://trail.broberg.ai/` returns 200, identical content
+- [ ] All three hostnames serve `/the-1945-concept/` with 4 SVG figures
 - [ ] Tag links resolve (`/tags/memex/`, `/tags/material-elasticity/`)
 - [ ] CI triggers on a push to `examples/static/trail/content/pages/home.json`
-- [ ] Refresh on CI-deployed page shows the edit
+- [ ] Refresh on CI-deployed page shows the edit across all three hosts
 - [ ] Regression: local dev at `localhost:3026` still works
 
 ## Implementation Steps

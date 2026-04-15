@@ -15,7 +15,7 @@ Knowledge accumulates. Questions compound answers. Every source makes the system
 
 trail is the engine. It powers:
 
-- **trailcloud** — our managed SaaS
+- **trailmem** — our managed SaaS at `app.trailmem.com`
 - **Customer installations** — WebHouse customers (Sanne, FysioDK, etc.)
 - **Self-hosted deployments** — any team wanting knowledge infrastructure
 - **CMS modules** — embedded in @webhouse/cms and other platforms
@@ -59,7 +59,7 @@ trail is the engine. It powers:
 First customer: Sanne Andersen. Goal: validate pattern end-to-end with real domain knowledge.
 
 **Phase 2 — Business (Multi-tenant SaaS)**
-Launch trailcloud.com. Onboard FysioDK Aalborg as customer #2. @webhouse/cms adapter. Stripe billing.
+Launch app.trailmem.com. Onboard FysioDK Aalborg as customer #2. @webhouse/cms adapter. Stripe billing.
 
 **Phase 3 — Enterprise/Scale**
 SSO, audit logs, on-premises, SOC 2, event sourcing, real-time collaboration.
@@ -69,7 +69,7 @@ SSO, audit logs, on-premises, SOC 2, event sourcing, real-time collaboration.
 ## Phase 1 — MVP Deliverables
 
 ### Customer target
-Sanne Andersen. Single-tenant. Deployed on Fly.io arn as `sanne.trailcloud.com` (or similar).
+Sanne Andersen. Single-tenant. Deployed on Fly.io arn as `sanne.app.trailmem.com` (or similar).
 
 ### Features
 
@@ -122,7 +122,7 @@ Sanne Andersen. Single-tenant. Deployed on Fly.io arn as `sanne.trailcloud.com` 
 ## Phase 2 — Business (Multi-tenant SaaS)
 
 ### Customer targets
-- trailcloud.com launches
+- app.trailmem.com launches
 - FysioDK Aalborg
 - Open to signups for waitlist
 
@@ -215,19 +215,21 @@ trail/
 ### Related repositories
 
 - `broberg-ai/trail` — this repo (FSL-1.1-Apache-2.0)
-- `broberg-ai/trailcloud` — SaaS platform (private, proprietary)
+- `broberg-ai/trailmem` — SaaS platform (private, proprietary)
 - `broberg-ai/trail-enterprise` — Phase 3 enterprise features (private, proprietary)
-- `broberg-ai/trail-docs` — trail.wiki docs site (Apache 2.0)
+- `broberg-ai/trail-docs` — `docs.trailmem.com` read-surface (see F36)
 
 ---
 
 ## Brand and Domains
 
-- **trail.wiki** — flagship/docs site (our own dogfood wiki)
-- **trailcloud.com** — SaaS
-- **broberg-ai.com** — enterprise portal
-- **traildev.com** — developer docs + SDK downloads
-- **trail.dev** — defensive, redirect
+- **trailmem.com** / **www.trailmem.com** — public landing (F34)
+- **app.trailmem.com** — SaaS, multi-tenant (F40/F41)
+- **docs.trailmem.com** — docs site, built as a Trail brain on the SaaS (F36)
+- **trail.broberg.ai** — engine-facing mirror of the landing (F34)
+- **api.trail.broberg.ai** — engine API endpoint (F33)
+- **broberg-ai.com** — enterprise portal (Phase 3)
+- **traildev.com**, **trail.dev** — future developer docs + defensive redirect
 
 ---
 

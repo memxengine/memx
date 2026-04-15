@@ -506,4 +506,33 @@ Minimalist vector logo for "trail" — a next-generation knowledge
 
   Kort version: brand it as Nodes+Neurons, code it as knowledge_base+documents. Engine forbliver en
   seriøs teknisk kontrakt. Brand fortæller historien.
+  
+  Relevans for trail
+
+    De to projekter løser forskellige problemer — vigtigt at holde adskilt:
+
+    ┌───────────────────────┬────────────────────────────────────┬─────────────────────────────────────────────┐
+    │                       │             MemPalace              │                    trail                    │
+    ├───────────────────────┼────────────────────────────────────┼─────────────────────────────────────────────┤
+    │ Hvornår sker arbejdet │ Query-tid (retrieval)              │ Ingest-tid (kompilering)                    │
+    ├───────────────────────┼────────────────────────────────────┼─────────────────────────────────────────────┤
+    │ Hvad opbevares        │ Verbatim chat-historik             │ Kilder + LLM-synteserede wiki-sider         │
+    ├───────────────────────┼────────────────────────────────────┼─────────────────────────────────────────────┤
+    │ Primærmekanisme       │ Semantic search over chunks        │ Cross-refererede wiki-sider (Nodes/Neurons) │
+    ├───────────────────────┼────────────────────────────────────┼─────────────────────────────────────────────┤
+    │ Bush-lineage          │ Palace-of-mind (klassisk mnemonic) │ Memex / associative trails                  │
+    ├───────────────────────┼────────────────────────────────────┼─────────────────────────────────────────────┤
+    │ Kategori              │ Bedre RAG med struktur             │ LLM-maintained wiki                         │
+    └───────────────────────┴────────────────────────────────────┴─────────────────────────────────────────────┘
+
+    Din "compound, don't chunk"-filosofi fra SESSION-START er faktisk modsætningen til MemPalace — de gemmer eksplicit
+    chunks verbatim og gør retrieval smart; du komprimerer/syntetiserer på ingest og bruger FTS5.
+
+    Men der er inspiration at hente:
+    1. Scoped retrieval via struktur (wings/rooms/drawers) — trail har allerede KB → documents, men deres eksplicitte
+    hierarki kunne overvejes for UX
+    2. MCP-tools-mængde — 29 tools vs. dine 5-6. Måske overkill, måske ikke
+    3. Reproducérbare benchmarks committed i repo — godt mønster for trail at kopiere når vi når dertil
+    4. Local-first + "nothing leaves your machine" — stærk positioning som trail også kan bruge
+	
 

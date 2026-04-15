@@ -52,11 +52,12 @@ Status reflects the engine (this repo). Landing-site and CMS-adapter work lives 
 | F31 | [Reader Feedback Button → Queue](#f31-reader-feedback) | Planned | 1 | — |
 | F32 | [Lint Pass (Orphans / Gaps / Contradictions)](#f32-lint-pass) | Planned | 1 | — |
 | F33 | [Fly.io Arn Deploy for `apps/server`](#f33-fly-server-deploy) | Planned | 1 | [features/F33-fly-server-deploy.md](features/F33-fly-server-deploy.md) |
-| F34 | [Landing Site Deploy (`trail.broberg.ai`)](#f34-landing-deploy) | In progress | 1 | [features/F34-landing-deploy.md](features/F34-landing-deploy.md) |
+| F34 | [Landing Site Deploy (`trailmem.com` + `trail.broberg.ai`)](#f34-landing-deploy) | In progress | 1 | [features/F34-landing-deploy.md](features/F34-landing-deploy.md) |
 | F35 | [Google OAuth Production Credentials](#f35-oauth-production) | Planned | 1 | — |
-| F36 | [Dogfooding: `trail.wiki` from `trail/docs/**`](#f36-dogfooding-wiki) | Planned | 1 | — |
+| F36 | [`docs.trailmem.com` as a Trail Brain](#f36-dogfooding-wiki) | Planned | 1 | [features/F36-dogfooding-wiki.md](features/F36-dogfooding-wiki.md) |
 | F37 | [Sanne Customer Onboarding (Customer #1)](#f37-sanne-onboarding) | Planned | 1 | — |
-| F40 | [Multi-Tenancy (LibSQL/Turso or Postgres RLS)](#f40-multi-tenancy) | Idea | 2 | — |
+| F38 | [Cross-Trail Search + Chat (Frontpage)](#f38-cross-trail-search) | Planned | 2 | [features/F38-cross-trail-search.md](features/F38-cross-trail-search.md) |
+| F40 | [Multi-Tenancy on `app.trailmem.com` (LibSQL/Turso or Postgres RLS)](#f40-multi-tenancy) | Idea | 2 | — |
 | F41 | [Tenant Provisioning + Signup Flow](#f41-tenant-provisioning) | Idea | 2 | — |
 | F42 | [Cloudflare R2 Storage Adapter](#f42-r2-storage) | Idea | 2 | — |
 | F43 | [Stripe Billing (Hobby / Pro / Business)](#f43-stripe-billing) | Idea | 2 | — |
@@ -77,7 +78,7 @@ Status reflects the engine (this repo). Landing-site and CMS-adapter work lives 
 | F58 | [WordPress Adapter](#f58-wordpress-adapter) | Idea | 2 | — |
 | F59 | [Sanity Adapter](#f59-sanity-adapter) | Idea | 2 | — |
 | F60 | [Notion Adapter + Sync](#f60-notion-adapter) | Idea | 2 | — |
-| F61 | [SaaS Domain Pick (memxcloud-replacement)](#f61-saas-domain) | Idea | 2 | — |
+| F61 | [SaaS Domain — `trailmem.com`](#f61-saas-domain) | Done | 2 | — |
 | F70 | [SSO: SAML 2.0 + SCIM](#f70-sso-saml) | Idea | 3 | — |
 | F71 | [Audit Logs + Retention](#f71-audit-logs) | Idea | 3 | — |
 | F72 | [On-Prem Docker / Helm Deploy](#f72-on-prem-deploy) | Idea | 3 | — |
@@ -200,19 +201,22 @@ Periodic background job. Surfaces orphaned pages, missing cross-refs, contradict
 Fly.io arn (Stockholm) deploy config for `apps/server` under `infra/fly/`. Volumes for SQLite + uploads. Secrets via `fly secrets set`.
 
 ### F34 — Landing Deploy
-Deploy `trail.broberg.ai` from the `@webhouse/cms` examples/static/trail site. Build pipeline already green — need DNS + Fly.io static hosting or Cloudflare Pages.
+Deploy the `@webhouse/cms examples/static/trail` site to three hostnames that all serve the same content: `trailmem.com`, `www.trailmem.com`, `trail.broberg.ai`. CNAME both zones on Cloudflare to the Fly.io static target. Content evolves over time from pure landing to concept + tech + data + posts as we approach the `app.trailmem.com` SaaS launch (F41).
 
 ### F35 — OAuth Production Credentials
-Google OAuth production client + consent screen. Domain-verified `trail.broberg.ai`. Separate from dev credentials.
+Google OAuth production client + consent screen. Domain-verified `app.trailmem.com` (SaaS) and `trail.broberg.ai` (engine). Separate from dev credentials.
 
-### F36 — Dogfooding Wiki
-GitHub Action watches `trail/docs/**`; on push, triggers ingest into a public trail tenant. `trail.wiki` IS a trail wiki built from our own docs. Live demo + QA + SEO compounding.
+### F36 — `docs.trailmem.com` as a Trail Brain
+The Trail documentation site is itself a Trail brain. GitHub Action watches `broberg-ai/trail/docs/**`, ingests every push into a dedicated `trailwiki` tenant on `app.trailmem.com`, compiles via standard markdown pipeline (F09), renders at `docs.trailmem.com` via a read-only Trail frontend. Dogfooding the product while producing the docs.
 
 ### F37 — Sanne Onboarding
-Customer #1 — Sanne Andersen (healing/zoneterapi, Aalborg). Migrate 25 years of clinical material into a single Sanne-owned KB. Onboarding script, support, and feedback channel. Single-tenant deploy.
+Customer #1 — Sanne Andersen (healing/zoneterapi, Aalborg). Migrate 25 years of clinical material into a single Sanne-owned Trail. Onboarding script, support, and feedback channel. Initially single-tenant on Fly.io; migrates to a tenant on `app.trailmem.com` when F40 lands.
 
-### F40 — Multi-Tenancy
-Real multi-tenant data isolation. Two serious options: LibSQL/Turso per-tenant database (strong isolation, per-tenant backup/restore is trivial) or Postgres with Row-Level Security (single DB, less ops). Decision owed before F41.
+### F38 — Cross-Trail Search + Chat (Frontpage)
+`app.trailmem.com`'s frontpage lets a signed-in user search and chat across every Trail they own. Results tagged by source Trail, bounded retrieval (top-M Trails × top-K pages) for scalability. Drill into a specific Trail and the same UI becomes scoped to just that Trail. Finalises user-facing naming: **Trail** = the user's knowledge base, **Neuron** = a compiled wiki page inside it.
+
+### F40 — Multi-Tenancy on `app.trailmem.com`
+Real multi-tenant data isolation powering the SaaS at `app.trailmem.com`. Two serious options: LibSQL/Turso per-tenant database (strong isolation, per-tenant backup/restore is trivial) or Postgres with Row-Level Security (single DB, less ops). Decision owed before F41 signup ships.
 
 ### F41 — Tenant Provisioning + Signup
 Public signup flow creates a tenant + first user. Email verification, OAuth provider picker. Hooks to Stripe (F43) for plan selection.
@@ -274,8 +278,8 @@ Same idea as F58 but for Sanity — GROQ queries feed sources, Studio embeds a t
 ### F60 — Notion Adapter
 Notion integration with two-way sync. Databases / pages in Notion become sources; approved wiki pages can mirror back as Notion blocks for team use.
 
-### F61 — SaaS Domain Pick
-Trademark-cleared replacement for "memxcloud". Candidate names to evaluate (availability, trademark search, tone), then register + DNS.
+### F61 — SaaS Domain — `trailmem.com`
+**Resolved 2026-04-16.** Registered at Cloudflare. Three subdomains in play: `trailmem.com` / `www.trailmem.com` (landing, see F34), `docs.trailmem.com` (docs-as-a-Trail, see F36), `app.trailmem.com` (multi-tenant SaaS, see F40/F41). `trail.broberg.ai` continues as the engine-facing identity and mirrors the landing.
 
 ### F70 — SSO: SAML 2.0 + SCIM
 Identity federation for enterprise tenants. Provision/deprovision users via SCIM. Enterprise-tier feature gated by plan.
