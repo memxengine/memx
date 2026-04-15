@@ -1,5 +1,5 @@
 ---
-title: "As We May Think: The 1945 Vision That Became trail"
+title: "As We May Think: The 1945 Vision That Became Trail"
 slug: as-we-may-think-vannevar-bush-memex
 locale: en
 author: trail team
@@ -17,7 +17,7 @@ cover: /images/posts/memex-desk.svg
 
 # As We May Think
 
-## The 1945 vision that became trail
+## The 1945 vision that became Trail
 
 In July 1945, with the Second World War still grinding toward its final weeks, *The Atlantic Monthly* published an essay by a man who had just spent four years coordinating the work of six thousand American scientists. His name was Vannevar Bush. The essay was called **"As We May Think."** It would become one of the quietly most influential pieces of writing in the twentieth century.
 
@@ -35,7 +35,7 @@ Bush had a problem on his mind — not the war, but what should come after it.
   <line x1="345" y1="180" x2="545" y2="180" stroke="#1a1715" stroke-width="0.5" opacity="0.35"/>
   <line x1="355" y1="192" x2="540" y2="192" stroke="#1a1715" stroke-width="0.5" opacity="0.35"/>
   <line x1="350" y1="204" x2="535" y2="204" stroke="#1a1715" stroke-width="0.5" opacity="0.35"/>
-  <!-- Amber active node on screen (the current trail) -->
+  <!-- Amber active node on screen (the current Trail) -->
   <circle cx="440" cy="180" r="4" fill="#e8a87c"/>
   <circle cx="440" cy="180" r="9" fill="none" stroke="#e8a87c" stroke-width="0.6" opacity="0.5"/>
   <!-- Keyboard area on desk front -->
@@ -156,7 +156,7 @@ The problem, Bush said, was not storage — microfilm was already compact enough
     <line x1="710" y1="155" x2="695" y2="245"/>
     <line x1="560" y1="240" x2="695" y2="245"/>
   </g>
-  <!-- active amber trail -->
+  <!-- active amber Trail -->
   <g stroke="#e8a87c" stroke-width="1.6" fill="none">
     <line x1="540" y1="165" x2="625" y2="195"/>
     <line x1="625" y1="195" x2="710" y2="155"/>
@@ -181,18 +181,18 @@ In Bush's description, the memex was a piece of furniture. A desk, specifically,
 
 Crucially, the memex could be consulted with "exceeding speed and flexibility." Tap a code on the keyboard and a book's title page appeared on one of the screens. But this was not the revolutionary part. Indexed lookup had existed for centuries. What made the memex radical was what Bush called **associative trails**.
 
-## The trail: thinking by association
+## The Trail: thinking by association
 
 The human mind, Bush observed, does not operate by classification. It operates by association. We follow one thought to the next through webs of connection — resemblance, contrast, causality, memory. Traditional indexes force the mind to slow down and walk the tree. Bush wanted a machine that could keep pace with thought itself.
 
-On the memex, a user could tie any two documents together with a permanent link. More importantly, they could build sequences — *trails* — of linked documents, with their own annotations inserted along the way. The trail was the memex's core data structure, and it was essentially hypertext, described twenty years before the word was coined.
+On the memex, a user could tie any two documents together with a permanent link. More importantly, they could build sequences — *trails* — of linked documents, with their own annotations inserted along the way. The Trail was the memex's core data structure, and it was essentially hypertext, described twenty years before the word was coined.
 
 Bush gave a concrete example. Imagine a user interested in why the short Turkish bow was apparently superior to the English longbow during the Crusades:
 
-> *First he runs through an encyclopedia, finds an interesting but sketchy article, leaves it projected. Next, in a history, he finds another pertinent item, and ties the two together. Thus he goes, building a trail of many items. Occasionally he inserts a comment of his own... When it becomes evident that the elastic properties of available materials had a great deal to do with the bow, he branches off on a side trail which takes him through textbooks on elasticity...*
+> *First he runs through an encyclopedia, finds an interesting but sketchy article, leaves it projected. Next, in a history, he finds another pertinent item, and ties the two together. Thus he goes, building a Trail of many items. Occasionally he inserts a comment of his own... When it becomes evident that the elastic properties of available materials had a great deal to do with the bow, he branches off on a side Trail which takes him through textbooks on elasticity...*
 
 <figure>
-<svg viewBox="55 80 690 330" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Three linked documents forming an associative trail">
+<svg viewBox="55 80 690 330" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Three linked documents forming an associative Trail">
   <!-- Document 1: Encyclopedia -->
   <g fill="none" stroke="#1a1715" stroke-width="1.2">
     <rect x="60" y="130" width="160" height="190"/>
@@ -244,7 +244,7 @@ Bush gave a concrete example. Imagine a user interested in why the short Turkish
   </g>
   <text x="600" y="175" font-family="monospace" font-size="9" fill="#1a1715" font-weight="bold" letter-spacing="0.5">ELASTICITY</text>
 
-  <!-- The amber trail -->
+  <!-- The amber Trail -->
   <g stroke="#e8a87c" stroke-width="2" fill="none">
     <path d="M 145 215 Q 260 140 390 150"/>
     <path d="M 410 160 Q 510 180 655 235"/>
@@ -271,10 +271,10 @@ Bush gave a concrete example. Imagine a user interested in why the short Turkish
   <text x="400" y="380" font-family="monospace" font-size="11" fill="#1a1715" text-anchor="middle" opacity="0.55" letter-spacing="1.5">AN ASSOCIATIVE TRAIL</text>
   <text x="400" y="398" font-family="monospace" font-size="9"  fill="#1a1715" text-anchor="middle" opacity="0.4">Bush's own example — why the Turkish bow outperformed the English longbow</text>
 </svg>
-<figcaption>The trail is not a search result. It is a piece of thinking, captured and made permanent.</figcaption>
+<figcaption>The Trail is not a search result. It is a piece of thinking, captured and made permanent.</figcaption>
 </figure>
 
-The trail is not a search result. It is not retrieval. It is a piece of thinking, captured and made permanent — something that could be shared, inherited, extended. Bush envisioned a world in which *"wholly new forms of encyclopedias will appear, ready made with a mesh of associative trails running through them."*
+The Trail is not a search result. It is not retrieval. It is a piece of thinking, captured and made permanent — something that could be shared, inherited, extended. Bush envisioned a world in which *"wholly new forms of encyclopedias will appear, ready made with a mesh of associative trails running through them."*
 
 ## What happened next
 
@@ -283,7 +283,7 @@ Bush never built the memex. His group prototyped parts of it, but the machine wa
 But the essay had planted a seed.
 
 <figure>
-<svg viewBox="55 60 775 200" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Timeline from 1945 memex to 2026 trail">
+<svg viewBox="55 60 775 200" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Timeline from 1945 memex to 2026 Trail">
   <!-- Main line -->
   <line x1="60" y1="150" x2="840" y2="150" stroke="#1a1715" stroke-width="1.5"/>
 
@@ -327,13 +327,13 @@ But the essay had planted a seed.
   <text x="680" y="73"  font-family="monospace" font-size="10" fill="#1a1715" text-anchor="middle" letter-spacing="0.5">LLM WIKI</text>
   <text x="680" y="185" font-family="monospace" font-size="8"  fill="#1a1715" text-anchor="middle" opacity="0.6">Karpathy</text>
 
-  <!-- 2026 trail -->
+  <!-- 2026 Trail -->
   <circle cx="800" cy="150" r="8" fill="#e8a87c"/>
   <circle cx="800" cy="150" r="14" fill="none" stroke="#e8a87c" stroke-width="0.7" opacity="0.6"/>
   <circle cx="800" cy="150" r="20" fill="none" stroke="#e8a87c" stroke-width="0.4" opacity="0.3"/>
   <line x1="800" y1="135" x2="800" y2="100" stroke="#e8a87c" stroke-width="1"/>
   <text x="800" y="88"  font-family="monospace" font-size="11" fill="#1a1715" text-anchor="middle" font-weight="bold">2026</text>
-  <text x="800" y="73"  font-family="monospace" font-size="10" fill="#1a1715" text-anchor="middle" letter-spacing="0.5">trail</text>
+  <text x="800" y="73"  font-family="monospace" font-size="10" fill="#1a1715" text-anchor="middle" letter-spacing="0.5">Trail</text>
   <text x="800" y="185" font-family="monospace" font-size="8"  fill="#1a1715" text-anchor="middle" opacity="0.6">broberg.ai</text>
 
   <!-- Caption -->
@@ -346,25 +346,25 @@ But the essay had planted a seed.
 
 **Douglas Engelbart** read "As We May Think" shortly after its publication and spent the next two decades trying to build it. His 1968 "Mother of All Demos" at the Fall Joint Computer Conference showed the world the computer mouse, the graphical user interface, real-time collaborative editing, hypertext linking, and video conferencing — all of it directly inspired by Bush's memex.
 
-**Tim Berners-Lee** built the World Wide Web at CERN in 1989. The web's basic primitive — a document that can link to any other document — is the memex trail stripped to its minimum. Bush's dream of a global network of associatively linked knowledge was finally, imperfectly, realized.
+**Tim Berners-Lee** built the World Wide Web at CERN in 1989. The web's basic primitive — a document that can link to any other document — is the memex Trail stripped to its minimum. Bush's dream of a global network of associatively linked knowledge was finally, imperfectly, realized.
 
 And yet, something was missing.
 
 ## The gap the web left behind
 
-The web gave us the link. It did not give us the **trail**. A search returns a list of URLs ranked by an algorithm that no one fully understands. The burden of weaving those URLs into a coherent piece of thinking falls entirely on the reader, who must then store their synthesis in some external place — a notebook, a document, a blog post — that is itself disconnected from the sources it draws on.
+The web gave us the link. It did not give us the **Trail**. A search returns a list of URLs ranked by an algorithm that no one fully understands. The burden of weaving those URLs into a coherent piece of thinking falls entirely on the reader, who must then store their synthesis in some external place — a notebook, a document, a blog post — that is itself disconnected from the sources it draws on.
 
 Retrieval-augmented generation, the dominant AI pattern of the early 2020s, took this a step further in the wrong direction. RAG treats knowledge as fragments to be fetched at query time and assembled just-in-time by a language model. There is no persistent wiki. There is no compounding. Every question starts from scratch. Every answer is disposable.
 
 Bush would have recognized the problem immediately. This is not how the mind works. This is not what he drew.
 
-## From Memex to trail
+## From Memex to Trail
 
 In October 2025, Andrej Karpathy described a different pattern: the **LLM Wiki**. Instead of retrieving fragments at query time, a language model compiles knowledge at *ingest* time into a persistent, cross-referenced wiki — a living document that an AI maintains on behalf of a human curator. Every new source is not just stored, it is *integrated*. The wiki accumulates. Knowledge compounds. Curators review what the machine proposes and approve what is worth keeping.
 
 This is the memex. Not metaphorically — structurally. The associative trails are wiki links. The ingest pipeline is the transparent platen. The curator is the human operator choosing which trails to preserve. Even the critique of hierarchy versus association is the same, eighty-one years later.
 
-That is what **trail** is. The name is deliberate. We are not building another search engine, and we are not building another RAG layer. We are building the machine Vannevar Bush described in July 1945, using the one technology he could not have anticipated: large language models capable of reading, understanding, and compiling human knowledge into the associative structures he imagined.
+That is what **Trail** is. The name is deliberate. We are not building another search engine, and we are not building another RAG layer. We are building the machine Vannevar Bush described in July 1945, using the one technology he could not have anticipated: large language models capable of reading, understanding, and compiling human knowledge into the associative structures he imagined.
 
 > *The applications of science ... may yet allow [humanity] truly to encompass the great record and to grow in the wisdom of race experience.*
 > — Vannevar Bush, *As We May Think*, 1945
