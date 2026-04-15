@@ -334,7 +334,7 @@ But the essay had planted a seed.
   <line x1="800" y1="135" x2="800" y2="100" stroke="#e8a87c" stroke-width="1"/>
   <text x="800" y="88"  font-family="monospace" font-size="11" fill="#1a1715" text-anchor="middle" font-weight="bold">2026</text>
   <text x="800" y="73"  font-family="monospace" font-size="10" fill="#1a1715" text-anchor="middle" letter-spacing="0.5">trail</text>
-  <text x="800" y="185" font-family="monospace" font-size="8"  fill="#1a1715" text-anchor="middle" opacity="0.6">WebHouse</text>
+  <text x="800" y="185" font-family="monospace" font-size="8"  fill="#1a1715" text-anchor="middle" opacity="0.6">broberg.ai</text>
 
   <!-- Caption -->
   <text x="450" y="245" font-family="monospace" font-size="11" fill="#1a1715" text-anchor="middle" opacity="0.55" letter-spacing="1.5">EIGHTY-ONE YEARS FROM VISION TO IMPLEMENTATION</text>
