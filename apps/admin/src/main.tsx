@@ -3,6 +3,8 @@ import { LocationProvider, Router, Route } from 'preact-iso';
 import { App } from './app';
 import { QueuePanel } from './panels/queue';
 import { KnowledgeBasesPanel } from './panels/kbs';
+import { WikiTreePanel } from './panels/wiki-tree';
+import { WikiReaderPanel } from './panels/wiki-reader';
 import { NotFound } from './panels/not-found';
 import { initTheme } from './theme';
 import './index.css';
@@ -17,6 +19,8 @@ function Main() {
         <Router>
           <Route path="/" component={KnowledgeBasesPanel} />
           <Route path="/kb/:kbId/queue" component={QueuePanel} />
+          <Route path="/kb/:kbId/neurons" component={WikiTreePanel} />
+          <Route path="/kb/:kbId/neurons/:slug" component={WikiReaderPanel} />
           <Route default component={NotFound} />
         </Router>
       </App>

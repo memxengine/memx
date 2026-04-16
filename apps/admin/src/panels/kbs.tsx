@@ -22,7 +22,11 @@ export function KnowledgeBasesPanel() {
   }
 
   if (!kbs) {
-    return <div class="p-8 text-[color:var(--color-fg-muted)]">Loading knowledge bases…</div>;
+    return (
+      <div class="loading-delayed p-8 text-[color:var(--color-fg-muted)] text-sm">
+        Loading Trails…
+      </div>
+    );
   }
 
   if (!kbs.length) {

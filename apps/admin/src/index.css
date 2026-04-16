@@ -147,3 +147,16 @@ body {
   margin: 1.5rem 0;
 }
 .prose-body strong { font-weight: 600; }
+
+/* ── Delayed loading state ──────────────────────────────────────────
+ * Fast loads (<400ms) never show it at all. Slow loads fade in smoothly
+ * so the user knows something is happening. Avoids the "flash of loading
+ * text" anti-pattern on local dev against a warm libSQL instance.
+ */
+.loading-delayed {
+  opacity: 0;
+  animation: loading-fade-in 0.25s ease-in 0.4s forwards;
+}
+@keyframes loading-fade-in {
+  to { opacity: 1; }
+}

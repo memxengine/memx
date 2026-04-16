@@ -16,7 +16,6 @@ interface Me {
 
 export function App({ children }: { children: ComponentChildren }) {
   const [me, setMe] = useState<Me | null>(null);
-  const [loading, setLoading] = useState(true);
   const [theme, setTheme] = useState<Theme>(getTheme());
   const location = useLocation();
 
@@ -24,10 +23,7 @@ export function App({ children }: { children: ComponentChildren }) {
 
   useEffect(() => {
     api<Me>('/api/v1/me')
-      .then((data) => {
-        setMe(data);
-        setLoading(false);
-      })
+      .then((data) => setMe(data))
       .catch(() => {
         // Not authed. In dev we bypass Google OAuth and hit the engine's
         // dev-login shortcut, which sets a pre-seeded session cookie and
@@ -39,8 +35,9 @@ export function App({ children }: { children: ComponentChildren }) {
       });
   }, []);
 
-  if (loading) return <div class="p-8 text-[color:var(--color-fg-muted)]">Loading…</div>;
-
+  // Render the chrome immediately (no "Loading…" flash for the ~50-200ms
+  // auth round-trip). Main content stays hidden until `me` resolves — a
+  // brief blank area is less jarring than a flash of placeholder text.
   return (
     <div class="min-h-screen flex flex-col">
       <header class="border-b border-[color:var(--color-border)] px-6 py-3 flex items-center gap-4 bg-[color:var(--color-bg-card)]">
@@ -62,7 +59,7 @@ export function App({ children }: { children: ComponentChildren }) {
           <ThemeToggle theme={theme} />
         </div>
       </header>
-      <main class="flex-1">{children}</main>
+      <main class="flex-1">{me ? children : null}</main>
     </div>
   );
 }

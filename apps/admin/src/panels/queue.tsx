@@ -9,6 +9,7 @@ import {
   ApiError,
   type QueueListResponse,
 } from '../api';
+import { KbTabs } from '../components/kb-tabs';
 
 type FilterStatus = QueueCandidateStatus | 'all';
 
@@ -42,7 +43,7 @@ function parseMetadata(raw: string | null): CandidateOpMeta | null {
 
 export function QueuePanel() {
   const route = useRoute();
-  const kbId = route.params.kbId;
+  const kbId = route.params.kbId ?? '';
   const [status, setStatus] = useState<FilterStatus>('pending');
   const [data, setData] = useState<QueueListResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -119,11 +120,15 @@ export function QueuePanel() {
         </a>
         <h1 class="text-2xl font-semibold tracking-tight mt-2 mb-1">Curator queue</h1>
         <p class="text-[color:var(--color-fg-muted)] text-sm">
-          {data
-            ? `${data.count} ${STATUS_TABS.find((t) => t.value === status)?.label.toLowerCase()} candidate${data.count === 1 ? '' : 's'}`
-            : 'Loading…'}
+          {data ? (
+            `${data.count} ${STATUS_TABS.find((t) => t.value === status)?.label.toLowerCase()} candidate${data.count === 1 ? '' : 's'}`
+          ) : (
+            <span class="loading-delayed inline-block">Loading…</span>
+          )}
         </p>
       </header>
+
+      <KbTabs kbId={kbId} />
 
       <nav class="flex gap-1 mb-5 border-b border-[color:var(--color-border)]">
         {STATUS_TABS.map((tab) => (

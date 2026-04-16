@@ -5,6 +5,7 @@ import type {
   ApproveCandidatePayload,
   RejectCandidatePayload,
   KnowledgeBase,
+  Document,
 } from '@trail/shared';
 
 /**
@@ -102,4 +103,23 @@ export function rejectCandidate(
     method: 'POST',
     body: JSON.stringify(payload),
   });
+}
+
+// ── Documents (wiki + source) ────────────────────────────────────
+
+/** List wiki pages in a KB (kind='wiki', non-archived). */
+export function listWikiPages(kbId: string): Promise<Document[]> {
+  return api(`/api/v1/knowledge-bases/${encodeURIComponent(kbId)}/documents?kind=wiki`);
+}
+
+/** List sources in a KB (kind='source', non-archived). */
+export function listSources(kbId: string): Promise<Document[]> {
+  return api(`/api/v1/knowledge-bases/${encodeURIComponent(kbId)}/documents?kind=source`);
+}
+
+/** Fetch a document + its full content. */
+export function getDocumentContent(
+  docId: string,
+): Promise<{ id: string; content: string | null; version: number }> {
+  return api(`/api/v1/documents/${encodeURIComponent(docId)}/content`);
 }
