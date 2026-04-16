@@ -67,8 +67,14 @@ export function mountConstellation(canvas: HTMLCanvasElement): () => void {
     for (const p of particles) {
       p.x += p.vx;
       p.y += p.vy;
-      if (p.x < 0 || p.x > window.innerWidth) p.vx = -p.vx;
-      if (p.y < 0 || p.y > window.innerHeight) p.vy = -p.vy;
+      // Only flip velocity when the particle is moving FURTHER out of bounds.
+      // A bare `x < 0 || x > w` check flip-flops every frame when a particle
+      // has drifted past the edge (e.g. after a mouse-push or a window
+      // resize) — the velocity inverts, but the position is still outside,
+      // so next frame the check fires again. Net motion becomes zero and
+      // the constellation looks frozen. Bounding by intent fixes it.
+      if ((p.x < 0 && p.vx < 0) || (p.x > window.innerWidth && p.vx > 0)) p.vx = -p.vx;
+      if ((p.y < 0 && p.vy < 0) || (p.y > window.innerHeight && p.vy > 0)) p.vy = -p.vy;
       if (mouse.x !== null && mouse.y !== null) {
         const dx = mouse.x - p.x;
         const dy = mouse.y - p.y;

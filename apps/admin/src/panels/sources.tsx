@@ -28,6 +28,16 @@ export function SourcesPanel() {
     reload();
   }, [reload]);
 
+  // Poll while any source is still being processed by the ingest pipeline
+  // (mammoth extract → LLM compile). Stops as soon as nothing is in-flight,
+  // so the idle cost is zero. Cleared on unmount and on kbId change.
+  useEffect(() => {
+    const inflight = docs?.some((d) => d.status === 'processing' || d.status === 'pending');
+    if (!inflight) return;
+    const timer = setInterval(reload, 3000);
+    return () => clearInterval(timer);
+  }, [docs, reload]);
+
   const onUploaded = useCallback(
     (doc: Document) => {
       // Prepend optimistically + reload in the background to catch any
