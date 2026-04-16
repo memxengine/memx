@@ -20,7 +20,9 @@ export function UploadDropzone({
   onUploaded: (doc: Document) => void;
 }) {
   const [dragActive, setDragActive] = useState(false);
-  const [queue, setQueue] = useState<Array<{ name: string; state: 'pending' | 'uploading' | 'done' | 'error'; message?: string }>>([]);
+  const [queue, setQueue] = useState<
+    Array<{ id: string; name: string; state: 'pending' | 'uploading' | 'done' | 'error'; message?: string }>
+  >([]);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   const pickFiles = useCallback(() => inputRef.current?.click(), []);
@@ -28,25 +30,28 @@ export function UploadDropzone({
   const handleFiles = useCallback(
     async (files: File[]) => {
       if (!files.length) return;
+      // Stable id per enqueue — file.name alone collides when the user drops
+      // two files with identical names in the same batch.
+      const entries = files.map((f) => ({
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        file: f,
+      }));
+
       setQueue((prev) => [
         ...prev,
-        ...files.map((f) => ({ name: f.name, state: 'pending' as const })),
+        ...entries.map((e) => ({ id: e.id, name: e.file.name, state: 'pending' as const })),
       ]);
 
-      for (const file of files) {
-        setQueue((prev) =>
-          prev.map((q) => (q.name === file.name && q.state === 'pending' ? { ...q, state: 'uploading' } : q)),
-        );
+      for (const { id, file } of entries) {
+        setQueue((prev) => prev.map((q) => (q.id === id ? { ...q, state: 'uploading' } : q)));
         try {
           const doc = await uploadSource(kbId, file);
-          setQueue((prev) =>
-            prev.map((q) => (q.name === file.name ? { ...q, state: 'done' } : q)),
-          );
+          setQueue((prev) => prev.map((q) => (q.id === id ? { ...q, state: 'done' } : q)));
           onUploaded(doc);
         } catch (err) {
           const msg = err instanceof ApiError ? err.message : String(err);
           setQueue((prev) =>
-            prev.map((q) => (q.name === file.name ? { ...q, state: 'error', message: msg } : q)),
+            prev.map((q) => (q.id === id ? { ...q, state: 'error', message: msg } : q)),
           );
         }
       }
@@ -72,8 +77,14 @@ export function UploadDropzone({
         }}
         onDragLeave={(e) => {
           e.preventDefault();
-          // Only clear when leaving the element itself, not children.
-          if (e.currentTarget === e.target) setDragActive(false);
+          // dragleave fires on the outer div every time the pointer crosses
+          // into a child element. Only clear when the pointer actually left
+          // the dropzone — i.e. relatedTarget is outside currentTarget (or
+          // null, e.g. when leaving the window entirely).
+          const next = e.relatedTarget as Node | null;
+          if (!next || !e.currentTarget.contains(next)) {
+            setDragActive(false);
+          }
         }}
         onDrop={(e) => {
           e.preventDefault();
@@ -117,7 +128,7 @@ export function UploadDropzone({
       {queue.length ? (
         <ul class="mt-3 space-y-1 text-[11px] font-mono">
           {queue.map((q) => (
-            <li key={q.name} class="flex items-center justify-between gap-3">
+            <li key={q.id} class="flex items-center justify-between gap-3">
               <span class="truncate text-[color:var(--color-fg-muted)]">{q.name}</span>
               <span
                 class={
