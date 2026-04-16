@@ -18,9 +18,9 @@
 
 ## What is trail?
 
-**trail** is a knowledge infrastructure engine that turns your sources into a persistent, compounding wiki — maintained by an LLM on your behalf.
+**trail** is a knowledge infrastructure engine that turns your sources into a persistent, compounding wiki (neurons) — maintained by an LLM on your behalf.
 
-Unlike traditional RAG, which fragments your documents and retrieves chunks at query time, trail compiles your knowledge into a structured wiki at ingest time. Every new source makes the whole system smarter. Good chat answers feed back into the wiki. Contradictions get flagged. Orphans get linked.
+Unlike traditional RAG, which fragments your documents and retrieves chunks at query time, trail compiles your knowledge into structured neurons at ingest time. Every new source makes the whole system smarter. Good chat answers feed back into the trail of neurons. Contradictions get flagged. Orphans get linked.
 
 It's what Vannevar Bush dreamed of in 1945, finally made practical by LLMs.
 
