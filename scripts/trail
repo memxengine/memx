@@ -103,7 +103,7 @@ cmd_start() {
   local token
   token="$(resolve_token)"
 
-  echo "trail: starting engine on :$ENGINE_PORT"
+  echo "trail: launching engine + admin…"
   (
     cd "$REPO" && \
     TRAIL_DEV_AUTH=1 \
@@ -116,7 +116,6 @@ cmd_start() {
     echo $! > "$ENGINE_PID_FILE"
   )
 
-  echo "trail: starting admin on :$ADMIN_PORT"
   (
     cd "$REPO" && \
     API_URL="http://127.0.0.1:$ENGINE_PORT" \
@@ -124,15 +123,45 @@ cmd_start() {
     echo $! > "$ADMIN_PID_FILE"
   )
 
-  # Give both a moment to either bind or fail fast.
-  sleep 2
-  if is_running "$ENGINE_PID_FILE" && is_running "$ADMIN_PID_FILE"; then
+  # Actively probe both HTTP endpoints. Engine responds 401 (auth required)
+  # without a session cookie — that's still "up". Admin returns 200 for /.
+  # 10s ceiling is generous for a cold Vite start on an M1 Mac.
+  local engine_up=0 admin_up=0
+  # Probe without -f — the engine returns 401 without a session cookie, which
+  # -f would treat as failure. Any 2xx/4xx means "the HTTP server is up".
+  for _ in $(seq 1 20); do
+    if (( !engine_up )); then
+      local code
+      code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$ENGINE_PORT/api/v1/knowledge-bases" 2>/dev/null || echo '000')"
+      if [[ "$code" != "000" ]]; then
+        engine_up=1
+        echo "  ✓ engine  :$ENGINE_PORT"
+      fi
+    fi
+    if (( !admin_up )); then
+      local admin_code
+      admin_code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$ADMIN_PORT/" 2>/dev/null || echo '000')"
+      if [[ "$admin_code" != "000" ]]; then
+        admin_up=1
+        echo "  ✓ admin   :$ADMIN_PORT"
+      fi
+    fi
+    (( engine_up && admin_up )) && break
+    # Bail early if a process died during startup (no point waiting out the clock).
+    is_running "$ENGINE_PID_FILE" || break
+    is_running "$ADMIN_PID_FILE" || break
+    sleep 0.5
+  done
+
+  if (( engine_up && admin_up )); then
     echo
-    echo "  admin → http://127.0.0.1:$ADMIN_PORT"
-    echo "  engine → http://127.0.0.1:$ENGINE_PORT"
-    echo "  logs   → trail logs -f"
+    echo "  open → http://127.0.0.1:$ADMIN_PORT"
+    echo "  logs → trail logs -f"
   else
-    echo "trail: one of the processes died during startup — see 'trail logs'" >&2
+    (( engine_up )) || echo "  ✗ engine did not come up" >&2
+    (( admin_up )) || echo "  ✗ admin did not come up" >&2
+    echo >&2
+    echo "see logs: trail logs" >&2
     exit 1
   fi
 }
@@ -143,10 +172,25 @@ cmd_stop() {
     if is_running "$pidfile"; then
       local pid
       pid="$(cat "$pidfile")"
+      # Kill children first (vite-dev-server, bun internal workers) then the
+      # parent wrapper. Plain `kill $pid` leaves the Vite listener running
+      # because bun forks it as a child that doesn't die with the parent.
+      pkill -P "$pid" 2>/dev/null || true
       kill "$pid" 2>/dev/null || true
       stopped=1
     fi
     rm -f "$pidfile"
+  done
+  # Belt-and-braces: if something is still bound to our ports after the
+  # pidfile-driven kill, take it out by port. Covers zombies from earlier
+  # unclean exits we never had a pidfile for.
+  for port in "$ENGINE_PORT" "$ADMIN_PORT"; do
+    local orphans
+    orphans="$(lsof -tiTCP:"$port" -sTCP:LISTEN 2>/dev/null || true)"
+    if [[ -n "$orphans" ]]; then
+      echo "$orphans" | xargs -r kill 2>/dev/null || true
+      stopped=1
+    fi
   done
   if (( stopped )); then
     echo "trail: stopped"

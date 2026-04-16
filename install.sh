@@ -46,17 +46,24 @@ ln -s "$SRC" "$TARGET"
 echo "installed: $TARGET → $SRC"
 
 # Warn if BIN_DIR isn't on PATH so the user isn't confused about why
-# `trail start` doesn't find anything.
+# `trail start` doesn't find anything. Point at the user's actual shell
+# config file via $SHELL rather than assuming zsh — Christian runs
+# Homebrew bash, not zsh.
 if [[ ":$PATH:" != *":$BIN_DIR:"* ]]; then
+  shell_rc="~/.bashrc"
+  case "${SHELL##*/}" in
+    zsh) shell_rc="~/.zshrc" ;;
+    fish) shell_rc="~/.config/fish/config.fish" ;;
+  esac
   cat <<EOF
 
 warning: $BIN_DIR is not on your PATH.
 
-Add this to ~/.zshrc or ~/.bashrc:
+Add this to $shell_rc:
   export PATH="$BIN_DIR:\$PATH"
 
-Then restart the shell, or run:
-  source ~/.zshrc
+Then open a new shell or run:
+  source $shell_rc
 EOF
 fi
 
