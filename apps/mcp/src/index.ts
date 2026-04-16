@@ -14,6 +14,13 @@ import {
   searchChunks,
 } from '@trail/db';
 import { eq, and, like } from 'drizzle-orm';
+import { createCandidate, slugify } from '@trail/core';
+
+// MCP-initiated wiki mutations flow through the Curation Queue. The server's
+// auto-approval policy (see @trail/core shouldAutoApprove) fires for LLM-actor
+// candidates with ingest-originated kinds, so user-visible latency is unchanged
+// but every write is audited and reversible.
+const LLM_ACTOR = (userId: string) => ({ id: userId, kind: 'llm' as const });
 
 // Ensure DB is ready (MCP server may be spawned before or after apps/server).
 runMigrations();
@@ -369,30 +376,35 @@ server.tool(
     if (command === 'create') {
       if (!title) return { content: [{ type: 'text' as const, text: 'Title required for create.' }] };
 
-      const filename = slugify(title) + '.md';
+      const filename = (slugify(title) || 'untitled') + '.md';
       const fullContent = content ?? `# ${title}\n`;
-      const id = crypto.randomUUID();
+      const path = dirPath.endsWith('/') ? dirPath : dirPath + '/';
 
-      db.insert(documents)
-        .values({
-          id,
-          tenantId: ctx.tenantId,
+      const { approval } = createCandidate(
+        ctx.tenantId,
+        {
           knowledgeBaseId: kb.id,
-          userId: ctx.userId,
-          kind: 'wiki',
-          filename,
+          kind: 'ingest-summary',
           title,
-          path: dirPath.endsWith('/') ? dirPath : dirPath + '/',
-          fileType: 'md',
-          status: 'ready',
           content: fullContent,
-          tags: tags ?? null,
-          version: 1,
-        })
-        .run();
+          metadata: JSON.stringify({ op: 'create', filename, path, tags: tags ?? null }),
+          confidence: 1,
+        },
+        LLM_ACTOR(ctx.userId),
+      );
 
+      if (!approval) {
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: `Candidate queued for curator review (auto-approval policy did not fire).`,
+            },
+          ],
+        };
+      }
       return {
-        content: [{ type: 'text' as const, text: `Created \`${dirPath}${filename}\` — "${title}"` }],
+        content: [{ type: 'text' as const, text: `Created \`${path}${filename}\` — "${title}"` }],
       };
     }
 
@@ -459,10 +471,28 @@ server.tool(
       }
 
       const updated = current.replace(old_text, new_text);
-      db.update(documents)
-        .set({ content: updated, version: doc.version + 1, updatedAt: new Date().toISOString() })
-        .where(eq(documents.id, doc.id))
-        .run();
+      const { approval } = createCandidate(
+        ctx.tenantId,
+        {
+          knowledgeBaseId: kb.id,
+          kind: 'ingest-page-update',
+          title: doc.title ?? doc.filename,
+          content: updated,
+          metadata: JSON.stringify({ op: 'update', targetDocumentId: doc.id }),
+          confidence: 1,
+        },
+        LLM_ACTOR(ctx.userId),
+      );
+      if (!approval) {
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: `Update queued for curator review on ${doc.path}${doc.filename}.`,
+            },
+          ],
+        };
+      }
       return {
         content: [
           { type: 'text' as const, text: `Updated \`${doc.path}${doc.filename}\` (v${doc.version + 1})` },
@@ -502,10 +532,28 @@ server.tool(
       }
 
       const updated = (doc.content ?? '') + '\n' + (content ?? '');
-      db.update(documents)
-        .set({ content: updated, version: doc.version + 1, updatedAt: new Date().toISOString() })
-        .where(eq(documents.id, doc.id))
-        .run();
+      const { approval } = createCandidate(
+        ctx.tenantId,
+        {
+          knowledgeBaseId: kb.id,
+          kind: 'ingest-page-update',
+          title: doc.title ?? doc.filename,
+          content: updated,
+          metadata: JSON.stringify({ op: 'update', targetDocumentId: doc.id }),
+          confidence: 1,
+        },
+        LLM_ACTOR(ctx.userId),
+      );
+      if (!approval) {
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: `Append queued for curator review on ${doc.path}${doc.filename}.`,
+            },
+          ],
+        };
+      }
       return {
         content: [
           { type: 'text' as const, text: `Appended to \`${doc.path}${doc.filename}\` (v${doc.version + 1})` },
@@ -564,26 +612,31 @@ server.tool(
       return { content: [{ type: 'text' as const, text: `Document "${docPath}" not found.` }] };
     }
 
-    db.update(documents)
-      .set({ archived: true, status: 'archived', updatedAt: new Date().toISOString() })
-      .where(eq(documents.id, doc.id))
-      .run();
+    const { approval } = createCandidate(
+      ctx.tenantId,
+      {
+        knowledgeBaseId: kb.id,
+        kind: 'source-retraction',
+        title: doc.title ?? doc.filename,
+        content: `Archived via MCP: ${docPath}`,
+        metadata: JSON.stringify({ op: 'archive', targetDocumentId: doc.id }),
+        confidence: 1,
+      },
+      LLM_ACTOR(ctx.userId),
+    );
+    if (!approval) {
+      return {
+        content: [
+          { type: 'text' as const, text: `Archive of ${docPath} queued for curator review.` },
+        ],
+      };
+    }
     return { content: [{ type: 'text' as const, text: `Archived \`${docPath}\`` }] };
   },
 );
 
 // ── helpers ────────────────────────────────────────────────────────────────────
-function slugify(text: string): string {
-  return (
-    text
-      .toLowerCase()
-      .trim()
-      .replace(/[^\w\s-]/g, '')
-      .replace(/[\s_]+/g, '-')
-      .replace(/-+/g, '-')
-      .replace(/^-|-$/g, '') || 'untitled'
-  );
-}
+// slugify lives in @trail/core; see imports above.
 
 function globMatch(filename: string, pattern: string): boolean {
   if (pattern === '*') return true;

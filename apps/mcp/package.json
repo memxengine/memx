@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@trail/db": "workspace:*",
+    "@trail/core": "workspace:*",
     "@trail/shared": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.12.0",
     "drizzle-orm": "^0.45.2",

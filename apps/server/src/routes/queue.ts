@@ -13,7 +13,7 @@ import {
   listCandidates,
   getCandidate,
   type Actor,
-} from '../queue/candidates.js';
+} from '@trail/core';
 
 export const queueRoutes = new Hono();
 

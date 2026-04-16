@@ -3,7 +3,7 @@ import { db, rawDb, knowledgeBases, documents } from '@trail/db';
 import { CreateKBSchema, UpdateKBSchema } from '@trail/shared';
 import { eq, and } from 'drizzle-orm';
 import { requireAuth, getUser, getTenant } from '../middleware/auth.js';
-import { uniqueSlug } from '../lib/slug.js';
+import { uniqueSlug, createCandidate } from '@trail/core';
 
 export const kbRoutes = new Hono();
 
@@ -70,6 +70,9 @@ kbRoutes.post('/knowledge-bases', async (c) => {
     .run();
 
   // Seed wiki/overview.md and wiki/log.md so the wiki isn't empty from the start.
+  // Flows through the Curation Queue so the invariant "every wiki write goes
+  // through approveCandidate" holds even for KB bootstrap. Auto-approves because
+  // actor.kind='system' and kind='ingest-summary' (see shouldAutoApprove).
   const overviewContent = `# ${body.name}\n\nThis is the overview page for your wiki. It will be updated automatically as sources are added and the LLM compiles knowledge.\n`;
   const logContent = `# Log\n\nChronological record of wiki activity.\n\n---\n`;
 
@@ -77,22 +80,18 @@ kbRoutes.post('/knowledge-bases', async (c) => {
     { filename: 'overview.md', title: body.name, content: overviewContent },
     { filename: 'log.md', title: 'Log', content: logContent },
   ]) {
-    db.insert(documents)
-      .values({
-        id: crypto.randomUUID(),
-        tenantId: tenant.id,
+    createCandidate(
+      tenant.id,
+      {
         knowledgeBaseId: id,
-        userId: user.id,
-        kind: 'wiki',
-        filename: page.filename,
+        kind: 'ingest-summary',
         title: page.title,
-        path: '/wiki/',
-        fileType: 'md',
-        status: 'ready',
         content: page.content,
-        version: 1,
-      })
-      .run();
+        metadata: JSON.stringify({ op: 'create', filename: page.filename, path: '/wiki/' }),
+        confidence: 1,
+      },
+      { id: user.id, kind: 'system' },
+    );
   }
 
   const kb = db.select().from(knowledgeBases).where(eq(knowledgeBases.id, id)).get();
