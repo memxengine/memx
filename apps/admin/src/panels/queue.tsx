@@ -11,6 +11,7 @@ import {
 } from '../api';
 import { rewriteWikiLinks } from '../lib/wiki-links';
 import { displayPath } from '../lib/display-path';
+import { Modal, ModalButton } from '../components/modal';
 
 type FilterStatus = QueueCandidateStatus | 'all';
 
@@ -51,6 +52,8 @@ export function QueuePanel() {
   const [actingOn, setActingOn] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [toast, setToast] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
+  const [rejectTarget, setRejectTarget] = useState<QueueCandidate | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
 
   const reload = useCallback(() => {
     setError(null);
@@ -96,9 +99,17 @@ export function QueuePanel() {
     }
   }
 
-  async function onReject(c: QueueCandidate) {
-    const reason = prompt('Reason (optional):') ?? undefined;
+  function openRejectDialog(c: QueueCandidate) {
+    setRejectTarget(c);
+    setRejectReason('');
+  }
+
+  async function confirmReject() {
+    const c = rejectTarget;
+    if (!c) return;
+    const reason = rejectReason.trim();
     setActingOn(c.id);
+    setRejectTarget(null);
     try {
       await rejectCandidate(c.id, reason ? { reason } : {});
       setToast({ kind: 'success', text: 'Rejected.' });
@@ -162,7 +173,7 @@ export function QueuePanel() {
             onToggle={() => toggleExpanded(c.id)}
             busy={actingOn === c.id}
             onApprove={onApprove}
-            onReject={onReject}
+            onReject={openRejectDialog}
           />
         ))}
       </ul>
@@ -179,6 +190,56 @@ export function QueuePanel() {
           {toast.text}
         </div>
       ) : null}
+
+      <Modal
+        open={rejectTarget !== null}
+        title="Reject candidate"
+        onClose={() => setRejectTarget(null)}
+        footer={
+          <>
+            <ModalButton onClick={() => setRejectTarget(null)}>Cancel</ModalButton>
+            <ModalButton variant="danger" onClick={confirmReject}>
+              Reject
+            </ModalButton>
+          </>
+        }
+      >
+        {rejectTarget ? (
+          <div class="space-y-3">
+            <div>
+              <div class="text-[11px] font-mono uppercase tracking-wider text-[color:var(--color-fg-subtle)] mb-1">
+                Candidate
+              </div>
+              <div class="text-sm font-medium truncate">{rejectTarget.title}</div>
+            </div>
+            <div>
+              <label
+                for="reject-reason"
+                class="text-[11px] font-mono uppercase tracking-wider text-[color:var(--color-fg-subtle)]"
+              >
+                Reason <span class="normal-case">(optional)</span>
+              </label>
+              <textarea
+                id="reject-reason"
+                rows={3}
+                placeholder="Why is this not fit for the Trail? Stored on the candidate — curators can see it later."
+                value={rejectReason}
+                onInput={(e) => setRejectReason((e.currentTarget as HTMLTextAreaElement).value)}
+                onKeyDown={(e) => {
+                  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                    e.preventDefault();
+                    confirmReject();
+                  }
+                }}
+                class="mt-1 w-full rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)]/60 px-3 py-2 text-sm focus:outline-none focus:border-[color:var(--color-accent)] transition resize-none"
+              />
+              <div class="text-[11px] font-mono text-[color:var(--color-fg-subtle)] mt-1">
+                ⌘+Enter to reject · Esc to cancel
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </Modal>
     </div>
   );
 }

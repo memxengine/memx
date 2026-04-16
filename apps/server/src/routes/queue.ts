@@ -14,13 +14,26 @@ import {
   getCandidate,
   type Actor,
 } from '@trail/core';
+import { INGEST_USER_ID } from '../bootstrap/ingest-user.js';
 
 export const queueRoutes = new Hono();
 
 queueRoutes.use('*', requireAuth);
 
+/**
+ * Build the Actor for a candidate write. A curator clicking "submit" in the
+ * admin is `kind: 'user'` — that pins `createdBy`, which the F19 policy
+ * reads as "human-originated, never auto-approve". The pre-seeded service
+ * user (bearer-authenticated ingest calls, e.g. buddy's F39 POSTs) is
+ * machine-originated: `kind: 'system'` leaves createdBy null so axes 1 and 2
+ * (trusted pipeline, confidence threshold) can evaluate the candidate on its
+ * own merits.
+ */
 function userActor(c: Context): Actor {
   const user = getUser(c);
+  if (user.id === INGEST_USER_ID) {
+    return { id: user.id, kind: 'system' };
+  }
   return { id: user.id, kind: 'user' };
 }
 
