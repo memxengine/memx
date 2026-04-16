@@ -4,6 +4,7 @@ import type { Document } from '@trail/shared';
 import { listSources, ApiError } from '../api';
 import { displayPath } from '../lib/display-path';
 import { UploadDropzone } from '../components/upload-dropzone';
+import { useEvents, onStreamOpen } from '../lib/event-stream';
 
 /**
  * Sources panel — the original documents uploaded into a Trail. Supports
@@ -28,15 +29,20 @@ export function SourcesPanel() {
     reload();
   }, [reload]);
 
-  // Poll while any source is still being processed by the ingest pipeline
-  // (mammoth extract → LLM compile). Stops as soon as nothing is in-flight,
-  // so the idle cost is zero. Cleared on unmount and on kbId change.
-  useEffect(() => {
-    const inflight = docs?.some((d) => d.status === 'processing' || d.status === 'pending');
-    if (!inflight) return;
-    const timer = setInterval(reload, 3000);
-    return () => clearInterval(timer);
-  }, [docs, reload]);
+  // Replace the old 3s poller with event-driven updates. Any ingest lifecycle
+  // event on this KB means a source row's status changed — refetch. Same
+  // pattern for SSE (re)open so we self-heal after a transient drop.
+  useEvents((e) => {
+    if (e.kbId !== kbId) return;
+    if (
+      e.type === 'ingest_started' ||
+      e.type === 'ingest_completed' ||
+      e.type === 'ingest_failed'
+    ) {
+      reload();
+    }
+  });
+  useEffect(() => onStreamOpen(reload), [reload]);
 
   const onUploaded = useCallback(
     (doc: Document) => {

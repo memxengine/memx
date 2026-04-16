@@ -23,6 +23,16 @@ export function ensureKbs(): Promise<KnowledgeBase[]> {
   return inflight;
 }
 
+/**
+ * Drop the module-level cache. Call this when a KB is created/updated so
+ * the next `ensureKbs()` fetches a fresh list — otherwise `useKb(newId)`
+ * would return null (id not in the old cache) until a hard refresh.
+ */
+export function invalidateKbs(): void {
+  cache = null;
+  inflight = null;
+}
+
 export function useKb(kbId: string): KnowledgeBase | null {
   const [kb, setKb] = useState<KnowledgeBase | null>(
     kbId ? cache?.find((k) => k.id === kbId) ?? null : null,

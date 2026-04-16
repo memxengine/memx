@@ -1,16 +1,33 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useCallback, useEffect, useState } from 'preact/hooks';
 import type { KnowledgeBase } from '@trail/shared';
 import { listKnowledgeBases, ApiError } from '../api';
+import { useEvents, onStreamOpen } from '../lib/event-stream';
+import { invalidateKbs } from '../lib/kb-cache';
 
 export function KnowledgeBasesPanel() {
   const [kbs, setKbs] = useState<KnowledgeBase[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const reload = useCallback(() => {
     listKnowledgeBases()
       .then(setKbs)
       .catch((err: ApiError) => setError(err.message));
   }, []);
+
+  useEffect(() => {
+    reload();
+  }, [reload]);
+
+  // A new Trail created by any route (admin UI, bearer API, future CLI)
+  // surfaces here live without a reload. Also bust the module-level KB
+  // cache so the next useKb(newId) call in TrailNav can resolve it.
+  useEvents((e) => {
+    if (e.type === 'kb_created') {
+      invalidateKbs();
+      reload();
+    }
+  });
+  useEffect(() => onStreamOpen(reload), [reload]);
 
   if (error) {
     return (

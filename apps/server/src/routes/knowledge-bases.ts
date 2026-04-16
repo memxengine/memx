@@ -4,6 +4,7 @@ import { CreateKBSchema, UpdateKBSchema } from '@trail/shared';
 import { eq, and } from 'drizzle-orm';
 import { requireAuth, getUser, getTenant, getTrail } from '../middleware/auth.js';
 import { uniqueSlug, createCandidate } from '@trail/core';
+import { broadcaster } from '../services/broadcast.js';
 
 export const kbRoutes = new Hono();
 
@@ -103,6 +104,15 @@ kbRoutes.post('/knowledge-bases', async (c) => {
     .from(knowledgeBases)
     .where(eq(knowledgeBases.id, id))
     .get();
+  if (kb) {
+    broadcaster.emit({
+      type: 'kb_created',
+      tenantId: tenant.id,
+      kbId: kb.id,
+      slug: kb.slug,
+      name: kb.name,
+    });
+  }
   return c.json(kb, 201);
 });
 

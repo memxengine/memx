@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from 'preact/hooks';
+import { useCallback, useEffect, useMemo, useState } from 'preact/hooks';
 import { useRoute } from 'preact-iso';
 import type { Document } from '@trail/shared';
 import { listWikiPages, ApiError } from '../api';
 import { displayPath } from '../lib/display-path';
+import { useEvents, onStreamOpen } from '../lib/event-stream';
 
 /**
  * Neurons tree — groups all compiled wiki pages in a KB by their
@@ -15,12 +16,26 @@ export function WikiTreePanel() {
   const [pages, setPages] = useState<Document[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const reload = useCallback(() => {
     if (!kbId) return;
     listWikiPages(kbId)
       .then(setPages)
       .catch((err: ApiError) => setError(err.message));
   }, [kbId]);
+
+  useEffect(() => {
+    reload();
+  }, [reload]);
+
+  // A candidate_approved event means a Neuron was created or updated. A
+  // candidate_rejected means nothing changed in the Neurons set. Refetch
+  // on approval so new Neurons appear as soon as a curator (or the F19
+  // policy) commits one.
+  useEvents((e) => {
+    if (e.kbId !== kbId) return;
+    if (e.type === 'candidate_approved') reload();
+  });
+  useEffect(() => onStreamOpen(reload), [reload]);
 
   const grouped = useMemo(() => {
     if (!pages) return null;

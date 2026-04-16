@@ -12,6 +12,7 @@ import {
 import { rewriteWikiLinks } from '../lib/wiki-links';
 import { displayPath } from '../lib/display-path';
 import { Modal, ModalButton } from '../components/modal';
+import { useEvents, onStreamOpen } from '../lib/event-stream';
 
 type FilterStatus = QueueCandidateStatus | 'all';
 
@@ -67,6 +68,22 @@ export function QueuePanel() {
   }, [kbId, status]);
 
   useEffect(reload, [reload]);
+
+  // Event-driven refresh. Any candidate_* event for this KB triggers a
+  // re-fetch of the current filter — that way Pending/Approved/Rejected/All
+  // tabs all stay in sync without each tab needing its own transition
+  // logic. Also refreshes on SSE (re)open to self-heal after drops.
+  useEvents((e) => {
+    if (e.kbId !== kbId) return;
+    if (
+      e.type === 'candidate_created' ||
+      e.type === 'candidate_approved' ||
+      e.type === 'candidate_rejected'
+    ) {
+      reload();
+    }
+  });
+  useEffect(() => onStreamOpen(reload), [reload]);
 
   useEffect(() => {
     if (!toast) return;

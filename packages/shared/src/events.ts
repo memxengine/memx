@@ -80,13 +80,22 @@ export interface IngestFailedEvent {
   error: string;
 }
 
+export interface KbCreatedEvent {
+  type: 'kb_created';
+  tenantId: string;
+  kbId: string;
+  slug: string;
+  name: string;
+}
+
 export type DomainEvent =
   | CandidateCreatedEvent
   | CandidateApprovedEvent
   | CandidateRejectedEvent
   | IngestStartedEvent
   | IngestCompletedEvent
-  | IngestFailedEvent;
+  | IngestFailedEvent
+  | KbCreatedEvent;
 
 // ── Control frames ────────────────────────────────────────────────
 
@@ -114,6 +123,7 @@ export function isDomainEvent(frame: StreamFrame): frame is DomainEvent {
     frame.type === 'candidate_rejected' ||
     frame.type === 'ingest_started' ||
     frame.type === 'ingest_completed' ||
-    frame.type === 'ingest_failed'
+    frame.type === 'ingest_failed' ||
+    frame.type === 'kb_created'
   );
 }
