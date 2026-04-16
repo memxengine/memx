@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
-import { db, documents, knowledgeBases } from '@trail/db';
+import { documents, knowledgeBases, type TrailDatabase } from '@trail/db';
 import { eq, and } from 'drizzle-orm';
-import { requireAuth, getUser, getTenant } from '../middleware/auth.js';
+import { requireAuth, getUser, getTenant, getTrail } from '../middleware/auth.js';
 import { processPdf } from '@trail/pipelines';
 import { storage, sourcePath } from '../lib/storage.js';
 import { chunkText, storeChunks } from '../services/chunker.js';
@@ -22,11 +22,12 @@ export const uploadRoutes = new Hono();
 uploadRoutes.use('*', requireAuth);
 
 uploadRoutes.post('/knowledge-bases/:kbId/documents/upload', async (c) => {
+  const trail = getTrail(c);
   const user = getUser(c);
   const tenant = getTenant(c);
   const kbId = c.req.param('kbId');
 
-  const kb = db
+  const kb = await trail.db
     .select()
     .from(knowledgeBases)
     .where(and(eq(knowledgeBases.id, kbId), eq(knowledgeBases.tenantId, tenant.id)))
@@ -52,7 +53,8 @@ uploadRoutes.post('/knowledge-bases/:kbId/documents/upload', async (c) => {
   const isText = TEXT_EXTENSIONS.has(ext);
   const initialStatus = isText ? 'ready' : 'pending';
 
-  db.insert(documents)
+  await trail.db
+    .insert(documents)
     .values({
       id: docId,
       tenantId: tenant.id,
@@ -70,14 +72,15 @@ uploadRoutes.post('/knowledge-bases/:kbId/documents/upload', async (c) => {
   if (isText) {
     const content = new TextDecoder().decode(buffer);
     const title = ext === 'md' ? extractTitle(content) ?? file.name : file.name;
-    db.update(documents)
+    await trail.db
+      .update(documents)
       .set({ content, title, status: 'ready', version: 1 })
       .where(eq(documents.id, docId))
       .run();
 
     if (content.trim()) {
       const chunks = chunkText(content);
-      storeChunks(docId, tenant.id, kbId, chunks);
+      await storeChunks(trail, docId, tenant.id, kbId, chunks);
     }
   }
 
@@ -85,9 +88,10 @@ uploadRoutes.post('/knowledge-bases/:kbId/documents/upload', async (c) => {
   // optionally annotate each image with vision. When the pipeline finishes,
   // the document goes ready and ingest is triggered.
   if (ext === 'pdf') {
-    processPdfAsync(docId, tenant.id, kbId, user.id, file.name, buffer).catch((err) => {
+    processPdfAsync(trail, docId, tenant.id, kbId, user.id, file.name, buffer).catch(async (err) => {
       console.error(`[pdf] pipeline failed for ${file.name}:`, err);
-      db.update(documents)
+      await trail.db
+        .update(documents)
         .set({
           status: 'failed',
           errorMessage: String(err).slice(0, 1000),
@@ -101,17 +105,22 @@ uploadRoutes.post('/knowledge-bases/:kbId/documents/upload', async (c) => {
   // Other binary uploads (office, images, …) land with status='pending' until
   // a pipeline picks them up.
 
-  const doc = db.select().from(documents).where(eq(documents.id, docId)).get();
+  const doc = await trail.db
+    .select()
+    .from(documents)
+    .where(eq(documents.id, docId))
+    .get();
 
   // Auto-trigger wiki ingest for text sources that are ready to compile.
   if (isText) {
-    triggerIngest({ docId, kbId, tenantId: tenant.id, userId: user.id });
+    triggerIngest({ trail, docId, kbId, tenantId: tenant.id, userId: user.id });
   }
 
   return c.json(doc, 201);
 });
 
 async function processPdfAsync(
+  trail: TrailDatabase,
   docId: string,
   tenantId: string,
   kbId: string,
@@ -119,7 +128,8 @@ async function processPdfAsync(
   filename: string,
   buffer: Buffer,
 ): Promise<void> {
-  db.update(documents)
+  await trail.db
+    .update(documents)
     .set({ status: 'processing', updatedAt: new Date().toISOString() })
     .where(eq(documents.id, docId))
     .run();
@@ -139,7 +149,8 @@ async function processPdfAsync(
   );
 
   const title = filename.replace(/\.pdf$/i, '');
-  db.update(documents)
+  await trail.db
+    .update(documents)
     .set({
       content: result.markdown,
       title,
@@ -153,10 +164,10 @@ async function processPdfAsync(
 
   if (result.markdown.trim()) {
     const chunks = chunkText(result.markdown);
-    storeChunks(docId, tenantId, kbId, chunks);
+    await storeChunks(trail, docId, tenantId, kbId, chunks);
   }
 
-  triggerIngest({ docId, kbId, tenantId, userId });
+  triggerIngest({ trail, docId, kbId, tenantId, userId });
 }
 
 function extractTitle(content: string): string | null {

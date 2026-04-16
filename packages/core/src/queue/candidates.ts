@@ -1,10 +1,12 @@
 import { and, desc, eq } from 'drizzle-orm';
+import type { BaseSQLiteDatabase } from 'drizzle-orm/sqlite-core';
 import {
-  db,
   queueCandidates,
   documents,
   wikiEvents,
   knowledgeBases,
+  schema,
+  type TrailDatabase,
 } from '@trail/db';
 import type {
   CreateQueueCandidate,
@@ -17,14 +19,40 @@ import { slugify } from '../slug.js';
 import { shouldAutoApprove } from './policy.js';
 
 /**
+ * Queue module — the sole write path into wiki documents.
+ *
+ * F17 Session A + B landed the behaviour. F40.1 threads `trail`
+ * (TrailDatabase) through the public API so callers resolve their
+ * per-request database instance from Hono context instead of a
+ * module-level global. F40.2 replaces that per-request resolution
+ * with a per-tenant pool — the signature here is unchanged.
+ *
+ * Every wiki mutation goes through `approveCandidate`, which runs the
+ * create / update / archive branch inside a single Drizzle transaction
+ * and emits a `wiki_events` row with a full content snapshot. Auto-
+ * approval (see `shouldAutoApprove`) flips trusted-pipeline candidates
+ * through the same path instead of bypassing the queue.
+ */
+
+/**
+ * `Db` is the shared Drizzle surface between `trail.db` and a tx inside
+ * a `db.transaction(async (tx) => …)` callback. Using the abstract
+ * `BaseSQLiteDatabase` here lets helpers accept either a plain database
+ * handle or a transaction without type gymnastics — both expose the
+ * select / insert / update / delete methods we use.
+ */
+type Db = BaseSQLiteDatabase<'async', unknown, typeof schema>;
+
+// ── Types ──────────────────────────────────────────────────────────
+
+/**
  * Per-candidate operation descriptor, serialised into `candidate.metadata` JSON.
  *
- * `op: "create"`  — create a new wiki page (filename + path required).
- * `op: "update"`  — replace the full content of an existing wiki page
- *                   (targetDocumentId required, candidate.content IS the new
- *                   content). str_replace / append compute the full content
- *                   client-side and hand it to the queue as an update candidate.
- * `op: "archive"` — soft-delete an existing wiki page (targetDocumentId only).
+ *   op: "create"  — new wiki page (filename + path required).
+ *   op: "update"  — replace full content of an existing page.
+ *                   `candidate.content` IS the new content; str_replace /
+ *                   append compute it client-side.
+ *   op: "archive" — soft-delete an existing page.
  */
 export interface CandidateOp {
   op: 'create' | 'update' | 'archive';
@@ -33,46 +61,6 @@ export interface CandidateOp {
   path?: string;
   tags?: string | null;
 }
-
-function parseOp(candidate: QueueCandidate): CandidateOp {
-  if (!candidate.metadata) return { op: 'create' };
-  try {
-    const parsed = JSON.parse(candidate.metadata) as Partial<CandidateOp>;
-    if (parsed && typeof parsed === 'object' && parsed.op) {
-      return parsed as CandidateOp;
-    }
-  } catch {
-    // fall through to default
-  }
-  return { op: 'create' };
-}
-
-function lastEventIdFor(tenantId: string, documentId: string): string | null {
-  const row = db
-    .select({ id: wikiEvents.id })
-    .from(wikiEvents)
-    .where(
-      and(
-        eq(wikiEvents.tenantId, tenantId),
-        eq(wikiEvents.documentId, documentId),
-      ),
-    )
-    .orderBy(desc(wikiEvents.createdAt))
-    .limit(1)
-    .get();
-  return row?.id ?? null;
-}
-
-/**
- * F17 Curation Queue — the sole write path to wiki documents.
- *
- * Session A scope (this file): schemas, approveCandidate (create-new-page path),
- * rejectCandidate, and list/get helpers. HTTP routes live in routes/queue.ts.
- *
- * Session B (next): refactor apps/mcp/src/index.ts's four wiki-write call sites
- * to emit candidates instead of mutating documents directly. That's what
- * enforces the "sole write path" invariant across the whole engine.
- */
 
 export interface Actor {
   /** User id for curator actions, or a synthetic id like 'mcp:ingest' for pipelines. */
@@ -92,13 +80,60 @@ export interface RejectionResult {
   reason: string | null;
 }
 
-/** Enqueue a candidate. Runs auto-approval policy inline; pending otherwise. */
-export function createCandidate(
+interface CommitContext {
+  now: string;
+  auto: boolean;
+  summary: string;
+  metadataJson: string | null;
+}
+
+// ── Helpers (pure) ─────────────────────────────────────────────────
+
+function parseOp(candidate: QueueCandidate): CandidateOp {
+  if (!candidate.metadata) return { op: 'create' };
+  try {
+    const parsed = JSON.parse(candidate.metadata) as Partial<CandidateOp>;
+    if (parsed && typeof parsed === 'object' && parsed.op) {
+      return parsed as CandidateOp;
+    }
+  } catch {
+    // fall through to default
+  }
+  return { op: 'create' };
+}
+
+async function lastEventIdFor(
+  db: Db,
+  tenantId: string,
+  documentId: string,
+): Promise<string | null> {
+  const row = await db
+    .select({ id: wikiEvents.id })
+    .from(wikiEvents)
+    .where(
+      and(
+        eq(wikiEvents.tenantId, tenantId),
+        eq(wikiEvents.documentId, documentId),
+      ),
+    )
+    .orderBy(desc(wikiEvents.createdAt))
+    .limit(1)
+    .get();
+  return row?.id ?? null;
+}
+
+// ── Public API ─────────────────────────────────────────────────────
+
+/** Enqueue a candidate. Runs the auto-approval policy inline; stays pending otherwise. */
+export async function createCandidate(
+  trail: TrailDatabase,
   tenantId: string,
   input: CreateQueueCandidate,
   actor: Actor,
-): { candidate: QueueCandidate; approval?: ApprovalResult } {
-  const kb = db
+): Promise<{ candidate: QueueCandidate; approval?: ApprovalResult }> {
+  const { db } = trail;
+
+  const kb = await db
     .select({ id: knowledgeBases.id })
     .from(knowledgeBases)
     .where(
@@ -111,7 +146,8 @@ export function createCandidate(
   if (!kb) throw new Error(`Knowledge base not found: ${input.knowledgeBaseId}`);
 
   const id = `cnd_${crypto.randomUUID().slice(0, 12)}`;
-  db.insert(queueCandidates)
+  await db
+    .insert(queueCandidates)
     .values({
       id,
       tenantId,
@@ -127,14 +163,15 @@ export function createCandidate(
     })
     .run();
 
-  const candidate = db
+  const candidate = (await db
     .select()
     .from(queueCandidates)
     .where(eq(queueCandidates.id, id))
-    .get() as QueueCandidate;
+    .get()) as QueueCandidate;
 
   if (shouldAutoApprove(candidate)) {
-    const approval = approveCandidate(
+    const approval = await approveCandidate(
+      trail,
       tenantId,
       id,
       actor,
@@ -150,24 +187,26 @@ export function createCandidate(
 /**
  * Approve a candidate and commit its change to the wiki.
  *
- * This function is the ONLY allowed write path into `documents` where
- * `kind='wiki'`. Dispatches on `candidate.metadata.op`:
+ * Dispatches on `candidate.metadata.op`:
  *   - create   → insert a new wiki page
- *   - update   → replace the content of an existing page, bump version
- *   - archive  → soft-delete an existing page
+ *   - update   → replace content, bump version
+ *   - archive  → soft-delete
  *
- * Every branch emits a replay-able `wiki_events` row with a full content
- * snapshot and a `source_candidate_id` back-pointer. The candidate flips to
- * `approved` inside the same transaction.
+ * Every branch runs inside the same Drizzle transaction and emits a
+ * replay-able `wiki_events` row with a full content snapshot and a
+ * `source_candidate_id` back-pointer.
  */
-export function approveCandidate(
+export async function approveCandidate(
+  trail: TrailDatabase,
   tenantId: string,
   candidateId: string,
   actor: Actor,
   payload: ApproveCandidatePayload,
   opts: { auto?: boolean } = {},
-): ApprovalResult {
-  const candidate = db
+): Promise<ApprovalResult> {
+  const { db } = trail;
+
+  const candidate = await db
     .select()
     .from(queueCandidates)
     .where(
@@ -185,66 +224,38 @@ export function approveCandidate(
   }
 
   const op = parseOp(candidate);
-  const now = new Date().toISOString();
-  const summary = opts.auto
-    ? 'auto-approved'
-    : payload.notes ?? 'approved by curator';
-  const metadataJson = payload.notes
-    ? JSON.stringify({ notes: payload.notes })
-    : null;
+  const ctx: CommitContext = {
+    now: new Date().toISOString(),
+    auto: !!opts.auto,
+    summary: opts.auto ? 'auto-approved' : payload.notes ?? 'approved by curator',
+    metadataJson: payload.notes ? JSON.stringify({ notes: payload.notes }) : null,
+  };
 
-  return db.transaction(() => {
-    if (op.op === 'update') {
-      return approveUpdate(candidate, op, payload, actor, {
-        now,
-        auto: !!opts.auto,
-        summary,
-        metadataJson,
-      });
-    }
-    if (op.op === 'archive') {
-      return approveArchive(candidate, op, actor, {
-        now,
-        auto: !!opts.auto,
-        summary,
-        metadataJson,
-      });
-    }
-    return approveCreate(candidate, op, payload, actor, {
-      now,
-      auto: !!opts.auto,
-      summary,
-      metadataJson,
-    });
+  return db.transaction(async (tx) => {
+    if (op.op === 'update') return approveUpdate(tx, candidate, op, payload, actor, ctx);
+    if (op.op === 'archive') return approveArchive(tx, candidate, op, actor, ctx);
+    return approveCreate(tx, candidate, op, payload, actor, ctx);
   });
 }
 
-interface CommitContext {
-  now: string;
-  auto: boolean;
-  summary: string;
-  metadataJson: string | null;
-}
-
-function approveCreate(
+async function approveCreate(
+  tx: Db,
   candidate: QueueCandidate,
   op: CandidateOp,
   payload: ApproveCandidatePayload,
   actor: Actor,
   ctx: CommitContext,
-): ApprovalResult {
+): Promise<ApprovalResult> {
   const content = payload.editedContent ?? candidate.content;
   const rawName =
-    payload.filename ??
-    op.filename ??
-    slugify(candidate.title) ??
-    'untitled';
+    payload.filename ?? op.filename ?? slugify(candidate.title) ?? 'untitled';
   const filename = rawName.endsWith('.md') ? rawName : `${rawName}.md`;
   const pathIn = payload.filename ? payload.path : op.path ?? payload.path;
   const path = pathIn.endsWith('/') ? pathIn : `${pathIn}/`;
 
   const docId = `doc_${crypto.randomUUID().slice(0, 12)}`;
-  db.insert(documents)
+  await tx
+    .insert(documents)
     .values({
       id: docId,
       tenantId: candidate.tenantId,
@@ -263,7 +274,7 @@ function approveCreate(
     })
     .run();
 
-  const eventId = emitEvent({
+  const eventId = await emitEvent(tx, {
     tenantId: candidate.tenantId,
     documentId: docId,
     eventType: 'created',
@@ -276,21 +287,22 @@ function approveCreate(
     ctx,
   });
 
-  finaliseCandidate(candidate.id, actor, docId, ctx);
+  await finaliseCandidate(tx, candidate.id, actor, docId, ctx);
   return { candidateId: candidate.id, documentId: docId, wikiEventId: eventId, autoApproved: ctx.auto };
 }
 
-function approveUpdate(
+async function approveUpdate(
+  tx: Db,
   candidate: QueueCandidate,
   op: CandidateOp,
   payload: ApproveCandidatePayload,
   actor: Actor,
   ctx: CommitContext,
-): ApprovalResult {
+): Promise<ApprovalResult> {
   if (!op.targetDocumentId) {
     throw new Error('update candidate missing metadata.targetDocumentId');
   }
-  const doc = db
+  const doc = await tx
     .select()
     .from(documents)
     .where(
@@ -302,16 +314,15 @@ function approveUpdate(
     )
     .get();
   if (!doc) {
-    throw new Error(
-      `Target wiki document not found: ${op.targetDocumentId}`,
-    );
+    throw new Error(`Target wiki document not found: ${op.targetDocumentId}`);
   }
 
   const content = payload.editedContent ?? candidate.content;
   const newVersion = doc.version + 1;
-  const prevEventId = lastEventIdFor(candidate.tenantId, doc.id);
+  const prevEventId = await lastEventIdFor(tx, candidate.tenantId, doc.id);
 
-  db.update(documents)
+  await tx
+    .update(documents)
     .set({
       content,
       fileSize: content.length,
@@ -321,7 +332,7 @@ function approveUpdate(
     .where(eq(documents.id, doc.id))
     .run();
 
-  const eventId = emitEvent({
+  const eventId = await emitEvent(tx, {
     tenantId: candidate.tenantId,
     documentId: doc.id,
     eventType: 'edited',
@@ -334,20 +345,21 @@ function approveUpdate(
     ctx,
   });
 
-  finaliseCandidate(candidate.id, actor, doc.id, ctx);
+  await finaliseCandidate(tx, candidate.id, actor, doc.id, ctx);
   return { candidateId: candidate.id, documentId: doc.id, wikiEventId: eventId, autoApproved: ctx.auto };
 }
 
-function approveArchive(
+async function approveArchive(
+  tx: Db,
   candidate: QueueCandidate,
   op: CandidateOp,
   actor: Actor,
   ctx: CommitContext,
-): ApprovalResult {
+): Promise<ApprovalResult> {
   if (!op.targetDocumentId) {
     throw new Error('archive candidate missing metadata.targetDocumentId');
   }
-  const doc = db
+  const doc = await tx
     .select()
     .from(documents)
     .where(
@@ -359,18 +371,17 @@ function approveArchive(
     )
     .get();
   if (!doc) {
-    throw new Error(
-      `Target wiki document not found: ${op.targetDocumentId}`,
-    );
+    throw new Error(`Target wiki document not found: ${op.targetDocumentId}`);
   }
 
-  const prevEventId = lastEventIdFor(candidate.tenantId, doc.id);
-  db.update(documents)
+  const prevEventId = await lastEventIdFor(tx, candidate.tenantId, doc.id);
+  await tx
+    .update(documents)
     .set({ archived: true, status: 'archived', updatedAt: ctx.now })
     .where(eq(documents.id, doc.id))
     .run();
 
-  const eventId = emitEvent({
+  const eventId = await emitEvent(tx, {
     tenantId: candidate.tenantId,
     documentId: doc.id,
     eventType: 'archived',
@@ -383,24 +394,28 @@ function approveArchive(
     ctx,
   });
 
-  finaliseCandidate(candidate.id, actor, doc.id, ctx);
+  await finaliseCandidate(tx, candidate.id, actor, doc.id, ctx);
   return { candidateId: candidate.id, documentId: doc.id, wikiEventId: eventId, autoApproved: ctx.auto };
 }
 
-function emitEvent(args: {
-  tenantId: string;
-  documentId: string;
-  eventType: 'created' | 'edited' | 'archived' | 'renamed' | 'moved' | 'restored';
-  previousVersion: number | null;
-  newVersion: number;
-  prevEventId: string | null;
-  contentSnapshot: string;
-  candidateId: string;
-  actor: Actor;
-  ctx: CommitContext;
-}): string {
+async function emitEvent(
+  tx: Db,
+  args: {
+    tenantId: string;
+    documentId: string;
+    eventType: 'created' | 'edited' | 'archived' | 'renamed' | 'moved' | 'restored';
+    previousVersion: number | null;
+    newVersion: number;
+    prevEventId: string | null;
+    contentSnapshot: string;
+    candidateId: string;
+    actor: Actor;
+    ctx: CommitContext;
+  },
+): Promise<string> {
   const eventId = `evt_${crypto.randomUUID().slice(0, 12)}`;
-  db.insert(wikiEvents)
+  await tx
+    .insert(wikiEvents)
     .values({
       id: eventId,
       tenantId: args.tenantId,
@@ -420,13 +435,15 @@ function emitEvent(args: {
   return eventId;
 }
 
-function finaliseCandidate(
+async function finaliseCandidate(
+  tx: Db,
   candidateId: string,
   actor: Actor,
   resultingDocumentId: string,
   ctx: CommitContext,
-): void {
-  db.update(queueCandidates)
+): Promise<void> {
+  await tx
+    .update(queueCandidates)
     .set({
       status: 'approved',
       reviewedBy: actor.id,
@@ -438,13 +455,16 @@ function finaliseCandidate(
     .run();
 }
 
-export function rejectCandidate(
+export async function rejectCandidate(
+  trail: TrailDatabase,
   tenantId: string,
   candidateId: string,
   actor: Actor,
   payload: RejectCandidatePayload,
-): RejectionResult {
-  const candidate = db
+): Promise<RejectionResult> {
+  const { db } = trail;
+
+  const candidate = await db
     .select()
     .from(queueCandidates)
     .where(
@@ -462,7 +482,8 @@ export function rejectCandidate(
   }
 
   const reason = payload.reason ?? null;
-  db.update(queueCandidates)
+  await db
+    .update(queueCandidates)
     .set({
       status: 'rejected',
       reviewedBy: actor.id,
@@ -475,36 +496,42 @@ export function rejectCandidate(
   return { candidateId, reason };
 }
 
-export function listCandidates(
+export async function listCandidates(
+  trail: TrailDatabase,
   tenantId: string,
   query: ListQueueQuery,
-): QueueCandidate[] {
+): Promise<QueueCandidate[]> {
   const filters = [eq(queueCandidates.tenantId, tenantId)];
-  if (query.knowledgeBaseId)
+  if (query.knowledgeBaseId) {
     filters.push(eq(queueCandidates.knowledgeBaseId, query.knowledgeBaseId));
+  }
   if (query.kind) filters.push(eq(queueCandidates.kind, query.kind));
   if (query.status) filters.push(eq(queueCandidates.status, query.status));
-  return db
+
+  return (await trail.db
     .select()
     .from(queueCandidates)
     .where(and(...filters))
     .orderBy(desc(queueCandidates.createdAt))
     .limit(query.limit)
-    .all() as QueueCandidate[];
+    .all()) as QueueCandidate[];
 }
 
-export function getCandidate(
+export async function getCandidate(
+  trail: TrailDatabase,
   tenantId: string,
   candidateId: string,
-): QueueCandidate | null {
-  return (db
-    .select()
-    .from(queueCandidates)
-    .where(
-      and(
-        eq(queueCandidates.id, candidateId),
-        eq(queueCandidates.tenantId, tenantId),
-      ),
-    )
-    .get() ?? null) as QueueCandidate | null;
+): Promise<QueueCandidate | null> {
+  return (
+    ((await trail.db
+      .select()
+      .from(queueCandidates)
+      .where(
+        and(
+          eq(queueCandidates.id, candidateId),
+          eq(queueCandidates.tenantId, tenantId),
+        ),
+      )
+      .get()) as QueueCandidate | undefined) ?? null
+  );
 }

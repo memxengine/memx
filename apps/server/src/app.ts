@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
+import type { TrailDatabase } from '@trail/db';
 import { healthRoutes } from './routes/health.js';
 import { authRoutes } from './routes/auth.js';
 import { kbRoutes } from './routes/knowledge-bases.js';
@@ -14,8 +15,28 @@ import { ingestRoutes } from './routes/ingest.js';
 import { streamRoutes } from './routes/stream.js';
 import { queueRoutes } from './routes/queue.js';
 
-export function createApp(): Hono {
-  const app = new Hono();
+/**
+ * Hono context variables visible to every handler.
+ *
+ * `trail` is injected at the app root (F40.1) by the bootstrap in
+ * index.ts. F40.2 replaces this with per-request tenant-context
+ * middleware that resolves the caller's tenant and fetches its
+ * TrailDatabase from a pool — handlers keep reading `c.get('trail')`
+ * unchanged.
+ *
+ * `user` and `tenant` are set by requireAuth middleware (see
+ * middleware/auth.ts).
+ */
+export interface AppBindings {
+  Variables: {
+    trail: TrailDatabase;
+    user?: import('./middleware/auth.js').AuthUser;
+    tenant?: import('./middleware/auth.js').AuthTenant;
+  };
+}
+
+export function createApp(trail: TrailDatabase): Hono<AppBindings> {
+  const app = new Hono<AppBindings>();
 
   app.use('*', logger());
   app.use(
@@ -27,6 +48,13 @@ export function createApp(): Hono {
       exposeHeaders: ['Set-Cookie', 'X-Document-Id'],
     }),
   );
+
+  // Inject the TrailDatabase into every request. F40.2 swaps this for
+  // tenant-aware resolution; the signature seen by handlers is the same.
+  app.use('*', async (c, next) => {
+    c.set('trail', trail);
+    await next();
+  });
 
   app.route('/api', healthRoutes);
   app.route('/api/auth', authRoutes);

@@ -1,15 +1,17 @@
 import { Hono } from 'hono';
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
-import { db, users, sessions, tenants } from '@trail/db';
+import { users, sessions, tenants, type TrailDatabase } from '@trail/db';
 import { and, eq, gt } from 'drizzle-orm';
 import { slugify } from '@trail/core';
+import type { AppBindings } from '../app.js';
+import { getTrail } from '../middleware/auth.js';
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID ?? '';
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET ?? '';
 const APP_URL = process.env.APP_URL ?? 'http://localhost:3030';
 const API_URL = process.env.API_URL ?? 'http://localhost:3031';
 
-export const authRoutes = new Hono();
+export const authRoutes = new Hono<AppBindings>();
 
 authRoutes.get('/google', (c) => {
   const state = crypto.randomUUID();
@@ -35,6 +37,7 @@ authRoutes.get('/google', (c) => {
 });
 
 authRoutes.get('/google/callback', async (c) => {
+  const trail = getTrail(c);
   const code = c.req.query('code');
   if (!code) {
     return c.redirect(`${APP_URL}/login?error=no_code`);
@@ -73,12 +76,17 @@ authRoutes.get('/google/callback', async (c) => {
     picture: string;
   };
 
-  const existingUser = db.select().from(users).where(eq(users.email, googleUser.email)).get();
+  const existingUser = await trail.db
+    .select()
+    .from(users)
+    .where(eq(users.email, googleUser.email))
+    .get();
 
   let userId: string;
   if (existingUser) {
     userId = existingUser.id;
-    db.update(users)
+    await trail.db
+      .update(users)
       .set({
         displayName: googleUser.name,
         avatarUrl: googleUser.picture,
@@ -91,9 +99,10 @@ authRoutes.get('/google/callback', async (c) => {
     // Phase 1 is single-tenant; this keeps the schema honest without needing invites yet.
     const tenantId = crypto.randomUUID();
     const baseSlug = slugify(googleUser.name || googleUser.email.split('@')[0] || 'tenant') || 'tenant';
-    const tenantSlug = await nextAvailableSlug(baseSlug);
+    const tenantSlug = await nextAvailableSlug(trail, baseSlug);
 
-    db.insert(tenants)
+    await trail.db
+      .insert(tenants)
       .values({
         id: tenantId,
         slug: tenantSlug,
@@ -103,7 +112,8 @@ authRoutes.get('/google/callback', async (c) => {
       .run();
 
     userId = crypto.randomUUID();
-    db.insert(users)
+    await trail.db
+      .insert(users)
       .values({
         id: userId,
         tenantId,
@@ -117,7 +127,7 @@ authRoutes.get('/google/callback', async (c) => {
 
   const sessionId = crypto.randomUUID();
   const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-  db.insert(sessions).values({ id: sessionId, userId, expiresAt }).run();
+  await trail.db.insert(sessions).values({ id: sessionId, userId, expiresAt }).run();
 
   setCookie(c, 'session', sessionId, {
     httpOnly: true,
@@ -137,14 +147,15 @@ authRoutes.post('/logout', (c) => {
   return c.json({ ok: true });
 });
 
-authRoutes.get('/me', (c) => {
+authRoutes.get('/me', async (c) => {
+  const trail = getTrail(c);
   const sessionId = getCookie(c, 'session');
   if (!sessionId) {
     return c.json({ user: null });
   }
 
   const now = new Date().toISOString();
-  const result = db
+  const result = await trail.db
     .select({
       id: users.id,
       tenantId: users.tenantId,
@@ -165,10 +176,10 @@ authRoutes.get('/me', (c) => {
   return c.json({ user: result ?? null });
 });
 
-async function nextAvailableSlug(base: string): Promise<string> {
+async function nextAvailableSlug(trail: TrailDatabase, base: string): Promise<string> {
   let candidate = base;
   let suffix = 1;
-  while (db.select().from(tenants).where(eq(tenants.slug, candidate)).get()) {
+  while (await trail.db.select().from(tenants).where(eq(tenants.slug, candidate)).get()) {
     suffix += 1;
     candidate = `${base}-${suffix}`;
   }

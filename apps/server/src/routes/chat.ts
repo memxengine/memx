@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
-import { db, knowledgeBases, searchChunks, searchDocuments } from '@trail/db';
-import { eq } from 'drizzle-orm';
-import { requireAuth, getTenant } from '../middleware/auth.js';
+import { knowledgeBases, type TrailDatabase } from '@trail/db';
+import { and, eq } from 'drizzle-orm';
+import { requireAuth, getTenant, getTrail } from '../middleware/auth.js';
 import { spawnClaude, extractAssistantText } from '../services/claude.js';
 import { ChatRequestSchema } from '@trail/shared';
 
@@ -14,27 +14,42 @@ export const chatRoutes = new Hono();
 chatRoutes.use('*', requireAuth);
 
 chatRoutes.post('/chat', async (c) => {
+  const trail = getTrail(c);
   const tenant = getTenant(c);
   const body = ChatRequestSchema.parse(await c.req.json());
 
+  // Scope to either a specific KB (validating it belongs to this tenant) or all
+  // the tenant's KBs. The old code fetched by id alone without a tenant check,
+  // which was fine single-tenant but dangerous when F40.2 lands — fixing now.
   const kbs = body.knowledgeBaseId
-    ? db
+    ? await trail.db
         .select({ id: knowledgeBases.id, name: knowledgeBases.name })
         .from(knowledgeBases)
-        .where(eq(knowledgeBases.id, body.knowledgeBaseId))
+        .where(
+          and(
+            eq(knowledgeBases.id, body.knowledgeBaseId),
+            eq(knowledgeBases.tenantId, tenant.id),
+          ),
+        )
         .all()
-        .filter(() => true) // tenant check below
-    : db
+    : await trail.db
         .select({ id: knowledgeBases.id, name: knowledgeBases.name })
         .from(knowledgeBases)
         .where(eq(knowledgeBases.tenantId, tenant.id))
         .all();
 
   if (kbs.length === 0) {
-    return c.json({ answer: 'No knowledge bases found for this tenant. Create a wiki first and add sources.' });
+    return c.json({
+      answer: 'No knowledge bases found for this tenant. Create a wiki first and add sources.',
+    });
   }
 
-  const { context, citations } = retrieveContext(body.message, kbs.map((kb) => kb.id), tenant.id);
+  const { context, citations } = await retrieveContext(
+    trail,
+    body.message,
+    kbs.map((kb) => kb.id),
+    tenant.id,
+  );
 
   if (!context.trim()) {
     return c.json({
@@ -120,11 +135,12 @@ interface Citation {
   filename: string;
 }
 
-function retrieveContext(
+async function retrieveContext(
+  trail: TrailDatabase,
   query: string,
   kbIds: string[],
   tenantId: string,
-): { context: string; citations: Citation[] } {
+): Promise<{ context: string; citations: Citation[] }> {
   const chunks: string[] = [];
   const citations: Citation[] = [];
   const seen = new Set<string>();
@@ -139,7 +155,7 @@ function retrieveContext(
   for (const kbId of kbIds) {
     if (totalChars >= MAX_CHARS) break;
 
-    const chunkHits = searchChunks(ftsQuery, kbId, tenantId, PER_KB_CHUNKS);
+    const chunkHits = await trail.searchChunks(ftsQuery, kbId, tenantId, PER_KB_CHUNKS);
     for (const hit of chunkHits) {
       if (totalChars >= MAX_CHARS) break;
       const header = hit.headerBreadcrumb ? `[${hit.headerBreadcrumb}] ` : '';
@@ -151,7 +167,7 @@ function retrieveContext(
       }
     }
 
-    const docHits = searchDocuments(ftsQuery, kbId, tenantId, PER_KB_DOCS);
+    const docHits = await trail.searchDocuments(ftsQuery, kbId, tenantId, PER_KB_DOCS);
     for (const hit of docHits) {
       if (hit.kind !== 'wiki') continue;
       if (totalChars >= MAX_CHARS) break;

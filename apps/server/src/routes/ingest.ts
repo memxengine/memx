@@ -1,19 +1,20 @@
 import { Hono } from 'hono';
-import { db, documents } from '@trail/db';
+import { documents } from '@trail/db';
 import { eq, and } from 'drizzle-orm';
-import { requireAuth, getTenant, getUser } from '../middleware/auth.js';
+import { requireAuth, getTenant, getUser, getTrail } from '../middleware/auth.js';
 import { triggerIngest } from '../services/ingest.js';
 
 export const ingestRoutes = new Hono();
 
 ingestRoutes.use('*', requireAuth);
 
-ingestRoutes.post('/documents/:docId/ingest', (c) => {
+ingestRoutes.post('/documents/:docId/ingest', async (c) => {
+  const trail = getTrail(c);
   const tenant = getTenant(c);
   const user = getUser(c);
   const docId = c.req.param('docId');
 
-  const doc = db
+  const doc = await trail.db
     .select()
     .from(documents)
     .where(and(eq(documents.id, docId), eq(documents.tenantId, tenant.id)))
@@ -26,6 +27,7 @@ ingestRoutes.post('/documents/:docId/ingest', (c) => {
   }
 
   triggerIngest({
+    trail,
     docId,
     kbId: doc.knowledgeBaseId,
     tenantId: tenant.id,

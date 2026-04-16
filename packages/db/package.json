@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@trail/shared": "workspace:*",
+    "@libsql/client": "^0.14.0",
     "drizzle-orm": "^0.45.2"
   },
   "devDependencies": {

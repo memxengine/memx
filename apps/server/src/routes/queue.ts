@@ -5,7 +5,7 @@ import {
   RejectCandidateSchema,
   ListQueueQuerySchema,
 } from '@trail/shared';
-import { requireAuth, getTenant, getUser } from '../middleware/auth.js';
+import { requireAuth, getTenant, getUser, getTrail } from '../middleware/auth.js';
 import {
   createCandidate,
   approveCandidate,
@@ -31,7 +31,7 @@ queueRoutes.post('/queue/candidates', async (c) => {
 
   const tenant = getTenant(c);
   try {
-    const result = createCandidate(tenant.id, parsed.data, userActor(c));
+    const result = await createCandidate(getTrail(c), tenant.id, parsed.data, userActor(c));
     return c.json(result, 201);
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Unknown error';
@@ -40,20 +40,20 @@ queueRoutes.post('/queue/candidates', async (c) => {
   }
 });
 
-queueRoutes.get('/queue', (c) => {
+queueRoutes.get('/queue', async (c) => {
   const query = ListQueueQuerySchema.safeParse(
     Object.fromEntries(new URL(c.req.url).searchParams),
   );
   if (!query.success) return c.json({ error: query.error.flatten() }, 400);
 
   const tenant = getTenant(c);
-  const items = listCandidates(tenant.id, query.data);
+  const items = await listCandidates(getTrail(c), tenant.id, query.data);
   return c.json({ items, count: items.length });
 });
 
-queueRoutes.get('/queue/:id', (c) => {
+queueRoutes.get('/queue/:id', async (c) => {
   const tenant = getTenant(c);
-  const candidate = getCandidate(tenant.id, c.req.param('id'));
+  const candidate = await getCandidate(getTrail(c), tenant.id, c.req.param('id'));
   if (!candidate) return c.json({ error: 'Candidate not found' }, 404);
   return c.json(candidate);
 });
@@ -65,7 +65,8 @@ queueRoutes.post('/queue/:id/approve', async (c) => {
 
   const tenant = getTenant(c);
   try {
-    const result = approveCandidate(
+    const result = await approveCandidate(
+      getTrail(c),
       tenant.id,
       c.req.param('id'),
       userActor(c),
@@ -87,7 +88,8 @@ queueRoutes.post('/queue/:id/reject', async (c) => {
 
   const tenant = getTenant(c);
   try {
-    const result = rejectCandidate(
+    const result = await rejectCandidate(
+      getTrail(c),
       tenant.id,
       c.req.param('id'),
       userActor(c),

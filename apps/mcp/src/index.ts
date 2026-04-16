@@ -2,16 +2,13 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import {
-  db,
-  rawDb,
+  createLibsqlDatabase,
+  DEFAULT_DB_PATH,
   knowledgeBases,
   documents,
   tenants,
   users,
-  runMigrations,
-  initFTS,
-  searchDocuments,
-  searchChunks,
+  type TrailDatabase,
 } from '@trail/db';
 import { eq, and, like } from 'drizzle-orm';
 import { createCandidate, slugify } from '@trail/core';
@@ -22,9 +19,13 @@ import { createCandidate, slugify } from '@trail/core';
 // but every write is audited and reversible.
 const LLM_ACTOR = (userId: string) => ({ id: userId, kind: 'llm' as const });
 
-// Ensure DB is ready (MCP server may be spawned before or after apps/server).
-runMigrations();
-initFTS();
+// F40.1: the MCP server owns its own TrailDatabase instance, opened at boot.
+// F40.2 will resolve `trail` per invocation based on the authenticated tenant
+// injected via env — the tools here already receive it as a closure parameter,
+// so that change will not require handler changes.
+const trail = await createLibsqlDatabase({ path: DEFAULT_DB_PATH });
+await trail.runMigrations();
+await trail.initFTS();
 
 const server = new McpServer({
   name: 'trail',
@@ -43,20 +44,20 @@ interface ResolvedContext {
   userId: string;
 }
 
-function requireContext(): ResolvedContext {
+async function requireContext(trail: TrailDatabase): Promise<ResolvedContext> {
   if (!TENANT_ID) {
     throw new Error(
       'MCP server needs TRAIL_TENANT_ID in the environment. ' +
         'Set it to the tenant ID you want to operate against (see `SELECT id FROM tenants` in the DB).',
     );
   }
-  const tenant = db.select().from(tenants).where(eq(tenants.id, TENANT_ID)).get();
+  const tenant = await trail.db.select().from(tenants).where(eq(tenants.id, TENANT_ID)).get();
   if (!tenant) throw new Error(`Tenant ${TENANT_ID} not found.`);
 
   let userId = ACTOR_USER_ID;
   if (!userId) {
     // Fall back to the tenant's first owner; fail if there isn't one.
-    const owner = db
+    const owner = await trail.db
       .select({ id: users.id })
       .from(users)
       .where(and(eq(users.tenantId, TENANT_ID), eq(users.role, 'owner')))
@@ -71,54 +72,55 @@ function requireContext(): ResolvedContext {
   return { tenantId: tenant.id, tenantName: tenant.name, userId };
 }
 
-function resolveKB(nameOrSlug: string | undefined, tenantId: string) {
+async function resolveKB(trail: TrailDatabase, nameOrSlug: string | undefined, tenantId: string) {
   const needle = nameOrSlug?.trim();
   if (!needle) {
     if (!DEFAULT_KB_ID) return null;
-    return db
+    return trail.db
       .select()
       .from(knowledgeBases)
       .where(and(eq(knowledgeBases.id, DEFAULT_KB_ID), eq(knowledgeBases.tenantId, tenantId)))
       .get();
   }
   return (
-    db
+    (await trail.db
       .select()
       .from(knowledgeBases)
       .where(and(eq(knowledgeBases.slug, needle), eq(knowledgeBases.tenantId, tenantId)))
-      .get() ??
-    db
+      .get()) ??
+    (await trail.db
       .select()
       .from(knowledgeBases)
       .where(and(eq(knowledgeBases.name, needle), eq(knowledgeBases.tenantId, tenantId)))
-      .get() ??
-    db
+      .get()) ??
+    (await trail.db
       .select()
       .from(knowledgeBases)
       .where(and(eq(knowledgeBases.id, needle), eq(knowledgeBases.tenantId, tenantId)))
-      .get()
+      .get())
   );
 }
 
-// ── guide ──────────────────────────────────────────────────────────────────────
-server.tool('guide', 'List knowledge bases and explain how trail works', {}, () => {
-  const ctx = requireContext();
+const GUIDE_KBS_SQL = `
+  SELECT kb.id, kb.name, kb.slug, kb.description,
+         (SELECT COUNT(*) FROM documents d
+            WHERE d.knowledge_base_id = kb.id
+              AND d.kind = 'source'
+              AND d.archived = 0) AS sourceCount,
+         (SELECT COUNT(*) FROM documents d
+            WHERE d.knowledge_base_id = kb.id
+              AND d.kind = 'wiki'
+              AND d.archived = 0) AS wikiPageCount
+    FROM knowledge_bases kb
+   WHERE kb.tenant_id = ?
+`;
 
-  const kbs = rawDb
-    .prepare(
-      `SELECT kb.id, kb.name, kb.slug, kb.description,
-              (SELECT COUNT(*) FROM documents d
-                 WHERE d.knowledge_base_id = kb.id
-                   AND d.kind = 'source'
-                   AND d.archived = 0) AS sourceCount,
-              (SELECT COUNT(*) FROM documents d
-                 WHERE d.knowledge_base_id = kb.id
-                   AND d.kind = 'wiki'
-                   AND d.archived = 0) AS wikiPageCount
-         FROM knowledge_bases kb
-        WHERE kb.tenant_id = ?`,
-    )
-    .all(ctx.tenantId) as Array<{
+// ── guide ──────────────────────────────────────────────────────────────────────
+server.tool('guide', 'List knowledge bases and explain how trail works', {}, async () => {
+  const ctx = await requireContext(trail);
+
+  const result = await trail.execute(GUIDE_KBS_SQL, [ctx.tenantId]);
+  const kbs = result.rows as Array<{
     id: string;
     name: string;
     slug: string;
@@ -179,9 +181,9 @@ server.tool(
       .default('any')
       .describe('Filter by document kind'),
   },
-  ({ knowledge_base, mode, query, path, kind }) => {
-    const ctx = requireContext();
-    const kb = resolveKB(knowledge_base, ctx.tenantId);
+  async ({ knowledge_base, mode, query, path, kind }) => {
+    const ctx = await requireContext(trail);
+    const kb = await resolveKB(trail, knowledge_base, ctx.tenantId);
     if (!kb) {
       return {
         content: [
@@ -198,8 +200,12 @@ server.tool(
         return { content: [{ type: 'text' as const, text: 'Search query required for search mode.' }] };
       }
       const ftsQuery = sanitizeFtsQuery(query);
-      const docResults = ftsQuery ? searchDocuments(ftsQuery, kb.id, ctx.tenantId, 20) : [];
-      const chunkResults = ftsQuery ? searchChunks(ftsQuery, kb.id, ctx.tenantId, 10) : [];
+      const docResults = ftsQuery
+        ? await trail.searchDocuments(ftsQuery, kb.id, ctx.tenantId, 20)
+        : [];
+      const chunkResults = ftsQuery
+        ? await trail.searchChunks(ftsQuery, kb.id, ctx.tenantId, 10)
+        : [];
 
       let text = `## Search results for "${query}" in ${kb.name}\n\n`;
       if (docResults.length === 0 && chunkResults.length === 0) {
@@ -225,7 +231,7 @@ server.tool(
     if (path && path !== '*') conditions.push(like(documents.path, path.replace('*', '%')));
     if (kind !== 'any') conditions.push(eq(documents.kind, kind));
 
-    const docs = db
+    const docs = await trail.db
       .select({
         filename: documents.filename,
         path: documents.path,
@@ -259,9 +265,9 @@ server.tool(
       .string()
       .describe('Full path to document (e.g. "/wiki/overview.md") or glob (e.g. "/wiki/*.md")'),
   },
-  ({ knowledge_base, path: docPath }) => {
-    const ctx = requireContext();
-    const kb = resolveKB(knowledge_base, ctx.tenantId);
+  async ({ knowledge_base, path: docPath }) => {
+    const ctx = await requireContext(trail);
+    const kb = await resolveKB(trail, knowledge_base, ctx.tenantId);
     if (!kb) {
       return {
         content: [
@@ -277,7 +283,7 @@ server.tool(
       const dirPath = docPath.slice(0, lastSlash + 1) || '/';
       const filePattern = docPath.slice(lastSlash + 1);
 
-      const docs = db
+      const docs = (await trail.db
         .select({
           id: documents.id,
           filename: documents.filename,
@@ -294,8 +300,7 @@ server.tool(
             like(documents.path, dirPath.replace('*', '%')),
           ),
         )
-        .all()
-        .filter((d) => globMatch(d.filename, filePattern));
+        .all()).filter((d) => globMatch(d.filename, filePattern));
 
       let text = '';
       let totalChars = 0;
@@ -318,7 +323,7 @@ server.tool(
     const dirPath = docPath.slice(0, lastSlash + 1) || '/';
     const filename = docPath.slice(lastSlash + 1);
 
-    const doc = db
+    const doc = await trail.db
       .select()
       .from(documents)
       .where(
@@ -362,9 +367,9 @@ server.tool(
     old_text: z.string().optional().describe('Text to find (for str_replace)'),
     new_text: z.string().optional().describe('Replacement text (for str_replace)'),
   },
-  ({ knowledge_base, command, path: dirPath, title, content, tags, old_text, new_text }) => {
-    const ctx = requireContext();
-    const kb = resolveKB(knowledge_base, ctx.tenantId);
+  async ({ knowledge_base, command, path: dirPath, title, content, tags, old_text, new_text }) => {
+    const ctx = await requireContext(trail);
+    const kb = await resolveKB(trail, knowledge_base, ctx.tenantId);
     if (!kb) {
       return {
         content: [
@@ -380,7 +385,8 @@ server.tool(
       const fullContent = content ?? `# ${title}\n`;
       const path = dirPath.endsWith('/') ? dirPath : dirPath + '/';
 
-      const { approval } = createCandidate(
+      const { approval } = await createCandidate(
+        trail,
         ctx.tenantId,
         {
           knowledgeBaseId: kb.id,
@@ -434,7 +440,7 @@ server.tool(
         };
       }
 
-      const doc = db
+      const doc = await trail.db
         .select()
         .from(documents)
         .where(
@@ -471,7 +477,8 @@ server.tool(
       }
 
       const updated = current.replace(old_text, new_text);
-      const { approval } = createCandidate(
+      const { approval } = await createCandidate(
+        trail,
         ctx.tenantId,
         {
           knowledgeBaseId: kb.id,
@@ -513,7 +520,7 @@ server.tool(
         };
       }
 
-      const doc = db
+      const doc = await trail.db
         .select()
         .from(documents)
         .where(
@@ -532,7 +539,8 @@ server.tool(
       }
 
       const updated = (doc.content ?? '') + '\n' + (content ?? '');
-      const { approval } = createCandidate(
+      const { approval } = await createCandidate(
+        trail,
         ctx.tenantId,
         {
           knowledgeBaseId: kb.id,
@@ -573,9 +581,9 @@ server.tool(
     knowledge_base: z.string().optional().describe('Name, slug or id of the KB'),
     path: z.string().describe('Full path to document (e.g. "/wiki/old.md")'),
   },
-  ({ knowledge_base, path: docPath }) => {
-    const ctx = requireContext();
-    const kb = resolveKB(knowledge_base, ctx.tenantId);
+  async ({ knowledge_base, path: docPath }) => {
+    const ctx = await requireContext(trail);
+    const kb = await resolveKB(trail, knowledge_base, ctx.tenantId);
     if (!kb) {
       return {
         content: [
@@ -594,7 +602,7 @@ server.tool(
     const dirPath = docPath.slice(0, lastSlash + 1) || '/';
     const filename = docPath.slice(lastSlash + 1);
 
-    const doc = db
+    const doc = await trail.db
       .select()
       .from(documents)
       .where(
@@ -612,7 +620,8 @@ server.tool(
       return { content: [{ type: 'text' as const, text: `Document "${docPath}" not found.` }] };
     }
 
-    const { approval } = createCandidate(
+    const { approval } = await createCandidate(
+      trail,
       ctx.tenantId,
       {
         knowledgeBaseId: kb.id,
@@ -636,7 +645,6 @@ server.tool(
 );
 
 // ── helpers ────────────────────────────────────────────────────────────────────
-// slugify lives in @trail/core; see imports above.
 
 function globMatch(filename: string, pattern: string): boolean {
   if (pattern === '*') return true;
@@ -660,6 +668,16 @@ async function main(): Promise<void> {
   const transport = new StdioServerTransport();
   await server.connect(transport);
 }
+
+// Graceful shutdown — release the libSQL connection so the WAL file checkpoints
+// cleanly when the parent (apps/server) kills the MCP subprocess at the end of
+// an ingest run.
+const shutdown = async () => {
+  await trail.close();
+  process.exit(0);
+};
+process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdown);
 
 main().catch((err) => {
   console.error('trail MCP error:', err);

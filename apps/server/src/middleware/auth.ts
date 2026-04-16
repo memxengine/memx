@@ -1,6 +1,6 @@
 import type { Context, Next } from 'hono';
 import { getCookie } from 'hono/cookie';
-import { db, sessions, users, tenants } from '@trail/db';
+import { sessions, users, tenants, type TrailDatabase } from '@trail/db';
 import { and, eq, gt } from 'drizzle-orm';
 
 export interface AuthUser {
@@ -20,19 +20,15 @@ export interface AuthTenant {
   plan: 'hobby' | 'pro' | 'business' | 'enterprise';
 }
 
-export type AuthVariables = {
-  user: AuthUser;
-  tenant: AuthTenant;
-};
-
 export async function requireAuth(c: Context, next: Next): Promise<Response | void> {
   const sessionId = getCookie(c, 'session');
   if (!sessionId) {
     return c.json({ error: 'Unauthorized' }, 401);
   }
 
+  const trail = c.get('trail') as TrailDatabase;
   const now = new Date().toISOString();
-  const result = db
+  const result = await trail.db
     .select({
       user: {
         id: users.id,
@@ -71,4 +67,9 @@ export function getUser(c: Context): AuthUser {
 
 export function getTenant(c: Context): AuthTenant {
   return c.get('tenant') as AuthTenant;
+}
+
+/** Resolve the per-request TrailDatabase. Always set by createApp. */
+export function getTrail(c: Context): TrailDatabase {
+  return c.get('trail') as TrailDatabase;
 }

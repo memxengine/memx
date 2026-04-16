@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { db, documents, knowledgeBases, documentChunks } from '@trail/db';
+import { documents, knowledgeBases, documentChunks } from '@trail/db';
 import {
   CreateNoteSchema,
   UpdateDocumentSchema,
@@ -8,14 +8,15 @@ import {
   DocumentKindEnum,
 } from '@trail/shared';
 import { eq, and, inArray } from 'drizzle-orm';
-import { requireAuth, getUser, getTenant } from '../middleware/auth.js';
+import { requireAuth, getUser, getTenant, getTrail } from '../middleware/auth.js';
 import { chunkText, storeChunks } from '../services/chunker.js';
 
 export const documentRoutes = new Hono();
 
 documentRoutes.use('*', requireAuth);
 
-documentRoutes.get('/knowledge-bases/:kbId/documents', (c) => {
+documentRoutes.get('/knowledge-bases/:kbId/documents', async (c) => {
+  const trail = getTrail(c);
   const tenant = getTenant(c);
   const kbId = c.req.param('kbId');
   const path = c.req.query('path');
@@ -35,7 +36,7 @@ documentRoutes.get('/knowledge-bases/:kbId/documents', (c) => {
     conditions.push(eq(documents.kind, kind.data));
   }
 
-  const rows = db
+  const rows = await trail.db
     .select({
       id: documents.id,
       tenantId: documents.tenantId,
@@ -68,11 +69,12 @@ documentRoutes.get('/knowledge-bases/:kbId/documents', (c) => {
   return c.json(rows);
 });
 
-documentRoutes.get('/documents/:docId', (c) => {
+documentRoutes.get('/documents/:docId', async (c) => {
+  const trail = getTrail(c);
   const tenant = getTenant(c);
   const docId = c.req.param('docId');
 
-  const doc = db
+  const doc = await trail.db
     .select()
     .from(documents)
     .where(and(eq(documents.id, docId), eq(documents.tenantId, tenant.id)))
@@ -82,11 +84,12 @@ documentRoutes.get('/documents/:docId', (c) => {
   return c.json(doc);
 });
 
-documentRoutes.get('/documents/:docId/content', (c) => {
+documentRoutes.get('/documents/:docId/content', async (c) => {
+  const trail = getTrail(c);
   const tenant = getTenant(c);
   const docId = c.req.param('docId');
 
-  const doc = db
+  const doc = await trail.db
     .select({ id: documents.id, content: documents.content, version: documents.version })
     .from(documents)
     .where(and(eq(documents.id, docId), eq(documents.tenantId, tenant.id)))
@@ -96,13 +99,19 @@ documentRoutes.get('/documents/:docId/content', (c) => {
   return c.json(doc);
 });
 
+// NOTE (F17): this endpoint currently writes directly to documents where
+// kind='wiki'. It is not exercised by any active caller today. When the admin
+// UI (F18 Session 2) starts using it, re-route through the queue's
+// createCandidate + auto-approve path so the "sole wiki write path" invariant
+// is enforced from this endpoint too.
 documentRoutes.post('/knowledge-bases/:kbId/documents/note', async (c) => {
+  const trail = getTrail(c);
   const user = getUser(c);
   const tenant = getTenant(c);
   const kbId = c.req.param('kbId');
   const body = CreateNoteSchema.parse(await c.req.json());
 
-  const kb = db
+  const kb = await trail.db
     .select()
     .from(knowledgeBases)
     .where(and(eq(knowledgeBases.id, kbId), eq(knowledgeBases.tenantId, tenant.id)))
@@ -112,7 +121,8 @@ documentRoutes.post('/knowledge-bases/:kbId/documents/note', async (c) => {
   const id = crypto.randomUUID();
   const title = extractTitle(body.content) ?? body.filename.replace(/\.md$/, '');
 
-  db.insert(documents)
+  await trail.db
+    .insert(documents)
     .values({
       id,
       tenantId: tenant.id,
@@ -131,19 +141,20 @@ documentRoutes.post('/knowledge-bases/:kbId/documents/note', async (c) => {
 
   if (body.content.trim()) {
     const chunks = chunkText(body.content);
-    storeChunks(id, tenant.id, kbId, chunks);
+    await storeChunks(trail, id, tenant.id, kbId, chunks);
   }
 
-  const doc = db.select().from(documents).where(eq(documents.id, id)).get();
+  const doc = await trail.db.select().from(documents).where(eq(documents.id, id)).get();
   return c.json(doc, 201);
 });
 
 documentRoutes.put('/documents/:docId/content', async (c) => {
+  const trail = getTrail(c);
   const tenant = getTenant(c);
   const docId = c.req.param('docId');
   const body = UpdateContentSchema.parse(await c.req.json());
 
-  const existing = db
+  const existing = await trail.db
     .select()
     .from(documents)
     .where(and(eq(documents.id, docId), eq(documents.tenantId, tenant.id)))
@@ -151,7 +162,8 @@ documentRoutes.put('/documents/:docId/content', async (c) => {
   if (!existing) return c.json({ error: 'Not found' }, 404);
 
   const newVersion = existing.version + 1;
-  db.update(documents)
+  await trail.db
+    .update(documents)
     .set({
       content: body.content,
       version: newVersion,
@@ -160,21 +172,22 @@ documentRoutes.put('/documents/:docId/content', async (c) => {
     .where(eq(documents.id, docId))
     .run();
 
-  db.delete(documentChunks).where(eq(documentChunks.documentId, docId)).run();
+  await trail.db.delete(documentChunks).where(eq(documentChunks.documentId, docId)).run();
   if (body.content.trim()) {
     const chunks = chunkText(body.content);
-    storeChunks(docId, tenant.id, existing.knowledgeBaseId, chunks);
+    await storeChunks(trail, docId, tenant.id, existing.knowledgeBaseId, chunks);
   }
 
   return c.json({ id: docId, content: body.content, version: newVersion });
 });
 
 documentRoutes.patch('/documents/:docId', async (c) => {
+  const trail = getTrail(c);
   const tenant = getTenant(c);
   const docId = c.req.param('docId');
   const body = UpdateDocumentSchema.parse(await c.req.json());
 
-  const existing = db
+  const existing = await trail.db
     .select()
     .from(documents)
     .where(and(eq(documents.id, docId), eq(documents.tenantId, tenant.id)))
@@ -189,17 +202,19 @@ documentRoutes.patch('/documents/:docId', async (c) => {
   if (body.date !== undefined) updates.date = body.date;
   if (body.metadata !== undefined) updates.metadata = body.metadata;
 
-  db.update(documents).set(updates).where(eq(documents.id, docId)).run();
+  await trail.db.update(documents).set(updates).where(eq(documents.id, docId)).run();
 
-  const doc = db.select().from(documents).where(eq(documents.id, docId)).get();
+  const doc = await trail.db.select().from(documents).where(eq(documents.id, docId)).get();
   return c.json(doc);
 });
 
-documentRoutes.delete('/documents/:docId', (c) => {
+documentRoutes.delete('/documents/:docId', async (c) => {
+  const trail = getTrail(c);
   const tenant = getTenant(c);
   const docId = c.req.param('docId');
 
-  db.update(documents)
+  await trail.db
+    .update(documents)
     .set({ archived: true, status: 'archived', updatedAt: new Date().toISOString() })
     .where(and(eq(documents.id, docId), eq(documents.tenantId, tenant.id)))
     .run();
@@ -208,10 +223,12 @@ documentRoutes.delete('/documents/:docId', (c) => {
 });
 
 documentRoutes.post('/documents/bulk-delete', async (c) => {
+  const trail = getTrail(c);
   const tenant = getTenant(c);
   const body = BulkDeleteSchema.parse(await c.req.json());
 
-  db.update(documents)
+  await trail.db
+    .update(documents)
     .set({ archived: true, status: 'archived', updatedAt: new Date().toISOString() })
     .where(and(inArray(documents.id, body.ids), eq(documents.tenantId, tenant.id)))
     .run();

@@ -1,16 +1,17 @@
 import { Hono } from 'hono';
-import { db, users, documents, tenants } from '@trail/db';
+import { users, documents, tenants } from '@trail/db';
 import { eq, and, sql } from 'drizzle-orm';
-import { requireAuth, getUser, getTenant } from '../middleware/auth.js';
+import { requireAuth, getUser, getTenant, getTrail } from '../middleware/auth.js';
 
 export const userRoutes = new Hono();
 
 userRoutes.use('*', requireAuth);
 
-userRoutes.get('/me', (c) => {
+userRoutes.get('/me', async (c) => {
+  const trail = getTrail(c);
   const user = getUser(c);
 
-  const fullUser = db
+  const fullUser = await trail.db
     .select({
       id: users.id,
       tenantId: users.tenantId,
@@ -31,19 +32,22 @@ userRoutes.get('/me', (c) => {
   return c.json(fullUser);
 });
 
-userRoutes.post('/onboarding/complete', (c) => {
+userRoutes.post('/onboarding/complete', async (c) => {
+  const trail = getTrail(c);
   const user = getUser(c);
-  db.update(users)
+  await trail.db
+    .update(users)
     .set({ onboarded: true, updatedAt: new Date().toISOString() })
     .where(eq(users.id, user.id))
     .run();
   return c.body(null, 204);
 });
 
-userRoutes.get('/usage', (c) => {
+userRoutes.get('/usage', async (c) => {
+  const trail = getTrail(c);
   const tenant = getTenant(c);
 
-  const stats = db
+  const stats = await trail.db
     .select({
       totalPages: sql<number>`COALESCE(SUM(${documents.pageCount}), 0)`,
       totalStorageBytes: sql<number>`COALESCE(SUM(${documents.fileSize}), 0)`,

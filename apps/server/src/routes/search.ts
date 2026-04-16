@@ -1,13 +1,14 @@
 import { Hono } from 'hono';
-import { db, knowledgeBases, searchDocuments, searchChunks } from '@trail/db';
+import { knowledgeBases } from '@trail/db';
 import { eq, and } from 'drizzle-orm';
-import { requireAuth, getTenant } from '../middleware/auth.js';
+import { requireAuth, getTenant, getTrail } from '../middleware/auth.js';
 
 export const searchRoutes = new Hono();
 
 searchRoutes.use('*', requireAuth);
 
-searchRoutes.get('/knowledge-bases/:kbId/search', (c) => {
+searchRoutes.get('/knowledge-bases/:kbId/search', async (c) => {
+  const trail = getTrail(c);
   const tenant = getTenant(c);
   const kbId = c.req.param('kbId');
   const query = c.req.query('q') ?? '';
@@ -17,7 +18,7 @@ searchRoutes.get('/knowledge-bases/:kbId/search', (c) => {
     return c.json({ documents: [], chunks: [] });
   }
 
-  const kb = db
+  const kb = await trail.db
     .select({ id: knowledgeBases.id })
     .from(knowledgeBases)
     .where(and(eq(knowledgeBases.id, kbId), eq(knowledgeBases.tenantId, tenant.id)))
@@ -27,8 +28,10 @@ searchRoutes.get('/knowledge-bases/:kbId/search', (c) => {
   const ftsQuery = sanitizeFtsQuery(query);
   if (!ftsQuery) return c.json({ documents: [], chunks: [] });
 
-  const documents = searchDocuments(ftsQuery, kbId, tenant.id, limit);
-  const chunks = searchChunks(ftsQuery, kbId, tenant.id, limit);
+  const [documents, chunks] = await Promise.all([
+    trail.searchDocuments(ftsQuery, kbId, tenant.id, limit),
+    trail.searchChunks(ftsQuery, kbId, tenant.id, limit),
+  ]);
 
   return c.json({ documents, chunks });
 });

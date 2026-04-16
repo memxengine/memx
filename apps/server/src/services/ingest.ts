@@ -1,4 +1,4 @@
-import { db, documents, knowledgeBases, DATA_DIR } from '@trail/db';
+import { documents, knowledgeBases, DATA_DIR, type TrailDatabase } from '@trail/db';
 import { eq } from 'drizzle-orm';
 import { broadcaster } from './broadcast.js';
 import { spawnClaude } from './claude.js';
@@ -13,7 +13,8 @@ const INGEST_TIMEOUT_MS = Number(process.env.INGEST_TIMEOUT_MS ?? 180_000);
 const activeIngests = new Map<string, boolean>();
 const ingestQueue = new Map<string, IngestJob[]>();
 
-interface IngestJob {
+export interface IngestJob {
+  trail: TrailDatabase;
   docId: string;
   kbId: string;
   tenantId: string;
@@ -33,16 +34,18 @@ export function triggerIngest(job: IngestJob): void {
 
 async function runIngest(job: IngestJob): Promise<void> {
   activeIngests.set(job.kbId, true);
+  const { trail } = job;
 
-  const doc = db.select().from(documents).where(eq(documents.id, job.docId)).get();
-  const kb = db.select().from(knowledgeBases).where(eq(knowledgeBases.id, job.kbId)).get();
+  const doc = await trail.db.select().from(documents).where(eq(documents.id, job.docId)).get();
+  const kb = await trail.db.select().from(knowledgeBases).where(eq(knowledgeBases.id, job.kbId)).get();
 
   if (!doc || !kb) {
     activeIngests.delete(job.kbId);
     return;
   }
 
-  db.update(documents)
+  await trail.db
+    .update(documents)
     .set({ status: 'processing', updatedAt: new Date().toISOString() })
     .where(eq(documents.id, job.docId))
     .run();
@@ -133,7 +136,8 @@ IMPORTANT RULES:
       },
     });
 
-    db.update(documents)
+    await trail.db
+      .update(documents)
       .set({ status: 'ready', updatedAt: new Date().toISOString() })
       .where(eq(documents.id, job.docId))
       .run();
@@ -151,7 +155,8 @@ IMPORTANT RULES:
     const errorMsg = err instanceof Error ? err.message : String(err);
     console.error(`[ingest] Failed for "${doc.filename}":`, errorMsg);
 
-    db.update(documents)
+    await trail.db
+      .update(documents)
       .set({
         status: 'failed',
         errorMessage: errorMsg.slice(0, 1000),

@@ -1,4 +1,4 @@
-import { db, documentChunks } from '@trail/db';
+import { documentChunks, type TrailDatabase } from '@trail/db';
 
 const CHUNK_SIZE = 512;
 const CHUNK_OVERLAP = 128;
@@ -97,26 +97,31 @@ export function chunkText(
   return chunks;
 }
 
-export function storeChunks(
+export async function storeChunks(
+  trail: TrailDatabase,
   documentId: string,
   tenantId: string,
   kbId: string,
   chunks: Chunk[],
-): void {
-  for (const chunk of chunks) {
-    db.insert(documentChunks)
-      .values({
-        id: crypto.randomUUID(),
-        tenantId,
-        documentId,
-        knowledgeBaseId: kbId,
-        chunkIndex: chunk.index,
-        content: chunk.content,
-        page: chunk.page,
-        startChar: chunk.startChar,
-        tokenCount: chunk.tokenCount,
-        headerBreadcrumb: chunk.headerBreadcrumb || null,
-      })
-      .run();
-  }
+): Promise<void> {
+  if (chunks.length === 0) return;
+  await trail.db.transaction(async (tx) => {
+    for (const chunk of chunks) {
+      await tx
+        .insert(documentChunks)
+        .values({
+          id: crypto.randomUUID(),
+          tenantId,
+          documentId,
+          knowledgeBaseId: kbId,
+          chunkIndex: chunk.index,
+          content: chunk.content,
+          page: chunk.page,
+          startChar: chunk.startChar,
+          tokenCount: chunk.tokenCount,
+          headerBreadcrumb: chunk.headerBreadcrumb || null,
+        })
+        .run();
+    }
+  });
 }

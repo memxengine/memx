@@ -1,8 +1,8 @@
 import { Hono } from 'hono';
-import { db, documents } from '@trail/db';
+import { documents } from '@trail/db';
 import { eq, and } from 'drizzle-orm';
 import { basename } from 'node:path';
-import { requireAuth, getTenant } from '../middleware/auth.js';
+import { requireAuth, getTenant, getTrail } from '../middleware/auth.js';
 import { storage, imagePath } from '../lib/storage.js';
 
 export const imageRoutes = new Hono();
@@ -10,6 +10,7 @@ export const imageRoutes = new Hono();
 imageRoutes.use('*', requireAuth);
 
 imageRoutes.get('/documents/:docId/images/:filename', async (c) => {
+  const trail = getTrail(c);
   const tenant = getTenant(c);
   const docId = c.req.param('docId');
   const filename = basename(c.req.param('filename'));
@@ -18,7 +19,7 @@ imageRoutes.get('/documents/:docId/images/:filename', async (c) => {
     return c.json({ error: 'Invalid filename' }, 400);
   }
 
-  const doc = db
+  const doc = await trail.db
     .select({ id: documents.id, knowledgeBaseId: documents.knowledgeBaseId })
     .from(documents)
     .where(and(eq(documents.id, docId), eq(documents.tenantId, tenant.id)))
