@@ -160,6 +160,84 @@ export function searchKb(kbId: string, q: string, limit = 10): Promise<SearchRes
   return api(`/api/v1/knowledge-bases/${encodeURIComponent(kbId)}/search?${qs.toString()}`);
 }
 
+// ── Chat ────────────────────────────────────────────────────────
+
+export interface ChatCitation {
+  documentId: string;
+  path: string;
+  filename: string;
+}
+
+export interface ChatResponse {
+  answer: string;
+  citations?: ChatCitation[];
+}
+
+/** Single-turn chat against a KB. Engine retrieves via FTS + calls Claude. */
+export function chat(kbId: string, message: string): Promise<ChatResponse> {
+  return api(`/api/v1/chat`, {
+    method: 'POST',
+    body: JSON.stringify({ message, knowledgeBaseId: kbId }),
+  });
+}
+
+/**
+ * Feedback loop: promote a chat Q+A into the Curation Queue as a candidate.
+ * Uses kind='chat-answer'. Created by the curator (not service), so it lands
+ * as pending for manual review — a human chose to save this, a human should
+ * confirm it's worth committing to the wiki.
+ */
+export function saveChatAsNeuron(args: {
+  kbId: string;
+  question: string;
+  answer: string;
+  citations: ChatCitation[];
+  title: string;
+  confidence?: number;
+}): Promise<unknown> {
+  const slug = slugify(args.title);
+  const metadata = JSON.stringify({
+    op: 'create',
+    filename: `${slug}.md`,
+    path: '/wiki/queries/',
+    source: 'chat',
+    sourceCitations: args.citations.map((c) => c.documentId),
+  });
+  const content = [
+    `# ${args.title}`,
+    '',
+    `**Question:** ${args.question}`,
+    '',
+    '---',
+    '',
+    args.answer,
+    args.citations.length
+      ? '\n\n---\n\n## Sources\n' +
+        args.citations.map((c) => `- [[${c.filename.replace(/\.md$/i, '')}]]`).join('\n')
+      : '',
+  ].join('\n');
+
+  return api(`/api/v1/queue/candidates`, {
+    method: 'POST',
+    body: JSON.stringify({
+      knowledgeBaseId: args.kbId,
+      kind: 'chat-answer',
+      title: args.title,
+      content,
+      metadata,
+      confidence: args.confidence ?? 0.6,
+    }),
+  });
+}
+
+function slugify(t: string): string {
+  return t
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60);
+}
+
 /**
  * Upload a source file. Uses multipart/form-data — do NOT set Content-Type;
  * the browser generates the boundary. Flows through the same endpoint the
