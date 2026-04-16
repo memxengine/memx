@@ -57,6 +57,7 @@ Status reflects the engine (this repo). Landing-site and CMS-adapter work lives 
 | F36 | [`docs.trailmem.com` as a Trail Brain](#f36-dogfooding-wiki) | Planned | 1 | [features/F36-dogfooding-wiki.md](features/F36-dogfooding-wiki.md) |
 | F37 | [Sanne Customer Onboarding (Customer #1)](#f37-sanne-onboarding) | Planned | 1 | — |
 | F38 | [Cross-Trail Search + Chat (Frontpage)](#f38-cross-trail-search) | Planned | 2 | [features/F38-cross-trail-search.md](features/F38-cross-trail-search.md) |
+| F39 | [Claude Code Session → Trail Ingest](#f39-cc-session-ingest) | Planned | 1 | [features/F39-cc-session-ingest.md](features/F39-cc-session-ingest.md) |
 | F40 | [Multi-Tenancy on `app.trailmem.com` (LibSQL/Turso or Postgres RLS)](#f40-multi-tenancy) | Idea | 2 | — |
 | F41 | [Tenant Provisioning + Signup Flow](#f41-tenant-provisioning) | Idea | 2 | — |
 | F42 | [Cloudflare R2 Storage Adapter](#f42-r2-storage) | Idea | 2 | — |
@@ -214,6 +215,9 @@ Customer #1 — Sanne Andersen (healing/zoneterapi, Aalborg). Migrate 25 years o
 
 ### F38 — Cross-Trail Search + Chat (Frontpage)
 `app.trailmem.com`'s frontpage lets a signed-in user search and chat across every Trail they own. Results tagged by source Trail, bounded retrieval (top-M Trails × top-K pages) for scalability. Drill into a specific Trail and the same UI becomes scoped to just that Trail. Finalises user-facing naming: **Trail** = the user's knowledge base, **Neuron** = a compiled wiki page inside it.
+
+### F39 — Claude Code Session → Trail Ingest
+Buddy watches every cc session. At session end (or `/trail-save`), a summariser extracts knowledge artifacts (decisions, conventions, bug-fix reasoning, rejected approaches) and POST's them to Trail as queue candidates. Trail compiles them into wiki pages cross-referenced with the codebase, git history, and other sessions. Not verbatim logging (that's MemPalace); this is compile-at-ingest. Building blocks: buddy's session monitor + Trail's candidate API (F17) + auto-approve for trusted sources. Feeds into F36 (docs.trailmem.com) so the docs brain includes the *why*, not just the *what*.
 
 ### F40 — Multi-Tenancy on `app.trailmem.com`
 Real multi-tenant data isolation powering the SaaS at `app.trailmem.com`. Two serious options: LibSQL/Turso per-tenant database (strong isolation, per-tenant backup/restore is trivial) or Postgres with Row-Level Security (single DB, less ops). Decision owed before F41 signup ships.
