@@ -17,11 +17,15 @@ export function TrailNav({ kbId }: { kbId: string }) {
   ];
   return (
     <nav class="flex items-center gap-1 -mt-px border-t border-[color:var(--color-border)] pt-2 pb-0">
-      <div class="flex items-baseline gap-2 mr-4">
-        <span class="text-[11px] font-mono uppercase tracking-wider text-[color:var(--color-fg-subtle)]">
-          Trail
-        </span>
-        <span class="text-sm font-medium text-[color:var(--color-fg)]">
+      <div class="flex items-baseline gap-2 mr-4 text-sm">
+        <a
+          href="/"
+          class="text-[color:var(--color-fg-muted)] hover:text-[color:var(--color-fg)] transition"
+        >
+          Trails
+        </a>
+        <span class="text-[color:var(--color-fg-subtle)]">/</span>
+        <span class="font-medium text-[color:var(--color-fg)]">
           {kb ? kb.name : <span class="loading-delayed inline-block">…</span>}
         </span>
       </div>
