@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { documents, knowledgeBases, type TrailDatabase } from '@trail/db';
 import { eq, and } from 'drizzle-orm';
 import { requireAuth, getUser, getTenant, getTrail } from '../middleware/auth.js';
-import { processPdf } from '@trail/pipelines';
+import { processPdf, processDocx } from '@trail/pipelines';
 import { storage, sourcePath } from '../lib/storage.js';
 import { chunkText, storeChunks } from '../services/chunker.js';
 import { triggerIngest } from '../services/ingest.js';
@@ -102,8 +102,26 @@ uploadRoutes.post('/knowledge-bases/:kbId/documents/upload', async (c) => {
     });
   }
 
-  // Other binary uploads (office, images, …) land with status='pending' until
-  // a pipeline picks them up.
+  // .docx → async text extraction via mammoth. No images or page count.
+  // Converts Word's styled XML to markdown and flows through the same
+  // chunk-then-ingest path as PDFs.
+  if (ext === 'docx') {
+    processDocxAsync(trail, docId, tenant.id, kbId, user.id, file.name, buffer).catch(async (err) => {
+      console.error(`[docx] pipeline failed for ${file.name}:`, err);
+      await trail.db
+        .update(documents)
+        .set({
+          status: 'failed',
+          errorMessage: String(err).slice(0, 1000),
+          updatedAt: new Date().toISOString(),
+        })
+        .where(eq(documents.id, docId))
+        .run();
+    });
+  }
+
+  // Other binary uploads (office non-docx, images, …) land with status='pending'
+  // until a pipeline picks them up.
 
   const doc = await trail.db
     .select()
@@ -155,6 +173,48 @@ async function processPdfAsync(
       content: result.markdown,
       title,
       pageCount: result.pageCount,
+      status: 'ready',
+      version: 1,
+      updatedAt: new Date().toISOString(),
+    })
+    .where(eq(documents.id, docId))
+    .run();
+
+  if (result.markdown.trim()) {
+    const chunks = chunkText(result.markdown);
+    await storeChunks(trail, docId, tenantId, kbId, chunks);
+  }
+
+  triggerIngest({ trail, docId, kbId, tenantId, userId });
+}
+
+async function processDocxAsync(
+  trail: TrailDatabase,
+  docId: string,
+  tenantId: string,
+  kbId: string,
+  userId: string,
+  filename: string,
+  buffer: Buffer,
+): Promise<void> {
+  await trail.db
+    .update(documents)
+    .set({ status: 'processing', updatedAt: new Date().toISOString() })
+    .where(eq(documents.id, docId))
+    .run();
+
+  console.log(`[docx] processing ${filename}...`);
+  const result = await processDocx({ docxBytes: buffer });
+  if (result.warnings.length) {
+    console.log(`[docx] ${filename}: ${result.warnings.length} conversion warnings`);
+  }
+
+  const title = result.title ?? filename.replace(/\.docx$/i, '');
+  await trail.db
+    .update(documents)
+    .set({
+      content: result.markdown,
+      title,
       status: 'ready',
       version: 1,
       updatedAt: new Date().toISOString(),

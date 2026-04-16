@@ -123,3 +123,38 @@ export function getDocumentContent(
 ): Promise<{ id: string; content: string | null; version: number }> {
   return api(`/api/v1/documents/${encodeURIComponent(docId)}/content`);
 }
+
+/**
+ * Upload a source file. Uses multipart/form-data — do NOT set Content-Type;
+ * the browser generates the boundary. Flows through the same endpoint the
+ * engine has had since F06.
+ */
+export async function uploadSource(
+  kbId: string,
+  file: File,
+  opts: { path?: string } = {},
+): Promise<Document> {
+  const form = new FormData();
+  form.append('file', file);
+  if (opts.path) form.append('path', opts.path);
+
+  const response = await fetch(
+    `/api/v1/knowledge-bases/${encodeURIComponent(kbId)}/documents/upload`,
+    {
+      method: 'POST',
+      credentials: 'include',
+      body: form,
+    },
+  );
+  if (!response.ok) {
+    let message = `${response.status} ${response.statusText}`;
+    try {
+      const body = await response.json();
+      if (body.error) message = typeof body.error === 'string' ? body.error : JSON.stringify(body.error);
+    } catch {
+      // ignore
+    }
+    throw new ApiError(response.status, message);
+  }
+  return (await response.json()) as Document;
+}

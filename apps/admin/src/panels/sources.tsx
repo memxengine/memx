@@ -1,14 +1,15 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useCallback, useEffect, useState } from 'preact/hooks';
 import { useRoute } from 'preact-iso';
 import type { Document } from '@trail/shared';
 import { listSources, ApiError } from '../api';
 import { displayPath } from '../lib/display-path';
+import { UploadDropzone } from '../components/upload-dropzone';
 
 /**
- * Sources panel — lists the original documents (PDFs, plain text, markdown)
- * that were uploaded into a Trail. Sources are read-only here; they're the
- * raw evidence the compiled Neurons cite back to. Uploading and deleting
- * live on other screens (and the API) for now.
+ * Sources panel — the original documents uploaded into a Trail. Supports
+ * drag-and-drop upload for .md / .pdf / .docx (and everything else in the
+ * engine's whitelist). Uploaded docs trigger the ingest pipeline; when it
+ * finishes, Neurons appear in the queue for approval.
  */
 export function SourcesPanel() {
   const route = useRoute();
@@ -16,12 +17,26 @@ export function SourcesPanel() {
   const [docs, setDocs] = useState<Document[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const reload = useCallback(() => {
     if (!kbId) return;
     listSources(kbId)
       .then((list) => setDocs(list.slice().sort((a, b) => a.filename.localeCompare(b.filename))))
       .catch((err: ApiError) => setError(err.message));
   }, [kbId]);
+
+  useEffect(() => {
+    reload();
+  }, [reload]);
+
+  const onUploaded = useCallback(
+    (doc: Document) => {
+      // Prepend optimistically + reload in the background to catch any
+      // server-side transforms (status, generated title, page count).
+      setDocs((prev) => (prev ? [doc, ...prev.filter((d) => d.id !== doc.id)] : [doc]));
+      reload();
+    },
+    [reload],
+  );
 
   return (
     <div class="page-shell">
@@ -34,15 +49,19 @@ export function SourcesPanel() {
         </p>
       </header>
 
+      <section class="mb-8">
+        <UploadDropzone kbId={kbId} onUploaded={onUploaded} />
+      </section>
+
       {error ? (
-        <div class="border border-[color:var(--color-danger)]/30 bg-[color:var(--color-danger)]/5 rounded-md p-4 text-sm">
+        <div class="border border-[color:var(--color-danger)]/30 bg-[color:var(--color-danger)]/5 rounded-md p-4 text-sm mb-4">
           {error}
         </div>
       ) : null}
 
       {docs && docs.length === 0 ? (
         <div class="text-center py-16 text-[color:var(--color-fg-subtle)]">
-          No Sources yet. Upload PDFs, markdown, or plain text via the engine API to seed this Trail.
+          No Sources yet. Drop a file above — PDFs, Word docs, or markdown will compile into Neurons automatically.
         </div>
       ) : null}
 
@@ -58,6 +77,7 @@ export function SourcesPanel() {
                   <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono uppercase tracking-wider bg-[color:var(--color-bg)] border border-[color:var(--color-border)] text-[color:var(--color-fg-muted)]">
                     {doc.fileType || 'doc'}
                   </span>
+                  <StatusBadge status={doc.status} />
                   {doc.pageCount ? (
                     <span class="text-[10px] font-mono text-[color:var(--color-fg-subtle)]">
                       {doc.pageCount} page{doc.pageCount === 1 ? '' : 's'}
@@ -84,6 +104,23 @@ export function SourcesPanel() {
         ))}
       </ul>
     </div>
+  );
+}
+
+function StatusBadge({ status }: { status: Document['status'] }) {
+  if (status === 'ready') return null;
+  const tone =
+    status === 'failed'
+      ? 'bg-[color:var(--color-danger)]/10 text-[color:var(--color-danger)]'
+      : status === 'processing'
+      ? 'bg-[color:var(--color-accent)]/15 text-[color:var(--color-accent)]'
+      : 'bg-[color:var(--color-bg)] border border-[color:var(--color-border)] text-[color:var(--color-fg-muted)]';
+  return (
+    <span
+      class={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono uppercase tracking-wider ${tone}`}
+    >
+      {status}
+    </span>
   );
 }
 
