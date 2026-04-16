@@ -1,6 +1,6 @@
 export function NotFound() {
   return (
-    <div class="max-w-3xl mx-auto py-16 px-6 text-center">
+    <div class="page-shell text-center">
       <h1 class="text-4xl font-semibold tracking-tight mb-2">404</h1>
       <p class="text-[color:var(--color-fg-muted)]">Page not found.</p>
       <a

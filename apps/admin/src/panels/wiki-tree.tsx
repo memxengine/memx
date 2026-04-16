@@ -3,6 +3,7 @@ import { useRoute } from 'preact-iso';
 import type { Document } from '@trail/shared';
 import { listWikiPages, ApiError } from '../api';
 import { KbTabs } from '../components/kb-tabs';
+import { displayPath } from '../lib/display-path';
 
 /**
  * Neurons tree — groups all compiled wiki pages in a KB by their
@@ -34,7 +35,7 @@ export function WikiTreePanel() {
   }, [pages]);
 
   return (
-    <div class="max-w-5xl mx-auto py-8 px-6">
+    <div class="page-shell">
       <header class="mb-6">
         <a
           href="/"
@@ -68,7 +69,7 @@ export function WikiTreePanel() {
         {grouped?.map(([path, docs]) => (
           <section key={path}>
             <h2 class="font-mono text-[11px] uppercase tracking-wider text-[color:var(--color-fg-subtle)] mb-2">
-              {path}
+              {displayPath(path)}
             </h2>
             <ul class="space-y-1">
               {docs.map((doc) => {
@@ -78,7 +79,7 @@ export function WikiTreePanel() {
                   <li key={doc.id}>
                     <a
                       href={`/kb/${kbId}/neurons/${encodeURIComponent(slug)}`}
-                      class="group flex items-baseline justify-between gap-4 px-3 py-2 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg-card)] hover:border-[color:var(--color-border-strong)] transition"
+                      class="group flex items-baseline justify-between gap-4 px-3 py-2 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg-card)]/80 hover:border-[color:var(--color-border-strong)] transition"
                     >
                       <div class="min-w-0">
                         <div class="text-sm font-medium truncate">

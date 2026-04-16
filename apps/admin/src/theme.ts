@@ -1,28 +1,20 @@
 /**
- * Theme store — applies a `data-theme` attribute to <html> and persists the
- * chosen mode to localStorage. Three modes:
- *
- *   light → Bauhaus palette (warm off-white + warm charcoal + amber)
- *   dark  → warm inversion
- *   auto  → follows prefers-color-scheme
- *
- * Consumers import `initTheme()` once at boot, `getTheme()` to read current,
- * and `setTheme(mode)` to change. `onThemeChange(listener)` subscribes to
- * changes for e.g. re-rendering a toggle button.
+ * Theme store — applies `data-theme="light|dark"` to <html> and persists the
+ * mode to localStorage. Two modes only (no "follow system") — the toggle has
+ * no label so adding a third state the user has to infer is bad UX.
  */
 
-export type Theme = 'light' | 'dark' | 'auto';
+export type Theme = 'light' | 'dark';
 
 const STORAGE_KEY = 'trail.admin.theme';
-const DEFAULT: Theme = 'auto';
+const DEFAULT: Theme = 'light';
 
 const listeners = new Set<(theme: Theme) => void>();
 
 function readStored(): Theme {
   if (typeof localStorage === 'undefined') return DEFAULT;
   const raw = localStorage.getItem(STORAGE_KEY);
-  if (raw === 'light' || raw === 'dark' || raw === 'auto') return raw;
-  return DEFAULT;
+  return raw === 'dark' ? 'dark' : 'light';
 }
 
 function apply(theme: Theme): void {
@@ -50,27 +42,12 @@ export function setTheme(theme: Theme): void {
   for (const listener of listeners) listener(theme);
 }
 
-export function cycleTheme(): Theme {
-  // light → dark → auto → light → …
-  const next: Theme = current === 'light' ? 'dark' : current === 'dark' ? 'auto' : 'light';
-  setTheme(next);
-  return next;
+export function toggleTheme(): Theme {
+  setTheme(current === 'light' ? 'dark' : 'light');
+  return current;
 }
 
 export function onThemeChange(listener: (theme: Theme) => void): () => void {
   listeners.add(listener);
   return () => listeners.delete(listener);
-}
-
-/**
- * Returns the effective resolved theme for the current moment — useful for
- * code that needs to branch on light vs dark (e.g. choosing an image variant)
- * without caring about whether the user picked auto.
- */
-export function resolvedTheme(): 'light' | 'dark' {
-  if (current === 'light' || current === 'dark') return current;
-  if (typeof window !== 'undefined' && window.matchMedia?.('(prefers-color-scheme: dark)').matches) {
-    return 'dark';
-  }
-  return 'light';
 }

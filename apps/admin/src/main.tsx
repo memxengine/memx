@@ -5,6 +5,7 @@ import { QueuePanel } from './panels/queue';
 import { KnowledgeBasesPanel } from './panels/kbs';
 import { WikiTreePanel } from './panels/wiki-tree';
 import { WikiReaderPanel } from './panels/wiki-reader';
+import { SourcesPanel } from './panels/sources';
 import { NotFound } from './panels/not-found';
 import { initTheme } from './theme';
 import './index.css';
@@ -21,6 +22,7 @@ function Main() {
           <Route path="/kb/:kbId/queue" component={QueuePanel} />
           <Route path="/kb/:kbId/neurons" component={WikiTreePanel} />
           <Route path="/kb/:kbId/neurons/:slug" component={WikiReaderPanel} />
+          <Route path="/kb/:kbId/sources" component={SourcesPanel} />
           <Route default component={NotFound} />
         </Router>
       </App>

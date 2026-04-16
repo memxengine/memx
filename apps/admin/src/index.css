@@ -1,16 +1,13 @@
 @import "tailwindcss";
 
 /**
- * Trail admin — Bauhaus-aligned palette matching examples/static/trail landing.
+ * Trail admin — Bauhaus palette + layout tokens matching the landing site at
+ * examples/static/trail. Single source of truth for width, palette, and type.
  *
- * Design tokens are selected by `data-theme` on <html> with three modes:
- *   - data-theme="light"  → Bauhaus (warm off-white + warm charcoal + amber)
- *   - data-theme="dark"   → warm-dark inversion (deep espresso + warm ivory + amber)
- *   - data-theme="auto"   → follows prefers-color-scheme
+ *   data-theme="light"  → Bauhaus (warm off-white + charcoal + amber)
+ *   data-theme="dark"   → warm inversion
  *
- * The toggle in apps/admin/src/theme.ts writes to <html data-theme="…">
- * and persists the choice to localStorage. The default fallback (no attribute)
- * is light — matches the landing's out-of-the-box look.
+ * Default (no attribute) = light.
  */
 
 /* ── Light (Bauhaus) — default ──────────────────────────────────── */
@@ -27,6 +24,11 @@ html[data-theme="light"] {
   --color-accent-fg: #1A1715;
   --color-danger: #C2410C;
   --color-success: #15803D;
+  /* Constellation colors — drawn by <canvas id="trail-graph"> */
+  --graph-node: #1a1715;
+  --graph-accent: #e8a87c;
+  --graph-line: 26, 23, 21;      /* rgb triplet, consumed as rgba() in JS */
+  --graph-accent-line: 232, 168, 124;
 }
 
 /* ── Dark (warm inversion) ───────────────────────────────────────── */
@@ -42,23 +44,10 @@ html[data-theme="dark"] {
   --color-accent-fg: #17140F;
   --color-danger: #F97316;
   --color-success: #4ADE80;
-}
-
-/* ── Auto — follow system ────────────────────────────────────────── */
-@media (prefers-color-scheme: dark) {
-  html[data-theme="auto"] {
-    --color-bg: #17140F;
-    --color-bg-card: #1F1B16;
-    --color-fg: #F5F1EA;
-    --color-fg-muted: rgba(245, 241, 234, 0.70);
-    --color-fg-subtle: rgba(245, 241, 234, 0.40);
-    --color-border: rgba(245, 241, 234, 0.10);
-    --color-border-strong: rgba(245, 241, 234, 0.20);
-    --color-accent: #E8A87C;
-    --color-accent-fg: #17140F;
-    --color-danger: #F97316;
-    --color-success: #4ADE80;
-  }
+  --graph-node: #f5f1ea;
+  --graph-accent: #e8a87c;
+  --graph-line: 245, 241, 234;
+  --graph-accent-line: 232, 168, 124;
 }
 
 /* ── Typography + base ───────────────────────────────────────────── */
@@ -68,7 +57,7 @@ html[data-theme="dark"] {
   --font-serif: "Fraunces", "Source Serif 4", Georgia, serif;
 }
 
-html, body {
+html {
   background: var(--color-bg);
   color: var(--color-fg);
   font-family: var(--font-sans);
@@ -78,7 +67,10 @@ html, body {
   transition: background-color 0.15s ease, color 0.15s ease;
 }
 
+/* Body stays transparent so the fixed canvas behind it shows through. */
 body {
+  background: transparent;
+  color: var(--color-fg);
   min-height: 100vh;
 }
 
@@ -91,7 +83,35 @@ body {
   color: var(--color-fg);
 }
 
-/* ── Prose renderer for expanded candidate content ──────────────── */
+/* ── Constellation background (see app.tsx) ──────────────────────────
+ * Fixed, covers viewport, sits behind all content. Particles are drawn in JS.
+ * Animation is viewport-bound, so as you scroll the stars appear infinite.
+ */
+#trail-graph {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.4;
+  z-index: -1;
+}
+
+/* ── Page shell — one width for every panel ──────────────────────────
+ * Matches .features-inner on the landing (max-width: 72rem). ALL panels
+ * must use this class as their outermost wrapper so navigating between
+ * Queue, Neurons, Sources, etc. never jumps horizontally.
+ */
+.page-shell {
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: 2rem 1.5rem 4rem;
+  position: relative;
+  z-index: 1;
+}
+@media (min-width: 768px) {
+  .page-shell { padding: 2.5rem 2rem 5rem; }
+}
+
+/* ── Prose renderer for rendered markdown (Neurons + candidate view) */
 .prose-body {
   color: var(--color-fg);
 }
@@ -99,14 +119,28 @@ body {
   color: var(--color-fg);
   font-weight: 600;
   letter-spacing: -0.01em;
-  margin: 1.25rem 0 0.5rem;
+  margin: 1.5rem 0 0.5rem;
 }
-.prose-body h1 { font-size: 1.375rem; }
-.prose-body h2 { font-size: 1.175rem; }
-.prose-body h3 { font-size: 1rem; }
+.prose-body h1 { font-size: 1.5rem; }
+.prose-body h2 { font-size: 1.25rem; margin-top: 2rem; }
+.prose-body h3 { font-size: 1.05rem; }
 .prose-body p { margin: 0.75rem 0; }
-.prose-body ul, .prose-body ol { padding-left: 1.5rem; margin: 0.75rem 0; }
+/* Tailwind Preflight strips list-style — restore it explicitly. */
+.prose-body ul {
+  list-style: disc;
+  padding-left: 1.5rem;
+  margin: 0.75rem 0;
+}
+.prose-body ol {
+  list-style: decimal;
+  padding-left: 1.5rem;
+  margin: 0.75rem 0;
+}
 .prose-body li { margin: 0.25rem 0; }
+.prose-body li::marker { color: var(--color-fg-subtle); }
+.prose-body ul ul, .prose-body ol ol, .prose-body ul ol, .prose-body ol ul {
+  margin: 0.25rem 0;
+}
 .prose-body code {
   font-family: var(--font-mono);
   font-size: 0.875em;
@@ -149,9 +183,7 @@ body {
 .prose-body strong { font-weight: 600; }
 
 /* ── Delayed loading state ──────────────────────────────────────────
- * Fast loads (<400ms) never show it at all. Slow loads fade in smoothly
- * so the user knows something is happening. Avoids the "flash of loading
- * text" anti-pattern on local dev against a warm libSQL instance.
+ * Fast loads (<400ms) never show it. Slow loads fade in.
  */
 .loading-delayed {
   opacity: 0;

@@ -1,8 +1,8 @@
 import type { ComponentChildren } from 'preact';
-import { useEffect, useState } from 'preact/hooks';
-import { useLocation } from 'preact-iso';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { api } from './api';
-import { cycleTheme, getTheme, onThemeChange, type Theme } from './theme';
+import { getTheme, onThemeChange, toggleTheme, type Theme } from './theme';
+import { mountConstellation } from './lib/constellation';
 
 interface Me {
   id: string;
@@ -17,17 +17,21 @@ interface Me {
 export function App({ children }: { children: ComponentChildren }) {
   const [me, setMe] = useState<Me | null>(null);
   const [theme, setTheme] = useState<Theme>(getTheme());
-  const location = useLocation();
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   useEffect(() => onThemeChange(setTheme), []);
+
+  useEffect(() => {
+    if (!canvasRef.current) return;
+    return mountConstellation(canvasRef.current);
+  }, []);
 
   useEffect(() => {
     api<Me>('/api/v1/me')
       .then((data) => setMe(data))
       .catch(() => {
-        // Not authed. In dev we bypass Google OAuth and hit the engine's
-        // dev-login shortcut, which sets a pre-seeded session cookie and
-        // redirects back here. In prod we go through OAuth.
+        // Not authed. In dev we hit the engine's dev-login shortcut; in prod
+        // we go through Google OAuth.
         const target = import.meta.env.DEV
           ? '/api/auth/dev-login?session=dev'
           : `/api/auth/google?redirect=${encodeURIComponent(window.location.href)}`;
@@ -35,57 +39,68 @@ export function App({ children }: { children: ComponentChildren }) {
       });
   }, []);
 
-  // Render the chrome immediately (no "Loading…" flash for the ~50-200ms
-  // auth round-trip). Main content stays hidden until `me` resolves — a
-  // brief blank area is less jarring than a flash of placeholder text.
   return (
     <div class="min-h-screen flex flex-col">
-      <header class="border-b border-[color:var(--color-border)] px-6 py-3 flex items-center gap-4 bg-[color:var(--color-bg-card)]">
-        <a href="/" class="flex items-center gap-2 font-mono text-lg font-semibold tracking-tight">
-          <span class="inline-block w-6 h-6 rounded-full border-2 border-[color:var(--color-accent)] relative">
-            <span class="absolute inset-[3px] rounded-full bg-[color:var(--color-accent)]"></span>
-          </span>
-          trail
-        </a>
-        <span class="text-[color:var(--color-fg-subtle)] text-sm">admin</span>
-        <div class="ml-auto flex items-center gap-3 text-sm">
-          {me ? (
-            <>
-              <span class="text-[color:var(--color-fg-muted)]">{me.tenantName}</span>
-              <span class="text-[color:var(--color-fg-subtle)]">·</span>
-              <span>{me.displayName}</span>
-            </>
-          ) : null}
-          <ThemeToggle theme={theme} />
+      <canvas ref={canvasRef} id="trail-graph" aria-hidden="true" />
+      <header class="relative z-10 border-b border-[color:var(--color-border)] bg-[color:var(--color-bg)]/80 backdrop-blur-md">
+        <div class="page-shell !py-3 !pb-3 flex items-center gap-4">
+          <a href="/" class="flex items-center gap-2.5">
+            <TrailLogo />
+            <span class="font-mono text-lg font-semibold tracking-tight text-[color:var(--color-fg)]">
+              trail
+            </span>
+            <span class="text-[color:var(--color-fg-subtle)] text-sm ml-1">admin</span>
+          </a>
+          <div class="ml-auto flex items-center gap-3 text-sm">
+            {me ? (
+              <span class="text-[color:var(--color-fg-muted)]">{displayName(me)}</span>
+            ) : null}
+            <ThemeToggle theme={theme} />
+          </div>
         </div>
       </header>
-      <main class="flex-1">{me ? children : null}</main>
+      <main class="relative z-10 flex-1">{me ? children : null}</main>
     </div>
   );
 }
 
-/**
- * Theme cycle: light → dark → auto → light.
- *
- * Icon reflects the *current* mode:
- *   light → sun
- *   dark  → moon
- *   auto  → half-moon (sun+moon overlapped)
- *
- * Tooltip names the next state so clicking feels predictable.
- */
+/** Pick the one most useful name — never both displayName AND tenantName. */
+function displayName(me: Me): string {
+  if (me.displayName && me.displayName.trim().length > 0) return me.displayName;
+  const local = me.email.split('@')[0];
+  return local ?? me.email;
+}
+
+/** Three concentric circles — same mark as the landing's memx-logo.svg. */
+function TrailLogo() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="28" height="28" aria-hidden="true">
+      <circle cx="16" cy="16" r="14" fill="none" stroke="currentColor" stroke-width="2" />
+      <circle
+        cx="16"
+        cy="16"
+        r="9"
+        fill="none"
+        stroke="var(--color-accent)"
+        stroke-width="0.9"
+        opacity="0.55"
+      />
+      <circle cx="16" cy="16" r="3.5" fill="var(--color-accent)" />
+    </svg>
+  );
+}
+
 function ThemeToggle({ theme }: { theme: Theme }) {
-  const nextLabel =
-    theme === 'light' ? 'Switch to dark' : theme === 'dark' ? 'Follow system' : 'Switch to light';
+  const label = theme === 'light' ? 'Switch to dark' : 'Switch to light';
   return (
     <button
       type="button"
-      onClick={cycleTheme}
-      title={nextLabel}
-      aria-label={nextLabel}
-      class="inline-flex items-center justify-center w-8 h-8 rounded-md border border-[color:var(--color-border)] hover:border-[color:var(--color-border-strong)] hover:bg-[color:var(--color-bg)] transition text-[color:var(--color-fg-muted)] hover:text-[color:var(--color-fg)]"
+      onClick={toggleTheme}
+      title={label}
+      aria-label={label}
+      class="inline-flex items-center justify-center w-8 h-8 rounded-md border border-[color:var(--color-border)] hover:border-[color:var(--color-border-strong)] hover:bg-[color:var(--color-bg-card)] active:scale-95 transition text-[color:var(--color-fg-muted)] hover:text-[color:var(--color-fg)]"
     >
-      {theme === 'light' ? <SunIcon /> : theme === 'dark' ? <MoonIcon /> : <AutoIcon />}
+      {theme === 'light' ? <SunIcon /> : <MoonIcon />}
     </button>
   );
 }
@@ -107,12 +122,3 @@ function MoonIcon() {
   );
 }
 
-function AutoIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-      <circle cx="12" cy="12" r="9" />
-      <path d="M12 3v18" />
-      <path d="M12 3a9 9 0 0 1 0 18" fill="currentColor" stroke="none" />
-    </svg>
-  );
-}

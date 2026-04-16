@@ -5,14 +5,12 @@ import type { Document } from '@trail/shared';
 import { listWikiPages, getDocumentContent, ApiError } from '../api';
 import { KbTabs } from '../components/kb-tabs';
 import { rewriteWikiLinks } from '../lib/wiki-links';
+import { displayPath } from '../lib/display-path';
 
 /**
  * Single-Neuron reader. Finds the page by slug (filename without .md)
  * within the KB's wiki documents, fetches its content, and renders it
  * with `[[wiki-links]]` rewritten into navigable anchors.
- *
- * Deliberately simple: no diff view, no edit, no history yet. Those
- * are separate F-features (F20 diff UI, F18.3 inline edit).
  */
 export function WikiReaderPanel() {
   const route = useRoute();
@@ -55,11 +53,11 @@ export function WikiReaderPanel() {
     return marked.parse(preprocessed, { async: false }) as string;
   }, [content, kbId]);
 
-  const d = doc as (Document & { filename: string; title: string | null; version: number }) | null;
+  const d = doc as (Document & { filename: string; title: string | null; version: number; path?: string }) | null;
 
   return (
-    <div class="max-w-3xl mx-auto py-8 px-6">
-      <header class="mb-4">
+    <div class="page-shell">
+      <header class="mb-6">
         <a
           href={`/kb/${kbId}/neurons`}
           class="text-sm text-[color:var(--color-fg-subtle)] hover:text-[color:var(--color-fg)] transition"
@@ -95,7 +93,7 @@ export function WikiReaderPanel() {
         <article>
           <div class="mb-6">
             <div class="font-mono text-[11px] uppercase tracking-wider text-[color:var(--color-fg-subtle)] mb-1">
-              {(d as { path: string }).path}
+              {displayPath(d.path ?? '')}
             </div>
             <h1 class="text-3xl font-semibold tracking-tight mb-2">
               {d.title ?? d.filename}

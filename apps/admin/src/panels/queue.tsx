@@ -10,6 +10,8 @@ import {
   type QueueListResponse,
 } from '../api';
 import { KbTabs } from '../components/kb-tabs';
+import { rewriteWikiLinks } from '../lib/wiki-links';
+import { displayPath } from '../lib/display-path';
 
 type FilterStatus = QueueCandidateStatus | 'all';
 
@@ -110,7 +112,7 @@ export function QueuePanel() {
   }
 
   return (
-    <div class="max-w-5xl mx-auto py-8 px-6">
+    <div class="page-shell">
       <header class="mb-6">
         <a
           href="/"
@@ -164,6 +166,7 @@ export function QueuePanel() {
           <CandidateRow
             key={c.id}
             candidate={c}
+            kbId={kbId}
             isExpanded={expanded.has(c.id)}
             onToggle={() => toggleExpanded(c.id)}
             busy={actingOn === c.id}
@@ -191,6 +194,7 @@ export function QueuePanel() {
 
 interface RowProps {
   candidate: QueueCandidate;
+  kbId: string;
   isExpanded: boolean;
   onToggle: () => void;
   busy: boolean;
@@ -198,7 +202,7 @@ interface RowProps {
   onReject: (c: QueueCandidate) => void;
 }
 
-function CandidateRow({ candidate: c, isExpanded, onToggle, busy, onApprove, onReject }: RowProps) {
+function CandidateRow({ candidate: c, kbId, isExpanded, onToggle, busy, onApprove, onReject }: RowProps) {
   const meta = parseMetadata(c.metadata);
   const preview =
     c.content.length > 200 ? c.content.slice(0, 200).replace(/\s+/g, ' ').trim() + '…' : c.content;
@@ -259,7 +263,7 @@ function CandidateRow({ candidate: c, isExpanded, onToggle, busy, onApprove, onR
         {isExpanded ? '▲ Hide content' : '▼ Show full content'}
       </button>
 
-      {isExpanded ? <ExpandedContent candidate={c} meta={meta} /> : null}
+      {isExpanded ? <ExpandedContent candidate={c} meta={meta} kbId={kbId} /> : null}
     </li>
   );
 }
@@ -267,14 +271,18 @@ function CandidateRow({ candidate: c, isExpanded, onToggle, busy, onApprove, onR
 function ExpandedContent({
   candidate: c,
   meta,
+  kbId,
 }: {
   candidate: QueueCandidate;
   meta: CandidateOpMeta | null;
+  kbId: string;
 }) {
   // Render markdown content. Trust the candidate content — it comes from
   // either an authenticated user (chat-answer) or our own pipelines
   // (ingest-*, reader-feedback will need sanitisation once F31 lands).
-  const html = marked.parse(c.content, { async: false }) as string;
+  // Rewrite `[[wiki-link]]` before marked.parse so cross-Neuron references
+  // become real anchors here too, not just in the reader.
+  const html = marked.parse(rewriteWikiLinks(c.content, kbId), { async: false }) as string;
 
   return (
     <div class="border-t border-[color:var(--color-border)] px-4 py-4 bg-[color:var(--color-bg)]">
@@ -295,7 +303,7 @@ function ExpandedContent({
           {meta.path ? (
             <>
               <dt class="text-[color:var(--color-fg-subtle)]">path</dt>
-              <dd>{meta.path}</dd>
+              <dd>{displayPath(meta.path)}</dd>
             </>
           ) : null}
           {meta.targetDocumentId ? (
