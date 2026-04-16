@@ -5,6 +5,7 @@ import { api } from './api';
 import { getTheme, onThemeChange, toggleTheme, type Theme } from './theme';
 import { mountConstellation } from './lib/constellation';
 import { TrailNav } from './components/trail-nav';
+import { useKb } from './lib/kb-cache';
 
 interface Me {
   id: string;
@@ -22,8 +23,22 @@ export function App({ children }: { children: ComponentChildren }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const { path } = useLocation();
   const kbId = path.match(/^\/kb\/([^/]+)/)?.[1];
+  const kb = useKb(kbId ?? '');
 
   useEffect(() => onThemeChange(setTheme), []);
+
+  // Reflect the current Trail (or the admin home) in the browser tab. Makes
+  // "which Trail am I in?" visible even when the tab is backgrounded, and
+  // lets the tab bar carry context when several KBs are open across windows.
+  // Gated on kbId too — if the URL has no /kb/<id> we show the admin root
+  // title, never a stale Trail name from a previous navigation.
+  useEffect(() => {
+    if (kbId && kb) {
+      document.title = `trail: ${kb.name}`;
+    } else {
+      document.title = 'trail: Admin';
+    }
+  }, [kbId, kb]);
 
   useEffect(() => {
     if (!canvasRef.current) return;

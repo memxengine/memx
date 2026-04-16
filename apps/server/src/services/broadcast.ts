@@ -1,8 +1,15 @@
-export interface BroadcastEvent {
-  type: string;
-  tenantId?: string;
-  [key: string]: unknown;
-}
+import type { StreamFrame } from '@trail/shared';
+
+/**
+ * In-process pub/sub for stream events. Listeners are cheap — the SSE
+ * endpoint registers one per open connection, hands each message back
+ * through a tenant-scoped filter.
+ *
+ * `StreamFrame` keeps the event catalog typed (see @trail/shared events.ts).
+ * Adding a new domain event = extend the union there, emit it from the
+ * producer. The type-check propagates to every subscriber.
+ */
+export type BroadcastEvent = StreamFrame;
 
 type Listener = (event: BroadcastEvent) => void;
 

@@ -15,6 +15,7 @@ import {
   type Actor,
 } from '@trail/core';
 import { INGEST_USER_ID } from '../bootstrap/ingest-user.js';
+import { broadcaster } from '../services/broadcast.js';
 
 export const queueRoutes = new Hono();
 
@@ -45,6 +46,28 @@ queueRoutes.post('/queue/candidates', async (c) => {
   const tenant = getTenant(c);
   try {
     const result = await createCandidate(getTrail(c), tenant.id, parsed.data, userActor(c));
+    broadcaster.emit({
+      type: 'candidate_created',
+      tenantId: tenant.id,
+      kbId: result.candidate.knowledgeBaseId,
+      candidateId: result.candidate.id,
+      kind: result.candidate.kind,
+      title: result.candidate.title,
+      status: result.approval ? 'approved' : 'pending',
+      autoApproved: !!result.approval,
+      confidence: result.candidate.confidence,
+      createdBy: result.candidate.createdBy,
+    });
+    if (result.approval) {
+      broadcaster.emit({
+        type: 'candidate_approved',
+        tenantId: tenant.id,
+        kbId: result.candidate.knowledgeBaseId,
+        candidateId: result.candidate.id,
+        documentId: result.approval.documentId,
+        autoApproved: true,
+      });
+    }
     return c.json(result, 201);
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Unknown error';
@@ -85,6 +108,15 @@ queueRoutes.post('/queue/:id/approve', async (c) => {
       userActor(c),
       parsed.data,
     );
+    const candidate = await getCandidate(getTrail(c), tenant.id, c.req.param('id'));
+    broadcaster.emit({
+      type: 'candidate_approved',
+      tenantId: tenant.id,
+      kbId: candidate?.knowledgeBaseId ?? '',
+      candidateId: result.candidateId,
+      documentId: result.documentId,
+      autoApproved: result.autoApproved,
+    });
     return c.json(result);
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Unknown error';
@@ -108,6 +140,14 @@ queueRoutes.post('/queue/:id/reject', async (c) => {
       userActor(c),
       parsed.data,
     );
+    const candidate = await getCandidate(getTrail(c), tenant.id, c.req.param('id'));
+    broadcaster.emit({
+      type: 'candidate_rejected',
+      tenantId: tenant.id,
+      kbId: candidate?.knowledgeBaseId ?? '',
+      candidateId: result.candidateId,
+      reason: result.reason,
+    });
     return c.json(result);
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Unknown error';

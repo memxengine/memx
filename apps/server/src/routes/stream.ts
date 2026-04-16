@@ -16,8 +16,10 @@ streamRoutes.get('/stream', (c) => {
     let resolveWait: (() => void) | null = null;
 
     const push = (event: BroadcastEvent): void => {
-      // Only deliver events scoped to this tenant (or global events with no tenantId).
-      if (event.tenantId && event.tenantId !== tenant.id) return;
+      // Only deliver events scoped to this tenant. Control frames (ping)
+      // have no tenantId — deliver globally. Typed narrowing via `in` keeps
+      // the StreamFrame discriminated union honest.
+      if ('tenantId' in event && event.tenantId !== tenant.id) return;
       queue.push(event);
       resolveWait?.();
     };

@@ -25,10 +25,16 @@ export function ensureKbs(): Promise<KnowledgeBase[]> {
 
 export function useKb(kbId: string): KnowledgeBase | null {
   const [kb, setKb] = useState<KnowledgeBase | null>(
-    cache?.find((k) => k.id === kbId) ?? null,
+    kbId ? cache?.find((k) => k.id === kbId) ?? null : null,
   );
   useEffect(() => {
-    if (!kbId) return;
+    // Clear state when navigating away from any KB — otherwise the last
+    // viewed Trail name would persist on /, and the App-level document
+    // title effect would show "trail: <previous kb>" on the All Trails page.
+    if (!kbId) {
+      setKb(null);
+      return;
+    }
     let cancelled = false;
     ensureKbs().then((list) => {
       if (cancelled) return;
