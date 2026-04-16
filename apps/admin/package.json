@@ -1,0 +1,25 @@
+{
+  "name": "@trail/admin",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@trail/shared": "workspace:*",
+    "preact": "^10.23.0",
+    "preact-iso": "^2.9.0"
+  },
+  "devDependencies": {
+    "@preact/preset-vite": "^2.9.0",
+    "@tailwindcss/vite": "^4.1.15",
+    "@types/node": "^22.0.0",
+    "tailwindcss": "^4.1.15",
+    "typescript": "^5.5.0",
+    "vite": "^5.4.0"
+  }
+}

@@ -1,0 +1,230 @@
+import { useCallback, useEffect, useState } from 'preact/hooks';
+import { useRoute } from 'preact-iso';
+import type { QueueCandidate, QueueCandidateStatus } from '@trail/shared';
+import {
+  listQueue,
+  approveCandidate,
+  rejectCandidate,
+  ApiError,
+  type QueueListResponse,
+} from '../api';
+
+type FilterStatus = QueueCandidateStatus | 'all';
+
+const STATUS_TABS: Array<{ value: FilterStatus; label: string }> = [
+  { value: 'pending', label: 'Pending' },
+  { value: 'approved', label: 'Approved' },
+  { value: 'rejected', label: 'Rejected' },
+  { value: 'all', label: 'All' },
+];
+
+export function QueuePanel() {
+  const route = useRoute();
+  const kbId = route.params.kbId;
+  const [status, setStatus] = useState<FilterStatus>('pending');
+  const [data, setData] = useState<QueueListResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [actingOn, setActingOn] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
+
+  const reload = useCallback(() => {
+    setError(null);
+    listQueue({
+      knowledgeBaseId: kbId,
+      status: status === 'all' ? undefined : status,
+      limit: 100,
+    })
+      .then(setData)
+      .catch((err: ApiError) => setError(err.message));
+  }, [kbId, status]);
+
+  useEffect(reload, [reload]);
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 3500);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  async function onApprove(c: QueueCandidate) {
+    setActingOn(c.id);
+    try {
+      const result = await approveCandidate(c.id);
+      setToast({
+        kind: 'success',
+        text: `Approved — wiki page ${result.documentId.slice(0, 12)}… created.`,
+      });
+      reload();
+    } catch (err) {
+      setToast({ kind: 'error', text: err instanceof Error ? err.message : 'Approval failed' });
+    } finally {
+      setActingOn(null);
+    }
+  }
+
+  async function onReject(c: QueueCandidate) {
+    const reason = prompt('Reason (optional):') ?? undefined;
+    setActingOn(c.id);
+    try {
+      await rejectCandidate(c.id, reason ? { reason } : {});
+      setToast({ kind: 'success', text: 'Rejected.' });
+      reload();
+    } catch (err) {
+      setToast({ kind: 'error', text: err instanceof Error ? err.message : 'Reject failed' });
+    } finally {
+      setActingOn(null);
+    }
+  }
+
+  return (
+    <div class="max-w-5xl mx-auto py-8 px-6">
+      <header class="mb-6">
+        <a
+          href="/"
+          class="text-sm text-[color:var(--color-fg-subtle)] hover:text-[color:var(--color-fg)] transition"
+        >
+          ← All Trails
+        </a>
+        <h1 class="text-2xl font-semibold tracking-tight mt-2 mb-1">Curator queue</h1>
+        <p class="text-[color:var(--color-fg-muted)] text-sm">
+          {data ? `${data.count} ${STATUS_TABS.find((t) => t.value === status)?.label.toLowerCase()} candidate${data.count === 1 ? '' : 's'}` : 'Loading…'}
+        </p>
+      </header>
+
+      <nav class="flex gap-1 mb-5 border-b border-[color:var(--color-border)]">
+        {STATUS_TABS.map((tab) => (
+          <button
+            key={tab.value}
+            onClick={() => setStatus(tab.value)}
+            class={
+              'px-3 py-2 text-sm font-medium transition border-b-2 -mb-px ' +
+              (status === tab.value
+                ? 'border-[color:var(--color-accent)] text-[color:var(--color-fg)]'
+                : 'border-transparent text-[color:var(--color-fg-muted)] hover:text-[color:var(--color-fg)]')
+            }
+          >
+            {tab.label}
+          </button>
+        ))}
+      </nav>
+
+      {error ? (
+        <div class="border border-[color:var(--color-danger)]/30 bg-[color:var(--color-danger)]/5 rounded-md p-4 text-sm">
+          {error}
+        </div>
+      ) : null}
+
+      {data && data.items.length === 0 ? (
+        <div class="text-center py-16 text-[color:var(--color-fg-subtle)]">
+          No {status === 'all' ? '' : status} candidates.
+        </div>
+      ) : null}
+
+      <ul class="space-y-2">
+        {data?.items.map((c) => (
+          <CandidateRow
+            key={c.id}
+            candidate={c}
+            busy={actingOn === c.id}
+            onApprove={onApprove}
+            onReject={onReject}
+          />
+        ))}
+      </ul>
+
+      {toast ? (
+        <div
+          class={
+            'fixed bottom-6 right-6 px-4 py-3 rounded-md border text-sm shadow-lg ' +
+            (toast.kind === 'success'
+              ? 'border-[color:var(--color-success)]/30 bg-[color:var(--color-success)]/10 text-[color:var(--color-fg)]'
+              : 'border-[color:var(--color-danger)]/30 bg-[color:var(--color-danger)]/10 text-[color:var(--color-fg)]')
+          }
+        >
+          {toast.text}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+interface RowProps {
+  candidate: QueueCandidate;
+  busy: boolean;
+  onApprove: (c: QueueCandidate) => void;
+  onReject: (c: QueueCandidate) => void;
+}
+
+function CandidateRow({ candidate: c, busy, onApprove, onReject }: RowProps) {
+  const preview =
+    c.content.length > 200 ? c.content.slice(0, 200).replace(/\s+/g, ' ').trim() + '…' : c.content;
+  return (
+    <li class="border border-[color:var(--color-border)] rounded-md bg-[color:var(--color-bg-card)] p-4 hover:border-[color:var(--color-border-strong)] transition">
+      <div class="flex items-start gap-4">
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2 mb-1">
+            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono uppercase tracking-wider bg-[color:var(--color-bg)] border border-[color:var(--color-border)] text-[color:var(--color-fg-muted)]">
+              {c.kind}
+            </span>
+            <StatusBadge status={c.status} auto={!!c.autoApprovedAt} />
+            {c.confidence !== null ? (
+              <span class="text-[10px] font-mono text-[color:var(--color-fg-subtle)]">
+                conf {c.confidence.toFixed(2)}
+              </span>
+            ) : null}
+          </div>
+          <div class="font-medium">{c.title}</div>
+          <p class="text-sm text-[color:var(--color-fg-muted)] mt-1 line-clamp-3">{preview}</p>
+          <div class="mt-2 text-[11px] font-mono text-[color:var(--color-fg-subtle)]">
+            {formatTs(c.createdAt)}
+            {c.createdBy ? ` · by ${c.createdBy}` : ' · by pipeline'}
+          </div>
+        </div>
+        {c.status === 'pending' ? (
+          <div class="flex flex-col gap-2 shrink-0">
+            <button
+              disabled={busy}
+              onClick={() => onApprove(c)}
+              class="px-3 py-1.5 text-sm rounded-md bg-[color:var(--color-fg)] text-[color:var(--color-bg)] font-medium hover:bg-[color:var(--color-fg)]/90 disabled:opacity-50 transition"
+            >
+              {busy ? '…' : 'Approve'}
+            </button>
+            <button
+              disabled={busy}
+              onClick={() => onReject(c)}
+              class="px-3 py-1.5 text-sm rounded-md border border-[color:var(--color-border-strong)] hover:bg-[color:var(--color-bg)] disabled:opacity-50 transition"
+            >
+              Reject
+            </button>
+          </div>
+        ) : null}
+      </div>
+    </li>
+  );
+}
+
+function StatusBadge({ status, auto }: { status: QueueCandidateStatus; auto: boolean }) {
+  const label =
+    status === 'approved' && auto ? 'auto-approved' : status;
+  const tone =
+    status === 'approved'
+      ? 'bg-[color:var(--color-success)]/10 text-[color:var(--color-success)]'
+      : status === 'rejected'
+      ? 'bg-[color:var(--color-danger)]/10 text-[color:var(--color-danger)]'
+      : 'bg-[color:var(--color-accent)]/15 text-[color:var(--color-accent)]';
+  return (
+    <span
+      class={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono uppercase tracking-wider ${tone}`}
+    >
+      {label}
+    </span>
+  );
+}
+
+function formatTs(iso: string): string {
+  try {
+    return new Date(iso.replace(' ', 'T') + 'Z').toLocaleString();
+  } catch {
+    return iso;
+  }
+}

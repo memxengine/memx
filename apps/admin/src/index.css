@@ -1,0 +1,47 @@
+@import "tailwindcss";
+
+/* shadcn-style design tokens — new-york / neutral */
+@theme {
+  --color-bg: #fafafa;
+  --color-bg-card: #ffffff;
+  --color-fg: #0a0a0a;
+  --color-fg-muted: #525252;
+  --color-fg-subtle: #737373;
+  --color-border: #e5e5e5;
+  --color-border-strong: #d4d4d4;
+  --color-accent: #e8a87c;
+  --color-accent-fg: #0a0a0a;
+  --color-danger: #dc2626;
+  --color-success: #16a34a;
+
+  --font-sans: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", "Fira Code", monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  @theme {
+    --color-bg: #0a0a0a;
+    --color-bg-card: #171717;
+    --color-fg: #fafafa;
+    --color-fg-muted: #a3a3a3;
+    --color-fg-subtle: #737373;
+    --color-border: #262626;
+    --color-border-strong: #404040;
+  }
+}
+
+html, body {
+  background: var(--color-bg);
+  color: var(--color-fg);
+  font-family: var(--font-sans);
+  font-feature-settings: "cv11", "ss01";
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  min-height: 100vh;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
