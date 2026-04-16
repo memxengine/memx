@@ -1,0 +1,218 @@
+#!/usr/bin/env bash
+#
+# trail — global CLI for starting the trail engine + admin locally.
+#
+# Commands:
+#   trail start      launch engine (58021) and admin (58031) in the background
+#   trail stop       kill both
+#   trail restart    stop + start
+#   trail status     show running state
+#   trail logs       tail both logs; -f to follow
+#   trail url        print the admin URL
+#
+# State lives under ~/.trail/ — PID files, log files, and a generated
+# TRAIL_INGEST_TOKEN if none exists in <repo>/buddy/.env or <repo>/.env.
+# All paths are absolute so `trail` works from any cwd.
+
+set -euo pipefail
+
+# ── Repo path ───────────────────────────────────────────────────────
+# Resolve the real location of this script even when invoked via a
+# symlink in /usr/local/bin or ~/.local/bin. `readlink -f` is missing
+# on older macOS so we do the walk manually.
+resolve_script() {
+  local src="$1"
+  while [[ -L "$src" ]]; do
+    local dir
+    dir="$(cd "$(dirname "$src")" && pwd)"
+    src="$(readlink "$src")"
+    [[ "$src" != /* ]] && src="$dir/$src"
+  done
+  cd "$(dirname "$src")" && pwd
+}
+SCRIPT_DIR="$(resolve_script "${BASH_SOURCE[0]}")"
+REPO="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# ── Defaults ────────────────────────────────────────────────────────
+ENGINE_PORT="${TRAIL_PORT:-58021}"
+ADMIN_PORT="${TRAIL_ADMIN_PORT:-58031}"
+STATE_DIR="$HOME/.trail"
+ENGINE_PID_FILE="$STATE_DIR/engine.pid"
+ADMIN_PID_FILE="$STATE_DIR/admin.pid"
+ENGINE_LOG="$STATE_DIR/engine.log"
+ADMIN_LOG="$STATE_DIR/admin.log"
+ENV_FILE="$STATE_DIR/.env"
+
+mkdir -p "$STATE_DIR"
+
+# ── Helpers ─────────────────────────────────────────────────────────
+is_running() {
+  local pidfile="$1"
+  [[ -f "$pidfile" ]] || return 1
+  local pid
+  pid="$(cat "$pidfile" 2>/dev/null || echo "")"
+  [[ -n "$pid" ]] || return 1
+  kill -0 "$pid" 2>/dev/null
+}
+
+# Locate or mint a TRAIL_INGEST_TOKEN. Preference order:
+#   1. TRAIL_INGEST_TOKEN already exported
+#   2. buddy/.env (the adversarial reviewer writes the same token there)
+#   3. ~/.trail/.env (persisted across restarts)
+#   4. generate a fresh 64-hex token and persist to ~/.trail/.env
+resolve_token() {
+  if [[ -n "${TRAIL_INGEST_TOKEN:-}" ]]; then
+    echo "$TRAIL_INGEST_TOKEN"
+    return
+  fi
+  local buddy_env="$HOME/Apps/webhouse/buddy/.env"
+  if [[ -f "$buddy_env" ]] && grep -q '^TRAIL_INGEST_TOKEN=' "$buddy_env"; then
+    grep '^TRAIL_INGEST_TOKEN=' "$buddy_env" | head -n1 | cut -d= -f2-
+    return
+  fi
+  if [[ -f "$ENV_FILE" ]] && grep -q '^TRAIL_INGEST_TOKEN=' "$ENV_FILE"; then
+    grep '^TRAIL_INGEST_TOKEN=' "$ENV_FILE" | head -n1 | cut -d= -f2-
+    return
+  fi
+  local token
+  token="$(openssl rand -hex 32)"
+  echo "TRAIL_INGEST_TOKEN=$token" >> "$ENV_FILE"
+  echo "$token"
+}
+
+port_free() {
+  ! lsof -iTCP:"$1" -sTCP:LISTEN -nP >/dev/null 2>&1
+}
+
+# ── Commands ────────────────────────────────────────────────────────
+cmd_start() {
+  if is_running "$ENGINE_PID_FILE" && is_running "$ADMIN_PID_FILE"; then
+    echo "trail: already running (engine :$ENGINE_PORT, admin :$ADMIN_PORT)"
+    exit 0
+  fi
+
+  if ! port_free "$ENGINE_PORT"; then
+    echo "trail: port $ENGINE_PORT is busy — set TRAIL_PORT or free it" >&2
+    exit 1
+  fi
+  if ! port_free "$ADMIN_PORT"; then
+    echo "trail: port $ADMIN_PORT is busy — set TRAIL_ADMIN_PORT or free it" >&2
+    exit 1
+  fi
+
+  local token
+  token="$(resolve_token)"
+
+  echo "trail: starting engine on :$ENGINE_PORT"
+  (
+    cd "$REPO" && \
+    TRAIL_DEV_AUTH=1 \
+    TRAIL_DATA_DIR="$REPO/data" \
+    TRAIL_INGEST_TOKEN="$token" \
+    TRAIL_INGEST_TENANT_SLUG="${TRAIL_INGEST_TENANT_SLUG:-christian}" \
+    PORT="$ENGINE_PORT" \
+    APP_URL="http://127.0.0.1:$ADMIN_PORT" \
+    nohup bun run --cwd apps/server src/index.ts >"$ENGINE_LOG" 2>&1 &
+    echo $! > "$ENGINE_PID_FILE"
+  )
+
+  echo "trail: starting admin on :$ADMIN_PORT"
+  (
+    cd "$REPO" && \
+    API_URL="http://127.0.0.1:$ENGINE_PORT" \
+    nohup bun run --cwd apps/admin vite --port "$ADMIN_PORT" --host 127.0.0.1 --strictPort >"$ADMIN_LOG" 2>&1 &
+    echo $! > "$ADMIN_PID_FILE"
+  )
+
+  # Give both a moment to either bind or fail fast.
+  sleep 2
+  if is_running "$ENGINE_PID_FILE" && is_running "$ADMIN_PID_FILE"; then
+    echo
+    echo "  admin → http://127.0.0.1:$ADMIN_PORT"
+    echo "  engine → http://127.0.0.1:$ENGINE_PORT"
+    echo "  logs   → trail logs -f"
+  else
+    echo "trail: one of the processes died during startup — see 'trail logs'" >&2
+    exit 1
+  fi
+}
+
+cmd_stop() {
+  local stopped=0
+  for pidfile in "$ENGINE_PID_FILE" "$ADMIN_PID_FILE"; do
+    if is_running "$pidfile"; then
+      local pid
+      pid="$(cat "$pidfile")"
+      kill "$pid" 2>/dev/null || true
+      stopped=1
+    fi
+    rm -f "$pidfile"
+  done
+  if (( stopped )); then
+    echo "trail: stopped"
+  else
+    echo "trail: not running"
+  fi
+}
+
+cmd_status() {
+  local engine_state="stopped"
+  local admin_state="stopped"
+  is_running "$ENGINE_PID_FILE" && engine_state="running (pid $(cat "$ENGINE_PID_FILE"))"
+  is_running "$ADMIN_PID_FILE" && admin_state="running (pid $(cat "$ADMIN_PID_FILE"))"
+  printf "engine :%-5s  %s\n" "$ENGINE_PORT" "$engine_state"
+  printf "admin  :%-5s  %s\n" "$ADMIN_PORT" "$admin_state"
+}
+
+cmd_logs() {
+  local follow=""
+  [[ "${1:-}" == "-f" || "${1:-}" == "--follow" ]] && follow="-f"
+  if [[ -n "$follow" ]]; then
+    tail -f "$ENGINE_LOG" "$ADMIN_LOG"
+  else
+    tail -n 50 "$ENGINE_LOG" "$ADMIN_LOG"
+  fi
+}
+
+cmd_url() {
+  echo "http://127.0.0.1:$ADMIN_PORT"
+}
+
+cmd_restart() {
+  cmd_stop || true
+  sleep 1
+  cmd_start
+}
+
+# ── Dispatch ────────────────────────────────────────────────────────
+case "${1:-help}" in
+  start)   cmd_start ;;
+  stop)    cmd_stop ;;
+  restart) cmd_restart ;;
+  status)  cmd_status ;;
+  logs)    shift; cmd_logs "$@" ;;
+  url)     cmd_url ;;
+  help|--help|-h)
+    cat <<EOF
+trail — knowledge infrastructure engine, local dev CLI
+
+Usage: trail <command>
+
+Commands:
+  start      launch engine + admin in the background
+  stop       stop both
+  restart    stop + start
+  status     show running state
+  logs [-f]  show recent logs (or follow with -f)
+  url        print the admin URL
+
+Ports: \$TRAIL_PORT (engine, default 58021), \$TRAIL_ADMIN_PORT (admin, default 58031)
+State: ~/.trail/ (pids, logs, generated token)
+Repo:  $REPO
+EOF
+    ;;
+  *)
+    echo "trail: unknown command '$1' — run 'trail help'" >&2
+    exit 1
+    ;;
+esac
