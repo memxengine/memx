@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@trail/shared": "workspace:*",
+    "marked": "^15.0.0",
     "preact": "^10.23.0",
     "preact-iso": "^2.9.0"
   },

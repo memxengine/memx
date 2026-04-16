@@ -2,6 +2,7 @@ import type { ComponentChildren } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 import { useLocation } from 'preact-iso';
 import { api } from './api';
+import { cycleTheme, getTheme, onThemeChange, type Theme } from './theme';
 
 interface Me {
   id: string;
@@ -16,7 +17,10 @@ interface Me {
 export function App({ children }: { children: ComponentChildren }) {
   const [me, setMe] = useState<Me | null>(null);
   const [loading, setLoading] = useState(true);
+  const [theme, setTheme] = useState<Theme>(getTheme());
   const location = useLocation();
+
+  useEffect(() => onThemeChange(setTheme), []);
 
   useEffect(() => {
     api<Me>('/api/v1/me')
@@ -25,8 +29,13 @@ export function App({ children }: { children: ComponentChildren }) {
         setLoading(false);
       })
       .catch(() => {
-        // Not authed — redirect to engine's OAuth start
-        window.location.href = `/api/auth/google?redirect=${encodeURIComponent(window.location.href)}`;
+        // Not authed. In dev we bypass Google OAuth and hit the engine's
+        // dev-login shortcut, which sets a pre-seeded session cookie and
+        // redirects back here. In prod we go through OAuth.
+        const target = import.meta.env.DEV
+          ? '/api/auth/dev-login?session=dev'
+          : `/api/auth/google?redirect=${encodeURIComponent(window.location.href)}`;
+        window.location.href = target;
       });
   }, []);
 
@@ -50,9 +59,63 @@ export function App({ children }: { children: ComponentChildren }) {
               <span>{me.displayName}</span>
             </>
           ) : null}
+          <ThemeToggle theme={theme} />
         </div>
       </header>
       <main class="flex-1">{children}</main>
     </div>
+  );
+}
+
+/**
+ * Theme cycle: light → dark → auto → light.
+ *
+ * Icon reflects the *current* mode:
+ *   light → sun
+ *   dark  → moon
+ *   auto  → half-moon (sun+moon overlapped)
+ *
+ * Tooltip names the next state so clicking feels predictable.
+ */
+function ThemeToggle({ theme }: { theme: Theme }) {
+  const nextLabel =
+    theme === 'light' ? 'Switch to dark' : theme === 'dark' ? 'Follow system' : 'Switch to light';
+  return (
+    <button
+      type="button"
+      onClick={cycleTheme}
+      title={nextLabel}
+      aria-label={nextLabel}
+      class="inline-flex items-center justify-center w-8 h-8 rounded-md border border-[color:var(--color-border)] hover:border-[color:var(--color-border-strong)] hover:bg-[color:var(--color-bg)] transition text-[color:var(--color-fg-muted)] hover:text-[color:var(--color-fg)]"
+    >
+      {theme === 'light' ? <SunIcon /> : theme === 'dark' ? <MoonIcon /> : <AutoIcon />}
+    </button>
+  );
+}
+
+function SunIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+    </svg>
+  );
+}
+
+function MoonIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+    </svg>
+  );
+}
+
+function AutoIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 3v18" />
+      <path d="M12 3a9 9 0 0 1 0 18" fill="currentColor" stroke="none" />
+    </svg>
   );
 }

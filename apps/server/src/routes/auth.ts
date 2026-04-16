@@ -147,6 +147,32 @@ authRoutes.post('/logout', (c) => {
   return c.json({ ok: true });
 });
 
+/**
+ * Dev-only shortcut: sets the session cookie to a pre-seeded value and
+ * redirects to the admin. Lets us skip Google OAuth while running against
+ * a scratch tenant. Enabled only when `TRAIL_DEV_AUTH=1`.
+ *
+ * Usage: open `${API_URL}/api/auth/dev-login?session=dev` in a browser.
+ *        The engine sets `session=<value>`, redirects to `${APP_URL}`,
+ *        and requireAuth then resolves the session from the seeded row.
+ *
+ * Removed before Fly deploy (F33) — or gated so it never ships to prod.
+ */
+authRoutes.get('/dev-login', (c) => {
+  if (process.env.TRAIL_DEV_AUTH !== '1') {
+    return c.json({ error: 'dev-login disabled (set TRAIL_DEV_AUTH=1 in the engine env)' }, 403);
+  }
+  const sessionId = c.req.query('session') ?? 'dev';
+  setCookie(c, 'session', sessionId, {
+    httpOnly: true,
+    secure: false,
+    sameSite: 'Lax',
+    path: '/',
+    maxAge: 30 * 24 * 60 * 60,
+  });
+  return c.redirect(APP_URL);
+});
+
 authRoutes.get('/me', async (c) => {
   const trail = getTrail(c);
   const sessionId = getCookie(c, 'session');

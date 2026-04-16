@@ -4,7 +4,11 @@ import { App } from './app';
 import { QueuePanel } from './panels/queue';
 import { KnowledgeBasesPanel } from './panels/kbs';
 import { NotFound } from './panels/not-found';
+import { initTheme } from './theme';
 import './index.css';
+
+// Apply persisted theme before first paint so we never flash the wrong palette.
+initTheme();
 
 function Main() {
   return (

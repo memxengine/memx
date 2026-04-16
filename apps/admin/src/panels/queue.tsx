@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'preact/hooks';
 import { useRoute } from 'preact-iso';
+import { marked } from 'marked';
 import type { QueueCandidate, QueueCandidateStatus } from '@trail/shared';
 import {
   listQueue,
@@ -18,6 +19,27 @@ const STATUS_TABS: Array<{ value: FilterStatus; label: string }> = [
   { value: 'all', label: 'All' },
 ];
 
+/**
+ * Parsed shape of `candidate.metadata` JSON — mirrors @trail/core CandidateOp.
+ * Used read-only here so curators can see what the approval will commit.
+ */
+interface CandidateOpMeta {
+  op?: 'create' | 'update' | 'archive';
+  targetDocumentId?: string;
+  filename?: string;
+  path?: string;
+  tags?: string | null;
+}
+
+function parseMetadata(raw: string | null): CandidateOpMeta | null {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as CandidateOpMeta;
+  } catch {
+    return null;
+  }
+}
+
 export function QueuePanel() {
   const route = useRoute();
   const kbId = route.params.kbId;
@@ -25,6 +47,7 @@ export function QueuePanel() {
   const [data, setData] = useState<QueueListResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [actingOn, setActingOn] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [toast, setToast] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
 
   const reload = useCallback(() => {
@@ -45,6 +68,15 @@ export function QueuePanel() {
     const t = setTimeout(() => setToast(null), 3500);
     return () => clearTimeout(t);
   }, [toast]);
+
+  const toggleExpanded = useCallback((id: string) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
 
   async function onApprove(c: QueueCandidate) {
     setActingOn(c.id);
@@ -87,7 +119,9 @@ export function QueuePanel() {
         </a>
         <h1 class="text-2xl font-semibold tracking-tight mt-2 mb-1">Curator queue</h1>
         <p class="text-[color:var(--color-fg-muted)] text-sm">
-          {data ? `${data.count} ${STATUS_TABS.find((t) => t.value === status)?.label.toLowerCase()} candidate${data.count === 1 ? '' : 's'}` : 'Loading…'}
+          {data
+            ? `${data.count} ${STATUS_TABS.find((t) => t.value === status)?.label.toLowerCase()} candidate${data.count === 1 ? '' : 's'}`
+            : 'Loading…'}
         </p>
       </header>
 
@@ -125,6 +159,8 @@ export function QueuePanel() {
           <CandidateRow
             key={c.id}
             candidate={c}
+            isExpanded={expanded.has(c.id)}
+            onToggle={() => toggleExpanded(c.id)}
             busy={actingOn === c.id}
             onApprove={onApprove}
             onReject={onReject}
@@ -150,23 +186,32 @@ export function QueuePanel() {
 
 interface RowProps {
   candidate: QueueCandidate;
+  isExpanded: boolean;
+  onToggle: () => void;
   busy: boolean;
   onApprove: (c: QueueCandidate) => void;
   onReject: (c: QueueCandidate) => void;
 }
 
-function CandidateRow({ candidate: c, busy, onApprove, onReject }: RowProps) {
+function CandidateRow({ candidate: c, isExpanded, onToggle, busy, onApprove, onReject }: RowProps) {
+  const meta = parseMetadata(c.metadata);
   const preview =
     c.content.length > 200 ? c.content.slice(0, 200).replace(/\s+/g, ' ').trim() + '…' : c.content;
+
   return (
-    <li class="border border-[color:var(--color-border)] rounded-md bg-[color:var(--color-bg-card)] p-4 hover:border-[color:var(--color-border-strong)] transition">
-      <div class="flex items-start gap-4">
+    <li class="border border-[color:var(--color-border)] rounded-md bg-[color:var(--color-bg-card)] hover:border-[color:var(--color-border-strong)] transition">
+      <div class="p-4 flex items-start gap-4">
         <div class="flex-1 min-w-0">
           <div class="flex items-center gap-2 mb-1">
             <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono uppercase tracking-wider bg-[color:var(--color-bg)] border border-[color:var(--color-border)] text-[color:var(--color-fg-muted)]">
               {c.kind}
             </span>
             <StatusBadge status={c.status} auto={!!c.autoApprovedAt} />
+            {meta?.op ? (
+              <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono uppercase tracking-wider bg-[color:var(--color-accent)]/10 text-[color:var(--color-accent)]">
+                op: {meta.op}
+              </span>
+            ) : null}
             {c.confidence !== null ? (
               <span class="text-[10px] font-mono text-[color:var(--color-fg-subtle)]">
                 conf {c.confidence.toFixed(2)}
@@ -174,7 +219,9 @@ function CandidateRow({ candidate: c, busy, onApprove, onReject }: RowProps) {
             ) : null}
           </div>
           <div class="font-medium">{c.title}</div>
-          <p class="text-sm text-[color:var(--color-fg-muted)] mt-1 line-clamp-3">{preview}</p>
+          {!isExpanded ? (
+            <p class="text-sm text-[color:var(--color-fg-muted)] mt-1 line-clamp-3">{preview}</p>
+          ) : null}
           <div class="mt-2 text-[11px] font-mono text-[color:var(--color-fg-subtle)]">
             {formatTs(c.createdAt)}
             {c.createdBy ? ` · by ${c.createdBy}` : ' · by pipeline'}
@@ -199,13 +246,86 @@ function CandidateRow({ candidate: c, busy, onApprove, onReject }: RowProps) {
           </div>
         ) : null}
       </div>
+
+      <button
+        onClick={onToggle}
+        class="w-full text-left px-4 pb-3 text-[11px] font-mono text-[color:var(--color-fg-subtle)] hover:text-[color:var(--color-fg-muted)] transition"
+      >
+        {isExpanded ? '▲ Hide content' : '▼ Show full content'}
+      </button>
+
+      {isExpanded ? <ExpandedContent candidate={c} meta={meta} /> : null}
     </li>
   );
 }
 
+function ExpandedContent({
+  candidate: c,
+  meta,
+}: {
+  candidate: QueueCandidate;
+  meta: CandidateOpMeta | null;
+}) {
+  // Render markdown content. Trust the candidate content — it comes from
+  // either an authenticated user (chat-answer) or our own pipelines
+  // (ingest-*, reader-feedback will need sanitisation once F31 lands).
+  const html = marked.parse(c.content, { async: false }) as string;
+
+  return (
+    <div class="border-t border-[color:var(--color-border)] px-4 py-4 bg-[color:var(--color-bg)]">
+      {meta ? (
+        <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-[12px] font-mono mb-4 text-[color:var(--color-fg-muted)]">
+          {meta.op ? (
+            <>
+              <dt class="text-[color:var(--color-fg-subtle)]">op</dt>
+              <dd>{meta.op}</dd>
+            </>
+          ) : null}
+          {meta.filename ? (
+            <>
+              <dt class="text-[color:var(--color-fg-subtle)]">filename</dt>
+              <dd>{meta.filename}</dd>
+            </>
+          ) : null}
+          {meta.path ? (
+            <>
+              <dt class="text-[color:var(--color-fg-subtle)]">path</dt>
+              <dd>{meta.path}</dd>
+            </>
+          ) : null}
+          {meta.targetDocumentId ? (
+            <>
+              <dt class="text-[color:var(--color-fg-subtle)]">target doc</dt>
+              <dd class="text-[color:var(--color-accent)]">{meta.targetDocumentId}</dd>
+            </>
+          ) : null}
+          {meta.tags ? (
+            <>
+              <dt class="text-[color:var(--color-fg-subtle)]">tags</dt>
+              <dd>{meta.tags}</dd>
+            </>
+          ) : null}
+        </dl>
+      ) : null}
+      <div
+        class="prose-body text-sm leading-relaxed"
+        // eslint-disable-next-line react/no-danger
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+      <details class="mt-4 text-[11px] font-mono text-[color:var(--color-fg-subtle)]">
+        <summary class="cursor-pointer hover:text-[color:var(--color-fg-muted)]">
+          Raw markdown ({c.content.length} chars)
+        </summary>
+        <pre class="mt-2 whitespace-pre-wrap bg-[color:var(--color-bg-card)] border border-[color:var(--color-border)] rounded p-3 overflow-x-auto">
+          {c.content}
+        </pre>
+      </details>
+    </div>
+  );
+}
+
 function StatusBadge({ status, auto }: { status: QueueCandidateStatus; auto: boolean }) {
-  const label =
-    status === 'approved' && auto ? 'auto-approved' : status;
+  const label = status === 'approved' && auto ? 'auto-approved' : status;
   const tone =
     status === 'approved'
       ? 'bg-[color:var(--color-success)]/10 text-[color:var(--color-success)]'
