@@ -12,6 +12,7 @@ import { imageRoutes } from './routes/images.js';
 import { chatRoutes } from './routes/chat.js';
 import { ingestRoutes } from './routes/ingest.js';
 import { streamRoutes } from './routes/stream.js';
+import { queueRoutes } from './routes/queue.js';
 
 export function createApp(): Hono {
   const app = new Hono();
@@ -38,6 +39,7 @@ export function createApp(): Hono {
   app.route('/api/v1', chatRoutes);
   app.route('/api/v1', ingestRoutes);
   app.route('/api/v1', streamRoutes);
+  app.route('/api/v1', queueRoutes);
 
   return app;
 }

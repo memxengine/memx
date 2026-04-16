@@ -155,10 +155,36 @@ export const DocumentReferenceSchema = z.object({
   createdAt: z.string(),
 });
 
+export const CreateQueueCandidateSchema = z.object({
+  knowledgeBaseId: z.string(),
+  kind: QueueCandidateKindEnum,
+  title: z.string().min(1).max(500),
+  content: z.string().min(1),
+  metadata: z.string().nullable().optional(),
+  confidence: z.number().min(0).max(1).nullable().optional(),
+  impactEstimate: z.number().int().nullable().optional(),
+  // Optional target slug — when present, approve updates this wiki page;
+  // otherwise approve creates a new page at `path/filename`.
+  targetDocumentId: z.string().optional(),
+});
+
+export const ListQueueQuerySchema = z.object({
+  knowledgeBaseId: z.string().optional(),
+  kind: QueueCandidateKindEnum.optional(),
+  status: QueueCandidateStatusEnum.optional(),
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+  cursor: z.string().optional(),
+});
+
 export const ApproveCandidateSchema = z.object({
+  // For new-page candidates: filename + path. For page-update candidates:
+  // omitted (target page is resolved via resultingDocumentId or payload).
   filename: z.string().optional(),
   path: z.string().default('/wiki/queries/'),
+  // Allow the curator to patch the candidate's content before commit.
   editedContent: z.string().optional(),
+  // Optional reviewer note, stored alongside the approval for the audit log.
+  notes: z.string().max(1000).optional(),
 });
 
 export const RejectCandidateSchema = z.object({
