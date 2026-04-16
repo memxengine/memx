@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "trail": {
+      "command": "bun",
+      "args": [
+        "run",
+        "--cwd",
+        "/Users/cb/Apps/broberg/trail/apps/mcp",
+        "src/index.ts"
+      ],
+      "env": {
+        "TRAIL_TENANT_ID": "t-christian",
+        "TRAIL_USER_ID": "u-christian",
+        "TRAIL_KNOWLEDGE_BASE_ID": "caf2fd8d-a7d4-4309-8c9c-919f6f7bd1a8",
+        "TRAIL_DATA_DIR": "/Users/cb/Apps/broberg/trail/data"
+      }
+    }
+  }
+}
