@@ -34,7 +34,12 @@ It's what Vannevar Bush dreamed of in 1945, finally made practical by LLMs.
 
 ## Status
 
-Phase 1 MVP in progress. First customer: Sanne Andersen (healing practice with 25 years of clinical material). See [docs/PLAN.md](./docs/PLAN.md).
+Phase 1 MVP in progress. See [docs/PLAN.md](./docs/PLAN.md).
+
+**MVP customers:**
+
+- **Sanne Andersen** — healing practice with 25 years of clinical material compiled into a personal Trail.
+- **[buddy](https://github.com/webhousecode/buddy)** — adversarial code reviewer for Claude Code sessions. Uses trail as its long-term memory layer: session artifacts (decisions, conventions, bug diagnoses) are distilled by buddy and POSTed to trail as F39 candidates, becoming cross-referenced neurons the next cc session can query via MCP. First real test of trail as agent-harness memory, and the reason F39 exists.
 
 ## Architecture
 
