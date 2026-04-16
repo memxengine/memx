@@ -167,7 +167,7 @@ export function ChatPanel() {
           <button
             type="submit"
             disabled={!input.trim() || busy}
-            class="px-4 py-2 rounded-md bg-[color:var(--color-fg)] text-[color:var(--color-bg)] font-medium text-sm hover:bg-[color:var(--color-fg)]/90 disabled:opacity-50 active:scale-[0.98] transition"
+            class="px-5 py-2 rounded-md bg-[color:var(--color-accent)] text-[color:var(--color-accent-fg)] font-medium text-sm hover:brightness-105 active:scale-[0.98] disabled:bg-[color:var(--color-border)] disabled:text-[color:var(--color-fg-muted)] disabled:cursor-not-allowed transition"
           >
             {busy ? '…' : 'Ask'}
           </button>
