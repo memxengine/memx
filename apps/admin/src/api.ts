@@ -87,7 +87,7 @@ export interface ApprovalResponse {
 
 export function approveCandidate(
   id: string,
-  payload: ApproveCandidatePayload = { path: '/wiki/queries/' },
+  payload: ApproveCandidatePayload = { path: '/neurons/queries/' },
 ): Promise<ApprovalResponse> {
   return api(`/api/v1/queue/${encodeURIComponent(id)}/approve`, {
     method: 'POST',
@@ -199,7 +199,7 @@ export function saveChatAsNeuron(args: {
   const metadata = JSON.stringify({
     op: 'create',
     filename: `${slug}.md`,
-    path: '/wiki/queries/',
+    path: '/neurons/queries/',
     source: 'chat',
     sourceCitations: args.citations.map((c) => c.documentId),
   });

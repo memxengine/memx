@@ -1,13 +1,12 @@
 /**
- * The engine stores Neuron directories under `/wiki/...` (its MCP tools,
- * ingest prompts, and legacy data all speak that convention). Admin users
- * see the brand name "Neurons" and should never be shown the internal
- * `/wiki/` prefix.
+ * Storage is canonical `/neurons/...` now. This helper remains as a safety
+ * shim for two edge cases:
+ *  - legacy data that slipped in before the bootstrap rewrite ran
+ *  - external ingest clients (buddy, CMS adapters) that haven't caught up to
+ *    the namespace change yet
  *
- * Display-only transform: `/wiki/concepts/` → `/neurons/concepts/`. We
- * leave storage alone because changing it would force a coordinated
- * rewrite of every engine prompt, MCP schema, and client that already
- * speaks the old namespace.
+ * For any `/neurons/...` input it's a no-op. For a stale `/wiki/...` it
+ * rewrites to `/neurons/...` so the curator never sees the old prefix.
  */
 export function displayPath(p: string | null | undefined): string {
   if (!p) return '';

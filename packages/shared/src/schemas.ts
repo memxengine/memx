@@ -180,7 +180,7 @@ export const ApproveCandidateSchema = z.object({
   // For new-page candidates: filename + path. For page-update candidates:
   // omitted (target page is resolved via resultingDocumentId or payload).
   filename: z.string().optional(),
-  path: z.string().default('/wiki/queries/'),
+  path: z.string().default('/neurons/queries/'),
   // Allow the curator to patch the candidate's content before commit.
   editedContent: z.string().optional(),
   // Optional reviewer note, stored alongside the approval for the audit log.

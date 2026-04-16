@@ -74,7 +74,7 @@ Authorization: Bearer <TRAIL_INGEST_TOKEN>
   metadata: JSON.stringify({
     op: "create",
     filename: slugify(artifact.title) + ".md",
-    path: `/wiki/sessions/${artifact.repo}/`,
+    path: `/neurons/sessions/${artifact.repo}/`,
     tags: artifact.tags.join(","),
     source: "buddy",
     sessionId: artifact.sessionId,
@@ -102,11 +102,11 @@ Dedicated KB per repo (or one shared "session-knowledge" KB):
 
 ```
 KB: trail-sessions
-  /wiki/sessions/broberg-ai/trail/
+  /neurons/sessions/broberg-ai/trail/
     f17-queue-sole-write-path.md
     svg-shortcode-tiptap-workaround.md
     trail-vs-notebooklm-positioning.md
-  /wiki/sessions/webhousecode/cms/
+  /neurons/sessions/webhousecode/cms/
     svg-embed-node-view.md
     shortcode-expander-api.md
   /wiki/conventions/

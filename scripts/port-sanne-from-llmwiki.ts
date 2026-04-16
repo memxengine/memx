@@ -1,5 +1,15 @@
 #!/usr/bin/env bun
 /**
+ * Legacy path normaliser — llmwiki stored paths as `/wiki/…`; trail stores
+ * them as `/neurons/…`. Keep the import script honest by rewriting on the
+ * way in, so re-runs against the old DB don't reintroduce the old namespace.
+ */
+function normaliseLegacyPath(p: string | null | undefined): string | null {
+  if (!p) return null;
+  return p.startsWith('/wiki/') ? '/neurons/' + p.slice('/wiki/'.length) : p;
+}
+
+/**
  * Port Sanne Andersen's sources + compiled wiki pages from the old
  * /Users/cb/Apps/cbroberg/llmwiki-ts prototype into the running trail engine.
  *
@@ -118,7 +128,7 @@ async function insertWikiAsCandidate(doc: OldDoc): Promise<{ ok: boolean; detail
       metadata: JSON.stringify({
         op: 'create',
         filename: filenameStem,
-        path: doc.path || '/wiki/',
+        path: normaliseLegacyPath(doc.path) || '/neurons/',
         tags: doc.tags ?? null,
       }),
       confidence: 1,
@@ -145,7 +155,7 @@ async function insertWikiAsCandidate(doc: OldDoc): Promise<{ ok: boolean; detail
       headers: headers({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({
         filename: filenameStem,
-        path: doc.path || '/wiki/',
+        path: normaliseLegacyPath(doc.path) || '/neurons/',
         notes: 'Ported from llmwiki-ts',
       }),
     },

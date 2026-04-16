@@ -133,7 +133,7 @@ server.tool('guide', 'List knowledge bases and explain how trail works', {}, asy
 
 You maintain a persistent, compounding knowledge base. Three layers:
 1. **Sources** — immutable raw materials (PDFs, articles, notes)
-2. **Wiki** — LLM-compiled markdown pages at \`/wiki/\` (summaries, entity + concept pages, cross-references with [[wiki-links]])
+2. **Wiki** — LLM-compiled markdown pages at \`/neurons/\` (summaries, entity + concept pages, cross-references with [[wiki-links]])
 3. **Schema** — conventions guiding the compiler
 
 ## Operations
@@ -175,7 +175,7 @@ server.tool(
       .describe('Name, slug or id of the KB. Omit to use TRAIL_KNOWLEDGE_BASE_ID.'),
     mode: z.enum(['list', 'search']).default('list').describe('list = file tree, search = FTS'),
     query: z.string().optional().describe('Search query (required for search mode)'),
-    path: z.string().default('*').describe('Path filter glob (e.g. "/wiki/*", "/")'),
+    path: z.string().default('*').describe('Path filter glob (e.g. "/neurons/*", "/")'),
     kind: z
       .enum(['source', 'wiki', 'any'])
       .default('any')
@@ -263,7 +263,7 @@ server.tool(
     knowledge_base: z.string().optional().describe('Name, slug or id of the KB'),
     path: z
       .string()
-      .describe('Full path to document (e.g. "/wiki/overview.md") or glob (e.g. "/wiki/*.md")'),
+      .describe('Full path to document (e.g. "/neurons/overview.md") or glob (e.g. "/neurons/*.md")'),
   },
   async ({ knowledge_base, path: docPath }) => {
     const ctx = await requireContext(trail);
@@ -355,12 +355,12 @@ server.tool(
     command: z
       .enum(['create', 'str_replace', 'append'])
       .describe('create = new wiki page, str_replace = find/replace, append = add to end'),
-    path: z.string().default('/wiki/').describe('Directory path (e.g. "/wiki/", "/wiki/concepts/")'),
+    path: z.string().default('/neurons/').describe('Directory path (e.g. "/neurons/", "/neurons/concepts/")'),
     title: z
       .string()
       .optional()
       .describe(
-        'For create: the page title. For str_replace/append: the full document path (e.g. "/wiki/overview.md").',
+        'For create: the page title. For str_replace/append: the full document path (e.g. "/neurons/overview.md").',
       ),
     content: z.string().optional().describe('Content for create or append'),
     tags: z.string().optional().describe('Comma-separated tags'),
@@ -434,7 +434,7 @@ server.tool(
           content: [
             {
               type: 'text' as const,
-              text: 'Provide the full document path as `title` (e.g. "/wiki/overview.md").',
+              text: 'Provide the full document path as `title` (e.g. "/neurons/overview.md").',
             },
           ],
         };
@@ -514,7 +514,7 @@ server.tool(
           content: [
             {
               type: 'text' as const,
-              text: 'Provide the full document path as `title` (e.g. "/wiki/log.md").',
+              text: 'Provide the full document path as `title` (e.g. "/neurons/log.md").',
             },
           ],
         };
@@ -579,7 +579,7 @@ server.tool(
   'Archive documents (soft delete)',
   {
     knowledge_base: z.string().optional().describe('Name, slug or id of the KB'),
-    path: z.string().describe('Full path to document (e.g. "/wiki/old.md")'),
+    path: z.string().describe('Full path to document (e.g. "/neurons/old.md")'),
   },
   async ({ knowledge_base, path: docPath }) => {
     const ctx = await requireContext(trail);
@@ -592,7 +592,7 @@ server.tool(
       };
     }
 
-    if (docPath === '/wiki/overview.md' || docPath === '/wiki/log.md') {
+    if (docPath === '/neurons/overview.md' || docPath === '/neurons/log.md') {
       return {
         content: [{ type: 'text' as const, text: `Cannot delete ${docPath} — it's a protected wiki page.` }],
       };

@@ -91,7 +91,7 @@ kbRoutes.post('/knowledge-bases', async (c) => {
         kind: 'ingest-summary',
         title: page.title,
         content: page.content,
-        metadata: JSON.stringify({ op: 'create', filename: page.filename, path: '/wiki/' }),
+        metadata: JSON.stringify({ op: 'create', filename: page.filename, path: '/neurons/' }),
         confidence: 1,
       },
       { id: user.id, kind: 'system' },

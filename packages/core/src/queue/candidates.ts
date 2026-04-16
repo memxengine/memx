@@ -175,7 +175,7 @@ export async function createCandidate(
       tenantId,
       id,
       actor,
-      { path: '/wiki/auto/' },
+      { path: '/neurons/auto/' },
       { auto: true },
     );
     return { candidate, approval };

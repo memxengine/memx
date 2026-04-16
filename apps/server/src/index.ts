@@ -2,6 +2,7 @@ import { createLibsqlDatabase, DEFAULT_DB_PATH } from '@trail/db';
 import { createApp } from './app.js';
 import { ensureIngestUser } from './bootstrap/ingest-user.js';
 import { recoverZombieIngests } from './bootstrap/zombie-ingest.js';
+import { rewriteWikiToNeurons } from './bootstrap/rewrite-wiki-paths.js';
 
 const PORT = Number(process.env.PORT ?? 3031);
 
@@ -14,6 +15,7 @@ await trail.runMigrations();
 await trail.initFTS();
 await ensureIngestUser(trail);
 await recoverZombieIngests(trail);
+await rewriteWikiToNeurons(trail);
 
 const app = createApp(trail);
 

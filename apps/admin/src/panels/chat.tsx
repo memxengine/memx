@@ -232,7 +232,7 @@ export function ChatPanel() {
                 class="mt-1 w-full rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)]/60 px-3 py-2 text-sm focus:outline-none focus:border-[color:var(--color-accent)] transition"
               />
               <div class="text-[11px] font-mono text-[color:var(--color-fg-subtle)] mt-1">
-                Lands as a pending `chat-answer` candidate at /wiki/queries/. Review + approve in Queue.
+                Lands as a pending `chat-answer` candidate at /neurons/queries/. Review + approve in Queue.
               </div>
             </div>
             {saveError ? (

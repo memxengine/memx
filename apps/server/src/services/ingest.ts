@@ -9,7 +9,7 @@ const INGEST_TIMEOUT_MS = Number(process.env.INGEST_TIMEOUT_MS ?? 180_000);
 
 // Per-KB serialisation — one ingest at a time per KB, rest queued.
 // (A KB is the correct granularity here: ingest rewrites shared wiki pages, so
-// two concurrent ingests into the same KB would race on /wiki/overview.md etc.)
+// two concurrent ingests into the same KB would race on /neurons/overview.md etc.)
 const activeIngests = new Map<string, boolean>();
 const ingestQueue = new Map<string, IngestJob[]>();
 
@@ -71,27 +71,27 @@ Your job is to ingest this source into the wiki. Follow these steps exactly:
 
 2. Call \`search\` with mode="list" and kind="wiki" to see the current wiki structure.
 
-3. Call \`read\` with path="/wiki/overview.md" to understand the current wiki state.
+3. Call \`read\` with path="/neurons/overview.md" to understand the current wiki state.
 
 4. Create a source summary page:
-   Call \`write\` with command="create", path="/wiki/sources/", title="${doc.title ?? doc.filename.replace(/\.\w+$/, '')}", and content that includes:
+   Call \`write\` with command="create", path="/neurons/sources/", title="${doc.title ?? doc.filename.replace(/\.\w+$/, '')}", and content that includes:
    - YAML frontmatter with title, tags (array), date (${today}), sources (["${doc.filename}"])
    - Key takeaways and findings
    - Important quotes or data points
 
 5. For each KEY CONCEPT found in the source (aim for 2-5 concepts):
    - Check if a concept page already exists (you saw the wiki listing in step 2).
-   - If it exists: \`read\` it, then \`write\` with command="str_replace" to integrate new information. Use the full path (e.g. "/wiki/concepts/concept-name.md") as the title parameter.
-   - If it doesn't exist: \`write\` with command="create", path="/wiki/concepts/", and full content with frontmatter.
+   - If it exists: \`read\` it, then \`write\` with command="str_replace" to integrate new information. Use the full path (e.g. "/neurons/concepts/concept-name.md") as the title parameter.
+   - If it doesn't exist: \`write\` with command="create", path="/neurons/concepts/", and full content with frontmatter.
 
 6. For each KEY ENTITY (person, organization, tool) found:
-   - Same pattern under /wiki/entities/.
+   - Same pattern under /neurons/entities/.
 
 7. Update the overview page:
-   \`write\` with command="str_replace", title="/wiki/overview.md" — reflect the new knowledge and link to the new pages.
+   \`write\` with command="str_replace", title="/neurons/overview.md" — reflect the new knowledge and link to the new pages.
 
 8. Log the ingest:
-   \`write\` with command="append", title="/wiki/log.md", content:
+   \`write\` with command="append", title="/neurons/log.md", content:
 
    ## [${today}] ingest | ${doc.title ?? doc.filename}
    - Summary: (1-2 sentences)
