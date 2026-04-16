@@ -24,9 +24,6 @@ export function KbTabs({ kbId }: { kbId: string | undefined }) {
         <span class="text-sm font-medium text-[color:var(--color-fg)]">
           {kb ? kb.name : <span class="loading-delayed inline-block">…</span>}
         </span>
-        {kb ? (
-          <code class="text-[11px] font-mono text-[color:var(--color-fg-subtle)]">{kb.slug}</code>
-        ) : null}
       </div>
       <nav class="flex gap-1 border-b border-[color:var(--color-border)]">
         {tabs.map((tab) => {
