@@ -1,8 +1,10 @@
 import type { ComponentChildren } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
+import { useLocation } from 'preact-iso';
 import { api } from './api';
 import { getTheme, onThemeChange, toggleTheme, type Theme } from './theme';
 import { mountConstellation } from './lib/constellation';
+import { TrailNav } from './components/trail-nav';
 
 interface Me {
   id: string;
@@ -18,6 +20,8 @@ export function App({ children }: { children: ComponentChildren }) {
   const [me, setMe] = useState<Me | null>(null);
   const [theme, setTheme] = useState<Theme>(getTheme());
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const { path } = useLocation();
+  const kbId = path.match(/^\/kb\/([^/]+)/)?.[1];
 
   useEffect(() => onThemeChange(setTheme), []);
 
@@ -43,20 +47,23 @@ export function App({ children }: { children: ComponentChildren }) {
     <div class="min-h-screen flex flex-col">
       <canvas ref={canvasRef} id="trail-graph" aria-hidden="true" />
       <header class="relative z-10 border-b border-[color:var(--color-border)] bg-[color:var(--color-bg)]/80 backdrop-blur-md">
-        <div class="page-shell !py-3 !pb-3 flex items-center gap-4">
-          <a href="/" class="flex items-center gap-2.5">
-            <TrailLogo />
-            <span class="font-mono text-lg font-semibold tracking-tight text-[color:var(--color-fg)]">
-              trail
-            </span>
-            <span class="text-[color:var(--color-fg-subtle)] text-sm ml-1">admin</span>
-          </a>
-          <div class="ml-auto flex items-center gap-3 text-sm">
-            {me ? (
-              <span class="text-[color:var(--color-fg-muted)]">{displayName(me)}</span>
-            ) : null}
-            <ThemeToggle theme={theme} />
+        <div class="page-shell !py-0">
+          <div class="flex items-center gap-4 py-3">
+            <a href="/" class="flex items-center gap-2.5">
+              <TrailLogo />
+              <span class="font-mono text-lg font-semibold tracking-tight text-[color:var(--color-fg)]">
+                trail
+              </span>
+              <span class="text-[color:var(--color-fg-subtle)] text-sm ml-1">admin</span>
+            </a>
+            <div class="ml-auto flex items-center gap-3 text-sm">
+              {me ? (
+                <span class="text-[color:var(--color-fg-muted)]">{displayName(me)}</span>
+              ) : null}
+              <ThemeToggle theme={theme} />
+            </div>
           </div>
+          {kbId ? <TrailNav kbId={kbId} /> : null}
         </div>
       </header>
       <main class="relative z-10 flex-1">{me ? children : null}</main>
@@ -121,4 +128,3 @@ function MoonIcon() {
     </svg>
   );
 }
-

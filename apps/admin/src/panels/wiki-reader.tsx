@@ -3,7 +3,6 @@ import { useRoute } from 'preact-iso';
 import { marked } from 'marked';
 import type { Document } from '@trail/shared';
 import { listWikiPages, getDocumentContent, ApiError } from '../api';
-import { KbTabs } from '../components/kb-tabs';
 import { rewriteWikiLinks } from '../lib/wiki-links';
 import { displayPath } from '../lib/display-path';
 
@@ -57,7 +56,7 @@ export function WikiReaderPanel() {
 
   return (
     <div class="page-shell">
-      <header class="mb-6">
+      <header class="mb-4">
         <a
           href={`/kb/${kbId}/neurons`}
           class="text-sm text-[color:var(--color-fg-subtle)] hover:text-[color:var(--color-fg)] transition"
@@ -65,8 +64,6 @@ export function WikiReaderPanel() {
           ← Neurons
         </a>
       </header>
-
-      <KbTabs kbId={kbId} />
 
       {error ? (
         <div class="border border-[color:var(--color-danger)]/30 bg-[color:var(--color-danger)]/5 rounded-md p-4 text-sm">

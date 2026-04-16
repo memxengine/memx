@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'preact/hooks';
 import { useRoute } from 'preact-iso';
 import type { Document } from '@trail/shared';
 import { listWikiPages, ApiError } from '../api';
-import { KbTabs } from '../components/kb-tabs';
 import { displayPath } from '../lib/display-path';
 
 /**
@@ -37,21 +36,13 @@ export function WikiTreePanel() {
   return (
     <div class="page-shell">
       <header class="mb-6">
-        <a
-          href="/"
-          class="text-sm text-[color:var(--color-fg-subtle)] hover:text-[color:var(--color-fg)] transition"
-        >
-          ← All Trails
-        </a>
-        <h1 class="text-2xl font-semibold tracking-tight mt-2 mb-1">Neurons</h1>
+        <h1 class="text-2xl font-semibold tracking-tight mb-1">Neurons</h1>
         <p class="text-[color:var(--color-fg-muted)] text-sm">
           {pages ? `${pages.length} compiled page${pages.length === 1 ? '' : 's'}` : (
             <span class="loading-delayed inline-block">Loading…</span>
           )}
         </p>
       </header>
-
-      <KbTabs kbId={kbId} />
 
       {error ? (
         <div class="border border-[color:var(--color-danger)]/30 bg-[color:var(--color-danger)]/5 rounded-md p-4 text-sm">

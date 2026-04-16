@@ -55,7 +55,7 @@ export function KnowledgeBasesPanel() {
             key={kb.id}
             class="border border-[color:var(--color-border)] rounded-md bg-[color:var(--color-bg-card)]/80 hover:border-[color:var(--color-border-strong)] transition"
           >
-            <a href={`/kb/${kb.id}/queue`} class="block px-4 py-3">
+            <a href={`/kb/${kb.id}/neurons`} class="block px-4 py-3">
               <div class="flex items-baseline justify-between gap-4">
                 <div>
                   <div class="font-medium">{kb.name}</div>

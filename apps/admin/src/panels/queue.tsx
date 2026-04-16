@@ -9,7 +9,6 @@ import {
   ApiError,
   type QueueListResponse,
 } from '../api';
-import { KbTabs } from '../components/kb-tabs';
 import { rewriteWikiLinks } from '../lib/wiki-links';
 import { displayPath } from '../lib/display-path';
 
@@ -114,13 +113,7 @@ export function QueuePanel() {
   return (
     <div class="page-shell">
       <header class="mb-6">
-        <a
-          href="/"
-          class="text-sm text-[color:var(--color-fg-subtle)] hover:text-[color:var(--color-fg)] transition"
-        >
-          ← All Trails
-        </a>
-        <h1 class="text-2xl font-semibold tracking-tight mt-2 mb-1">Curator queue</h1>
+        <h1 class="text-2xl font-semibold tracking-tight mb-1">Curator queue</h1>
         <p class="text-[color:var(--color-fg-muted)] text-sm">
           {data ? (
             `${data.count} ${STATUS_TABS.find((t) => t.value === status)?.label.toLowerCase()} candidate${data.count === 1 ? '' : 's'}`
@@ -129,8 +122,6 @@ export function QueuePanel() {
           )}
         </p>
       </header>
-
-      <KbTabs kbId={kbId} />
 
       <nav class="flex gap-1 mb-5 border-b border-[color:var(--color-border)]">
         {STATUS_TABS.map((tab) => (
