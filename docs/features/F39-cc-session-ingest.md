@@ -52,14 +52,22 @@ interface SessionArtifact {
 
 ### Routing to Trail (buddy → trail engine)
 
-Two options, both viable:
+Trail exposes three transports. They look superficially similar but have distinct audiences — mixing them up leads to pipelines that work but in the wrong shape. Pick by **who is making the decision to write**:
 
-**Option A — HTTP POST to Trail API:**
+| Transport | Audience | Right for |
+|---|---|---|
+| **HTTP API** (`POST /api/v1/queue/candidates`) | Deterministic code, services, webhooks, CLIs | Buddy's extractor, admin uploads, ingest pipelines |
+| **MCP `write` tool** (`apps/mcp/src/index.ts`) | LLMs deciding mid-reasoning-turn | Trail's own ingest agent authoring compiled wiki pages; cc agents in the middle of a turn who *decide* to save an insight |
+| **Buddy's peer MCP** (`ask_peer`, `announce`) | cc-session ↔ cc-session only | Coordination between agents ("I'm about to merge X, heads up"). **Never** a payload transport for ingest; never programmatic. |
+
+For F39 specifically, buddy's session-end summariser is a deterministic Stop-hook pipeline — not an LLM making a call during reasoning. That makes **HTTP API the canonical path**. MCP would couple buddy's background runtime to an ephemeral cc-session lifecycle (the session is already dead when the hook fires), and peer is architecturally the wrong layer for a wiki-page-sized payload.
+
+**The write surface (shared across transports):**
 ```
-POST https://api.trail.broberg.ai/api/v1/queue/candidates
-Authorization: Bearer <service-token>
+POST /api/v1/queue/candidates
+Authorization: Bearer <TRAIL_INGEST_TOKEN>
 {
-  knowledgeBaseId: "<session-knowledge-kb>",
+  knowledgeBaseId: "<buddy-repo-kb>",
   kind: "external-feed",
   title: artifact.title,
   content: artifact.detail,
@@ -75,10 +83,9 @@ Authorization: Bearer <service-token>
 }
 ```
 
-**Option B — Trail MCP tools via buddy's MCP client:**
-Buddy calls `trail_write` MCP tool with the artifact content. The MCP tool (post-F17) routes through the queue automatically.
+The MCP `write` tool internally calls the same `createCandidate` core (`packages/core/src/queue/candidates.ts`), so the two surfaces converge at the same invariant — queue is the sole write path (F17). They differ only in auth and calling convention.
 
-Recommend **Option A** — decoupled, works across repos, doesn't require buddy and Trail to share an MCP session.
+**READ vs WRITE split in v1**: buddy's cc-sessions *do* load Trail's MCP — but only for `guide` / `search` / `read`. They don't use MCP `write` for ingest. That keeps the write path programmatic, testable, and decoupled from cc lifecycles.
 
 ### Trigger points
 

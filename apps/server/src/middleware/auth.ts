@@ -2,6 +2,7 @@ import type { Context, Next } from 'hono';
 import { getCookie } from 'hono/cookie';
 import { sessions, users, tenants, type TrailDatabase } from '@trail/db';
 import { and, eq, gt } from 'drizzle-orm';
+import { INGEST_USER_ID } from '../bootstrap/ingest-user.js';
 
 export interface AuthUser {
   id: string;
@@ -20,32 +21,62 @@ export interface AuthTenant {
   plan: 'hobby' | 'pro' | 'business' | 'enterprise';
 }
 
+const USER_COLUMNS = {
+  id: users.id,
+  tenantId: users.tenantId,
+  email: users.email,
+  displayName: users.displayName,
+  avatarUrl: users.avatarUrl,
+  role: users.role,
+  onboarded: users.onboarded,
+} as const;
+
+const TENANT_COLUMNS = {
+  id: tenants.id,
+  slug: tenants.slug,
+  name: tenants.name,
+  plan: tenants.plan,
+} as const;
+
 export async function requireAuth(c: Context, next: Next): Promise<Response | void> {
+  const trail = c.get('trail') as TrailDatabase;
+
+  // Service-to-service path: Authorization: Bearer <TRAIL_INGEST_TOKEN>. Gated
+  // by the env var — without it, all Bearer headers are ignored so a stray
+  // token never short-circuits the session-cookie path.
+  const authHeader = c.req.header('authorization');
+  if (authHeader?.toLowerCase().startsWith('bearer ')) {
+    const expected = process.env.TRAIL_INGEST_TOKEN;
+    if (!expected) {
+      return c.json({ error: 'Bearer auth not configured on this engine' }, 401);
+    }
+    const presented = authHeader.slice(7).trim();
+    if (presented !== expected) {
+      return c.json({ error: 'Invalid ingest token' }, 403);
+    }
+    const service = await trail.db
+      .select({ user: USER_COLUMNS, tenant: TENANT_COLUMNS })
+      .from(users)
+      .innerJoin(tenants, eq(tenants.id, users.tenantId))
+      .where(eq(users.id, INGEST_USER_ID))
+      .get();
+    if (!service) {
+      return c.json({ error: 'Ingest user not provisioned' }, 503);
+    }
+    c.set('user', service.user);
+    c.set('tenant', service.tenant);
+    return next();
+  }
+
+  // Session-cookie path — how the admin UI and cc/MCP sessions auth.
   const sessionId = getCookie(c, 'session');
   if (!sessionId) {
     return c.json({ error: 'Unauthorized' }, 401);
   }
 
-  const trail = c.get('trail') as TrailDatabase;
   const now = new Date().toISOString();
   const result = await trail.db
-    .select({
-      user: {
-        id: users.id,
-        tenantId: users.tenantId,
-        email: users.email,
-        displayName: users.displayName,
-        avatarUrl: users.avatarUrl,
-        role: users.role,
-        onboarded: users.onboarded,
-      },
-      tenant: {
-        id: tenants.id,
-        slug: tenants.slug,
-        name: tenants.name,
-        plan: tenants.plan,
-      },
-    })
+    .select({ user: USER_COLUMNS, tenant: TENANT_COLUMNS })
     .from(sessions)
     .innerJoin(users, eq(users.id, sessions.userId))
     .innerJoin(tenants, eq(tenants.id, users.tenantId))

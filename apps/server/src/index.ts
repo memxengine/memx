@@ -1,5 +1,6 @@
 import { createLibsqlDatabase, DEFAULT_DB_PATH } from '@trail/db';
 import { createApp } from './app.js';
+import { ensureIngestUser } from './bootstrap/ingest-user.js';
 
 const PORT = Number(process.env.PORT ?? 3031);
 
@@ -10,6 +11,7 @@ const PORT = Number(process.env.PORT ?? 3031);
 const trail = await createLibsqlDatabase({ path: DEFAULT_DB_PATH });
 await trail.runMigrations();
 await trail.initFTS();
+await ensureIngestUser(trail);
 
 const app = createApp(trail);
 
