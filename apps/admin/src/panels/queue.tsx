@@ -211,6 +211,18 @@ export function QueuePanel() {
                 Candidate
               </div>
               <div class="text-sm font-medium truncate">{rejectTarget.title}</div>
+              <div class="flex items-center gap-2 mt-1.5 text-[10px] font-mono uppercase tracking-wider">
+                <span class="inline-flex items-center px-1.5 py-0.5 rounded bg-[color:var(--color-bg)] border border-[color:var(--color-border)] text-[color:var(--color-fg-muted)]">
+                  {rejectTarget.kind}
+                </span>
+                {rejectTarget.confidence !== null ? (
+                  <span class="text-[color:var(--color-fg-subtle)]">
+                    conf {rejectTarget.confidence.toFixed(2)}
+                  </span>
+                ) : (
+                  <span class="text-[color:var(--color-fg-subtle)]">no confidence</span>
+                )}
+              </div>
             </div>
             <div>
               <label
