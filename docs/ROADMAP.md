@@ -58,14 +58,16 @@ The remaining Phase 1 scope, ordered by leverage and dependency.
 
 ### Unblockers — must land to call Phase 1 complete
 
-| # | Feature | Depends On | Effort |
-|---|---------|------------|--------|
-| F17 | Curation Queue — HTTP Endpoints | F16 | Medium |
-| F18 | Curator UI Shell (Vite + Preact + shadcn) | F17 | Medium |
-| F19 | Auto-Approval Policy Engine | F17 | Small |
-| F33 | Fly.io Arn Deploy for `apps/server` | — | Small |
-| F35 | Google OAuth Production Credentials | F33 | Small |
-| F37 | Sanne Customer Onboarding | F17, F18, F33, F35 | Medium |
+| # | Feature | Depends On | Effort | Status |
+|---|---------|------------|--------|--------|
+| F17 | Curation Queue — HTTP Endpoints + sole wiki write path | F16 | Medium | ✅ Done |
+| F18 | Curator UI Shell (Vite + Preact + shadcn) | F17 | Medium | 🏗 In progress (session 1 done) |
+| F19 | Auto-Approval Policy Engine | F17 | Small | ✅ Done (stub + trusted-pipeline) |
+| F40.1 | libSQL driver swap (still single-tenant) | F02 | Small | ⏭ Next |
+| F33 | Fly.io Arn Deploy for `apps/server` | F40.1 | Small | ⏭ Planned |
+| F35 | Google OAuth Production Credentials | F33 | Small | ⏭ Planned |
+| F62 | demo.trailmem.com — public reference site | F17, F18 | Medium | ⏭ Planned |
+| F37 | Sanne Customer Onboarding | F17, F18, F33, F35 | Medium | ⏭ Planned |
 
 ### Quality + UX — ship with Phase 1
 
@@ -223,10 +225,15 @@ Regulated industries, on-prem, compliance, advanced architecture.
 ## Critical path (top-down)
 
 ```
-F17 Queue API   ─┐
-F18 Curator UI  ─┼─► F37 Sanne live
-F33 Fly deploy  ─┤
-F35 OAuth prod  ─┘
+✅ F17    Queue API (sole wiki write path, two-session landed)
+✅ F18.1  Curator UI — Session 1 (queue panel on apps/admin)
+
+⏭ F40.1  libSQL driver swap (bun:sqlite → @libsql/client, still single-tenant, ~1 day)
+⏭ F33    Fly.io server deploy (arn, volumes, healthchecks)
+⏭ F35    OAuth production credentials (for F33's first real login)
+⏭ F18.2  Curator UI — Session 2 (sources + wiki tree panels)
+⏭ F62    demo.trailmem.com — polished public reference site ← forcing function for component polish
+⏭ F37    Sanne live
 
 F28 Pipeline interface ─┬─► F24 DOCX
                         ├─► F25 Image/SVG
@@ -234,28 +241,33 @@ F28 Pipeline interface ─┬─► F24 DOCX
 
 F29 Widget + F31 Feedback ─► Phase 2-ready consumer story
 
-F45 @webhouse/cms adapter + F40 Multi-tenancy ─► F52 FysioDK
+F45 @webhouse/cms adapter + F40.2 Multi-tenancy ─► F52 FysioDK
 
-F40 Multi-tenancy ─┬─► F38 Cross-Trail search/chat ─► app.trailmem.com
-                   └─► F36 docs.trailmem.com (Trail brain of our docs)
+F40.2 Multi-tenancy ─┬─► F38 Cross-Trail search/chat ─► app.trailmem.com
+                     └─► F36 docs.trailmem.com (Trail brain of our docs)
 
-Landing: F34 (trailmem.com + www.trailmem.com + trail.broberg.ai, one artifact)
+Public-facing trailmem.com surfaces (all Phase 1-shippable):
+  F34   trailmem.com + www + trail.broberg.ai (landing — built, awaiting deploy)
+  F62   demo.trailmem.com (demo brain, public)
+  F36   docs.trailmem.com (Trail brain of trail's own docs — depends on F40.2)
 ```
 
-F17, F18, F33 are the three commits that turn Phase 1 from "feature-complete server stack" into "shippable to first customer". Everything else on the Phase-1 list is quality + pipeline width.
+**Phase-1 shippable definition:** F17 ✓ + F18 (complete) + F40.1 + F33 + F35 + F62 + F37 = Sanne on a live single-tenant engine, with `trailmem.com` (landing), `demo.trailmem.com` (polished showcase), and `sanne.trail.broberg.ai` (Sanne's instance) all live. F40.2 unlocks SaaS; F36 unlocks the docs-brain.
 
 ---
 
 ## Decisions still owed
 
-1. **F40 — Multi-tenancy strategy** — LibSQL/Turso per-tenant (cleaner isolation, easier backups per customer) vs Postgres with RLS (single DB, simpler ops). Call before F41 design starts.
-2. **F37 — Sanne deploy topology** — single-tenant on her own subdomain (`sanne.trail.broberg.ai`) vs. dedicated tenant on `app.trailmem.com` once F40 lands. Recommend single-tenant Fly.io app while F40 is still being designed, then migrate into the SaaS once multi-tenancy is real.
-3. **Brand naming** — user-facing label for a knowledge-base/wiki container. F38's plan doc assumes **Trail** / **Neuron**. Flagged as still open on user's side; lock in before F38 copy ships.
+1. **F37 — Sanne deploy topology** — single-tenant on her own subdomain (`sanne.trail.broberg.ai`) vs. dedicated tenant on `app.trailmem.com` once F40.2 lands. Recommend single-tenant Fly.io app while F40.2 is still being designed, then migrate into the SaaS once multi-tenancy is real.
+2. **Brand naming** — user-facing label for a knowledge-base/wiki container. F38's plan doc assumes **Trail** / **Neuron**. Flagged as still open on user's side; lock in before F38 copy ships.
+3. **F62 demo content** — which clinical domain (if any) to include. Sanne's material with consent, or an anonymised public-licensed alternative.
 
 ## Decisions resolved
 
-- **F61 — SaaS domain** — `trailmem.com` registered at Cloudflare (2026-04-16). Subdomain map: `trailmem.com` + `www.trailmem.com` = landing (F34), `docs.trailmem.com` = docs-as-Trail (F36), `app.trailmem.com` = SaaS engine (F40/F41). `trail.broberg.ai` remains as the engine-facing mirror of the landing.
+- **F61 — SaaS domain** — `trailmem.com` registered at Cloudflare (2026-04-16). Subdomain map: `trailmem.com` + `www.trailmem.com` = landing (F34), `demo.trailmem.com` = public reference (F62), `docs.trailmem.com` = docs-as-Trail (F36), `app.trailmem.com` = SaaS engine (F40.2/F41). `trail.broberg.ai` remains as the engine-facing mirror of the landing.
 - **F36 — Dogfood hosting** — tenant on `app.trailmem.com` (`trailwiki` tenant). Not self-hosted. Justification: the dogfood is more credible when it runs on the same multi-tenant infrastructure customers do.
+- **F40 — Multi-tenancy strategy** — **libSQL embedded per-tenant** (one `.db` file per tenant on Fly Volume). Not Turso Cloud. Not Postgres RLS. Postgres stays available as a Phase 3 emergency path via `@trail/db`'s adapter pattern. Locked in SAAS-SCALING-PLAN.md 2026-04-16.
+- **F42 — Storage** — **Tigris default + R2 alternative** via pluggable adapters. Per-tenant choice, `AWS_*` env convention, per-tenant migration as a background job. Locked in SAAS-SCALING-PLAN.md 2026-04-16.
 
 ---
 

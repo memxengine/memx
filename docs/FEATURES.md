@@ -58,9 +58,9 @@ Status reflects the engine (this repo). Landing-site and CMS-adapter work lives 
 | F37 | [Sanne Customer Onboarding (Customer #1)](#f37-sanne-onboarding) | Planned | 1 | — |
 | F38 | [Cross-Trail Search + Chat (Frontpage)](#f38-cross-trail-search) | Planned | 2 | [features/F38-cross-trail-search.md](features/F38-cross-trail-search.md) |
 | F39 | [Claude Code Session → Trail Ingest](#f39-cc-session-ingest) | Planned | 1 | [features/F39-cc-session-ingest.md](features/F39-cc-session-ingest.md) |
-| F40 | [Multi-Tenancy on `app.trailmem.com` (LibSQL/Turso or Postgres RLS)](#f40-multi-tenancy) | Idea | 2 | — |
+| F40 | [Multi-Tenancy on `app.trailmem.com` (libSQL embedded per-tenant)](#f40-multi-tenancy) | Planned | 1/2 | [features/F40-multi-tenancy.md](features/F40-multi-tenancy.md) |
 | F41 | [Tenant Provisioning + Signup Flow](#f41-tenant-provisioning) | Idea | 2 | — |
-| F42 | [Cloudflare R2 Storage Adapter](#f42-r2-storage) | Idea | 2 | — |
+| F42 | [Pluggable Storage (Tigris default + R2 alternative)](#f42-r2-storage) | Planned | 2 | [features/F42-pluggable-storage.md](features/F42-pluggable-storage.md) |
 | F43 | [Stripe Billing (Hobby / Pro / Business)](#f43-stripe-billing) | Idea | 2 | — |
 | F44 | [Usage Metering](#f44-usage-metering) | Idea | 2 | — |
 | F45 | [@webhouse/cms Adapter (Strategic)](#f45-webhouse-cms-adapter) | Idea | 2 | [features/F45-webhouse-cms-adapter.md](features/F45-webhouse-cms-adapter.md) |
@@ -80,6 +80,7 @@ Status reflects the engine (this repo). Landing-site and CMS-adapter work lives 
 | F59 | [Sanity Adapter](#f59-sanity-adapter) | Idea | 2 | — |
 | F60 | [Notion Adapter + Sync](#f60-notion-adapter) | Idea | 2 | — |
 | F61 | [SaaS Domain — `trailmem.com`](#f61-saas-domain) | Done | 2 | — |
+| F62 | [`demo.trailmem.com` — Polished Public Reference Site](#f62-demo-site) | Planned | 1 | [features/F62-demo-site.md](features/F62-demo-site.md) |
 | F70 | [SSO: SAML 2.0 + SCIM](#f70-sso-saml) | Idea | 3 | — |
 | F71 | [Audit Logs + Retention](#f71-audit-logs) | Idea | 3 | — |
 | F72 | [On-Prem Docker / Helm Deploy](#f72-on-prem-deploy) | Idea | 3 | — |
@@ -220,13 +221,15 @@ Customer #1 — Sanne Andersen (healing/zoneterapi, Aalborg). Migrate 25 years o
 Buddy watches every cc session. At session end (or `/trail-save`), a summariser extracts knowledge artifacts (decisions, conventions, bug-fix reasoning, rejected approaches) and POST's them to Trail as queue candidates. Trail compiles them into wiki pages cross-referenced with the codebase, git history, and other sessions. Not verbatim logging (that's MemPalace); this is compile-at-ingest. Building blocks: buddy's session monitor + Trail's candidate API (F17) + auto-approve for trusted sources. Feeds into F36 (docs.trailmem.com) so the docs brain includes the *why*, not just the *what*.
 
 ### F40 — Multi-Tenancy on `app.trailmem.com`
-Real multi-tenant data isolation powering the SaaS at `app.trailmem.com`. Two serious options: LibSQL/Turso per-tenant database (strong isolation, per-tenant backup/restore is trivial) or Postgres with Row-Level Security (single DB, less ops). Decision owed before F41 signup ships.
+**Decision locked:** libSQL embedded per-tenant, one `.db` file per tenant on Fly Volume, connection pool with LRU eviction, per-Machine `registry.db` for tenant routing. Ships in two phases:
+- **F40.1 (Phase 1, ~1 day):** swap driver from `bun:sqlite` to `@libsql/client`. Still single-tenant. Precedes F33 so Sanne's deploy is born on libSQL.
+- **F40.2 (Phase 2, 10-15 days):** `@trail/db` TrailDatabase interface, connection pool, registry, tenant-context middleware, provisioning + deprovisioning + tier-upgrade flows, dev-mode fallback.
 
 ### F41 — Tenant Provisioning + Signup
 Public signup flow creates a tenant + first user. Email verification, OAuth provider picker. Hooks to Stripe (F43) for plan selection.
 
-### F42 — R2 Storage Adapter
-Drop-in `Storage` implementation against Cloudflare R2. Same interface as LocalStorage (F13). Bucket per tenant + prefix per KB.
+### F42 — Pluggable Storage (Tigris + R2 Adapters)
+**Decision locked:** Two production adapters ship together — **Tigris** (Fly.io native, default) and **Cloudflare R2** (alternative). Both S3-compatible, same `Storage` interface as F13 LocalStorage. Tenant config selects; Pro+ tenants can migrate between providers via a background job. Adapter interface gains `stat` + `copy` to enable etag-verified migration without materialising payloads in memory.
 
 ### F43 — Stripe Billing
 Plans: Hobby (free, 1 KB / 100 sources / 1k queries), Pro ($29/mo, 5 KBs / 2k sources / 50k queries), Business ($199/mo, unlimited / metered). Stripe-hosted checkout + customer portal.
@@ -284,6 +287,9 @@ Notion integration with two-way sync. Databases / pages in Notion become sources
 
 ### F61 — SaaS Domain — `trailmem.com`
 **Resolved 2026-04-16.** Registered at Cloudflare. Three subdomains in play: `trailmem.com` / `www.trailmem.com` (landing, see F34), `docs.trailmem.com` (docs-as-a-Trail, see F36), `app.trailmem.com` (multi-tenant SaaS, see F40/F41). `trail.broberg.ai` continues as the engine-facing identity and mirrors the landing.
+
+### F62 — `demo.trailmem.com` — Polished Public Reference Site
+Public zero-login showcase of a Trail brain. Seeded with ~4 curated Trails (Bush/Memex essays, compile-vs-retrieve arguments, memory-neuroscience, optionally a public clinical domain). Reader browses Neurons, chats with the content, and sees a "recently approved" queue feed that visualises the compile-at-ingest loop. Deploys to `demo.trailmem.com`, shares F18 components, uses an `X-Demo-Token` read-only auth bypass against the `trail-demo` tenant. Inspired by Karpathy's LLM Wiki but "more lækker" — scholarly serif body, amber accents, provenance trails under each claim.
 
 ### F70 — SSO: SAML 2.0 + SCIM
 Identity federation for enterprise tenants. Provision/deprovision users via SCIM. Enterprise-tier feature gated by plan.
