@@ -100,6 +100,13 @@ queueRoutes.post('/queue/:id/approve', async (c) => {
   if (!parsed.success) return c.json({ error: parsed.error.flatten() }, 400);
 
   const tenant = getTenant(c);
+  // Resolve kbId BEFORE the mutation so the event is guaranteed to carry
+  // a real knowledgeBaseId. Post-mutation lookups sometimes returned null
+  // under load and silently broadcast events with kbId='' that the admin
+  // hook filtered out as noise.
+  const existing = await getCandidate(getTrail(c), tenant.id, c.req.param('id'));
+  if (!existing) return c.json({ error: 'Candidate not found' }, 404);
+
   try {
     const result = await approveCandidate(
       getTrail(c),
@@ -108,11 +115,10 @@ queueRoutes.post('/queue/:id/approve', async (c) => {
       userActor(c),
       parsed.data,
     );
-    const candidate = await getCandidate(getTrail(c), tenant.id, c.req.param('id'));
     broadcaster.emit({
       type: 'candidate_approved',
       tenantId: tenant.id,
-      kbId: candidate?.knowledgeBaseId ?? '',
+      kbId: existing.knowledgeBaseId,
       candidateId: result.candidateId,
       documentId: result.documentId,
       autoApproved: result.autoApproved,
@@ -132,6 +138,9 @@ queueRoutes.post('/queue/:id/reject', async (c) => {
   if (!parsed.success) return c.json({ error: parsed.error.flatten() }, 400);
 
   const tenant = getTenant(c);
+  const existing = await getCandidate(getTrail(c), tenant.id, c.req.param('id'));
+  if (!existing) return c.json({ error: 'Candidate not found' }, 404);
+
   try {
     const result = await rejectCandidate(
       getTrail(c),
@@ -140,11 +149,10 @@ queueRoutes.post('/queue/:id/reject', async (c) => {
       userActor(c),
       parsed.data,
     );
-    const candidate = await getCandidate(getTrail(c), tenant.id, c.req.param('id'));
     broadcaster.emit({
       type: 'candidate_rejected',
       tenantId: tenant.id,
-      kbId: candidate?.knowledgeBaseId ?? '',
+      kbId: existing.knowledgeBaseId,
       candidateId: result.candidateId,
       reason: result.reason,
     });

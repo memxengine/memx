@@ -15,26 +15,42 @@ import type { DomainEvent, StreamFrame } from '@trail/shared';
 import { isDomainEvent } from '@trail/shared';
 
 type Handler = (event: DomainEvent) => void;
+type OpenHandler = () => void;
 
 interface EventBus {
   source: EventSource | null;
   handlers: Set<Handler>;
+  /** Hooks that want to re-fetch state after a fresh connection/reconnect. */
+  openHandlers: Set<OpenHandler>;
   refCount: number;
 }
 
-// Module singleton — every call to subscribe() shares the same SSE
-// connection. Opening N tabs = N connections across the process still,
-// which is fine.
-const bus: EventBus = { source: null, handlers: new Set(), refCount: 0 };
+// Promote the bus to globalThis so Vite HMR reloading this module doesn't
+// create a second EventSource alongside the old one — the new module picks
+// up the already-open connection and its handlers instead of leaving them
+// dangling on a replaced-but-still-alive EventSource instance.
+const globalKey = '__trailEventBus__' as const;
+const globalAny = globalThis as unknown as { [globalKey]?: EventBus };
+const bus: EventBus =
+  globalAny[globalKey] ??
+  (globalAny[globalKey] = {
+    source: null,
+    handlers: new Set(),
+    openHandlers: new Set(),
+    refCount: 0,
+  });
 
 function openConnection(): void {
-  if (bus.source) return;
+  if (bus.source && bus.source.readyState !== EventSource.CLOSED) return;
   const es = new EventSource('/api/v1/stream', { withCredentials: true });
   bus.source = es;
+  es.onopen = () => {
+    // Fires on the first handshake and on EventSource's native auto-
+    // reconnect after a transient drop. Hooks listen to re-fetch any
+    // state that might have drifted while disconnected.
+    for (const fn of bus.openHandlers) fn();
+  };
   es.onmessage = (e) => deliver(e.data);
-  // `writeSSE({ event: '<type>' })` sets the event name — we listen on
-  // both the default 'message' and the typed channels so consumers don't
-  // care how the server names them.
   const relay = (e: MessageEvent) => deliver(e.data);
   for (const t of [
     'candidate_created',
@@ -49,8 +65,8 @@ function openConnection(): void {
     es.addEventListener(t, relay as EventListener);
   }
   es.onerror = () => {
-    // EventSource auto-reconnects on its own; a transient disconnection
-    // would trigger onerror repeatedly. We don't tear down on first error.
+    // EventSource auto-reconnects on its own; onopen will fire again when
+    // the connection comes back. Leave it alone.
   };
 }
 
@@ -82,6 +98,14 @@ export function subscribe(handler: Handler): () => void {
   };
 }
 
+/** Fire a callback every time the stream (re)opens — use to refresh state. */
+export function onStreamOpen(handler: OpenHandler): () => void {
+  bus.openHandlers.add(handler);
+  return () => {
+    bus.openHandlers.delete(handler);
+  };
+}
+
 /** Subscribe with a React-friendly hook. Cleans up on unmount. */
 export function useEvents(handler: Handler): void {
   const saved = useRef(handler);
@@ -99,24 +123,27 @@ export function useEvents(handler: Handler): void {
 export function usePendingCount(kbId: string | undefined): number | null {
   const [count, setCount] = useState<number | null>(null);
 
-  useEffect(() => {
+  const refetch = (): void => {
     if (!kbId) {
       setCount(null);
       return;
     }
-    let cancelled = false;
     const qs = new URLSearchParams({ knowledgeBaseId: kbId, status: 'pending', limit: '1' });
     fetch(`/api/v1/queue?${qs.toString()}`, { credentials: 'include' })
       .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
-      .then((data: { count: number }) => {
-        if (!cancelled) setCount(data.count);
-      })
-      .catch(() => {
-        if (!cancelled) setCount(null);
-      });
-    return () => {
-      cancelled = true;
-    };
+      .then((data: { count: number }) => setCount(data.count))
+      .catch(() => setCount(null));
+  };
+
+  useEffect(() => {
+    refetch();
+    // Re-fetch whenever the stream (re)opens — initial connection or auto-
+    // reconnect after a transient drop. Events missed during disconnection
+    // can't be replayed, so the authoritative recovery path is a fresh
+    // fetch of the count. Cheap — one query against an indexed column.
+    const off = onStreamOpen(refetch);
+    return off;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kbId]);
 
   useEvents((e) => {
