@@ -12,6 +12,7 @@ export function TrailNav({ kbId }: { kbId: string }) {
   const kb = useKb(kbId);
   const tabs = [
     { href: `/kb/${kbId}/neurons`, label: 'Neurons', match: '/neurons' },
+    { href: `/kb/${kbId}/search`, label: 'Search', match: '/search' },
     { href: `/kb/${kbId}/queue`, label: 'Queue', match: '/queue' },
     { href: `/kb/${kbId}/sources`, label: 'Sources', match: '/sources' },
   ];

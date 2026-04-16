@@ -124,6 +124,42 @@ export function getDocumentContent(
   return api(`/api/v1/documents/${encodeURIComponent(docId)}/content`);
 }
 
+// ── Search ───────────────────────────────────────────────────────
+
+export interface DocumentSearchHit {
+  id: string;
+  knowledgeBaseId: string;
+  filename: string;
+  title: string | null;
+  path: string;
+  kind: 'source' | 'wiki';
+  /** HTML snippet with FTS5 `<mark>` tags around matches. */
+  highlight: string;
+  rank: number;
+}
+
+export interface ChunkSearchHit {
+  id: string;
+  documentId: string;
+  knowledgeBaseId: string;
+  chunkIndex: number;
+  content: string;
+  headerBreadcrumb: string | null;
+  highlight: string;
+  rank: number;
+}
+
+export interface SearchResponse {
+  documents: DocumentSearchHit[];
+  chunks: ChunkSearchHit[];
+}
+
+/** FTS5 search across documents + chunks in a KB. Empty query returns empty. */
+export function searchKb(kbId: string, q: string, limit = 10): Promise<SearchResponse> {
+  const qs = new URLSearchParams({ q, limit: String(limit) });
+  return api(`/api/v1/knowledge-bases/${encodeURIComponent(kbId)}/search?${qs.toString()}`);
+}
+
 /**
  * Upload a source file. Uses multipart/form-data — do NOT set Content-Type;
  * the browser generates the boundary. Flows through the same endpoint the
