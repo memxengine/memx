@@ -15,7 +15,7 @@
  * writes to `documents`. The queue is the sole write path.
  */
 import { queueCandidates, type TrailDatabase } from '@trail/db';
-import { and, eq, like } from 'drizzle-orm';
+import { and, eq, inArray, like } from 'drizzle-orm';
 import { createCandidate, type Actor } from '../queue/candidates.js';
 import { detectOrphans } from './orphans.js';
 import { detectStale } from './stale.js';
@@ -128,6 +128,12 @@ async function loadExistingFingerprints(
       and(
         eq(queueCandidates.knowledgeBaseId, kbId),
         eq(queueCandidates.tenantId, tenantId),
+        // Only pending + approved block re-emission. Rejected or ingested
+        // fingerprints can re-fire — rejected means the curator said "no
+        // this time" but the underlying issue may have come back, and
+        // ingested means the lint candidate has already been consumed and
+        // its fingerprint is no longer load-bearing.
+        inArray(queueCandidates.status, ['pending', 'approved']),
         like(queueCandidates.metadata, '%"lintFingerprint":%'),
       ),
     )
