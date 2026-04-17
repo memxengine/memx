@@ -98,7 +98,10 @@ Status reflects the engine (this repo). Landing-site and CMS-adapter work lives 
 | F84 | [Dedicated PostgreSQL Option](#f84-dedicated-postgres) | Idea | 3 | — |
 | F85 | [Continuous Lint (Real-Time, Not Periodic)](#f85-continuous-lint) | Idea | 3 | — |
 | F86 | [SLA Contracts + Monitoring](#f86-sla-monitoring) | Idea | 3 | — |
-| F91 | [Neuron Editor (Markdown Split-View)](#f91-neuron-editor) | Done | 2 | [features/F91-neuron-editor.md](features/F91-neuron-editor.md) |
+| F87 | [Typed Event Stream (SSE) + Live Badges](#f87-event-stream) | Done | 1 | [features/F87-event-stream.md](features/F87-event-stream.md) |
+| F89 | [Chat Tools — MCP-Backed Introspection](#f89-chat-tools) | Done | 1 | [features/F89-chat-tools.md](features/F89-chat-tools.md) |
+| F90 | [Dynamic Curator Actions + Per-Trail Lint Policy](#f90-curator-actions) | Done | 1 | — |
+| F91 | [Neuron Editor (Markdown Split-View)](#f91-neuron-editor) | Done | 1 | [features/F91-neuron-editor.md](features/F91-neuron-editor.md) |
 | F92 | [Tags on Neurons (Filter + Facet + Auto-Suggest)](#f92-tags-on-neurons) | Planned | 2 | [features/F92-tags-on-neurons.md](features/F92-tags-on-neurons.md) |
 
 ---
@@ -343,6 +346,15 @@ Lint runs per-commit, not per-cron. Enables "pending contradiction" warnings in 
 
 ### F86 — SLA Monitoring
 Uptime SLA, latency SLA, and a public status page. Integrated with F77 multi-region for failover.
+
+### F87 — Event Stream
+Server-Sent Events broadcaster (`GET /api/v1/stream`) emits typed events — `candidate_created`, `candidate_approved`, `candidate_rejected`, `candidate_resolved`, `badge_count` — that admin panels subscribe to. The queue panel refreshes without polling, the nav badge shows the true pending count (server-side truth, not client-side cache), and panels across the admin react live to each other's writes. Debounced reload absorbs bulk-action bursts so 22 rejects in a row coalesce into one re-fetch. Also used by F91 for tag-aggregate cache busting and by the contradiction-lint subscriber to react to `candidate_approved`.
+
+### F89 — Chat Tools
+The chat endpoint used to answer every question by RAG-retrieving snippets and asking the LLM to cite — which worked for "what does X say about Y" but failed for structural questions like "how many Neurons do we have tagged ops?" or "which sources haven't been re-compiled in the last month?" F89 adds MCP-backed introspection tools the chat LLM can invoke mid-turn (list Neurons, count by tag, inspect source status). The LLM decides when to use RAG vs. structural — giving chat a "second brain" that knows the shape of the Trail, not just its content.
+
+### F90 — Dynamic Curator Actions
+Pre-F90, every queue candidate got the same Approve/Reject pair. F90 makes actions per-candidate: contradiction-alerts offer "Retire this Neuron / Flag the source / Reconcile manually", orphan-neurons offer "Link to sources / Retire / Still relevant", etc. Each action carries its own `effect` (approve, reject, acknowledge, retire-neuron, flag-source, mark-still-relevant, …) that the core dispatcher executes. Action labels + explanations are LLM-translated on first non-EN view and cached on the candidate row. Also introduces per-Trail `lint_policy` (trusting vs strict) and versioned lint fingerprints so rejected findings don't re-fire against the same Neuron version. Bulk operations work by effect-match (every kind has a reject-effect action, even when its string label differs).
 
 ### F91 — Neuron Editor
 Split-view markdown editor on the reader route (`?edit=1`). Saves route through a new `submitCuratorEdit` core helper that inserts a `user-correction` candidate and resolves it as approve in one tx — same audit trail as a manual queue click, no F19 policy surgery, no broken `createdBy`/`autoApprovedAt` semantics. Includes optimistic-concurrency guard (409 on version drift), beforeunload dirty-state guard, editable tag chips, and deep-links from F90 action cards so "reconcile manually" / "link to sources" / "still relevant" land in the editor instead of dead-ending.

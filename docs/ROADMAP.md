@@ -17,7 +17,7 @@ Trail ships in three phases. Each phase is independently deployable; Phase 2 and
 
 ---
 
-## Phase 1 — MVP · Done (16 features)
+## Phase 1 — MVP · Done (20 features)
 
 Everything needed to run an end-to-end ingest → wiki → chat flow for a single-tenant customer.
 
@@ -39,6 +39,10 @@ Everything needed to run an end-to-end ingest → wiki → chat flow for a singl
 | F14 | Multi-Provider LLM Adapter (`claude -p` + Anthropic API) | 2026-04 |
 | F15 | Bidirectional `document_references` | 2026-04 |
 | F16 | Wiki Events (Replay-Able Event Stream, Full Payloads) | 2026-04 |
+| F87 | Typed Event Stream (SSE) + Live Badges + Per-Panel Reactivity | 2026-04 |
+| F89 | Chat Tools — MCP-Backed Introspection for Structural Questions | 2026-04 |
+| F90 | Dynamic Curator Actions + Per-Trail Lint Policy + Action Translation | 2026-04 |
+| F91 | Neuron Editor (Markdown Split-View, Queue-Routed Save) | 2026-04 |
 
 **End-to-end verified:** Markdown source → 6-8 cross-referenced wiki pages in ~60-100s. 8-page Danish PDF (NADA acupuncture) → 6 images extracted → vision-described → 7 wiki pages in ~155s.
 
@@ -166,7 +170,6 @@ Multi-tenant SaaS, billing, richer pipelines, first 3rd-party adapters.
 | F54 | Analytics Dashboard for Curators | Should |
 | F56 | Wiki Freshness Scoring in Lint | Should |
 | F57 | Gap Suggestions from Low-Confidence Queries | Should |
-| F91 | Neuron Editor (Markdown Split-View) — **Done** | Must |
 | F92 | Tags on Neurons (Filter + Facet + Auto-Suggest) | Should |
 
 ---
