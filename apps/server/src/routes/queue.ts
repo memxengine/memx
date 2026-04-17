@@ -11,6 +11,7 @@ import {
   approveCandidate,
   rejectCandidate,
   listCandidates,
+  countCandidates,
   getCandidate,
   type Actor,
 } from '@trail/core';
@@ -83,8 +84,15 @@ queueRoutes.get('/queue', async (c) => {
   if (!query.success) return c.json({ error: query.error.flatten() }, 400);
 
   const tenant = getTenant(c);
-  const items = await listCandidates(getTrail(c), tenant.id, query.data);
-  return c.json({ items, count: items.length });
+  // `count` is the TOTAL matching filter — independent of `limit`. Callers
+  // that want the length of the paginated page just use items.length.
+  // Previously `count: items.length` was silently clamped by limit, which
+  // made it useless for badges and pagination headers.
+  const [items, count] = await Promise.all([
+    listCandidates(getTrail(c), tenant.id, query.data),
+    countCandidates(getTrail(c), tenant.id, query.data),
+  ]);
+  return c.json({ items, count });
 });
 
 queueRoutes.get('/queue/:id', async (c) => {

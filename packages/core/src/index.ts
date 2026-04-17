@@ -4,6 +4,7 @@ export {
   approveCandidate,
   rejectCandidate,
   listCandidates,
+  countCandidates,
   getCandidate,
 } from './queue/candidates.js';
 export type {

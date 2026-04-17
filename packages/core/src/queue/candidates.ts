@@ -1,4 +1,4 @@
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import type { BaseSQLiteDatabase } from 'drizzle-orm/sqlite-core';
 import {
   queueCandidates,
@@ -515,6 +515,32 @@ export async function listCandidates(
     .orderBy(desc(queueCandidates.createdAt))
     .limit(query.limit)
     .all()) as QueueCandidate[];
+}
+
+/**
+ * Total number of candidates matching the filter, ignoring `limit`. Needed
+ * for the admin's pending-count badge and any other consumer that wants the
+ * true size independent of paging — using `items.length` on a limited list
+ * produces a value clamped to `limit` which is silently wrong.
+ */
+export async function countCandidates(
+  trail: TrailDatabase,
+  tenantId: string,
+  query: Omit<ListQueueQuery, 'limit' | 'cursor'>,
+): Promise<number> {
+  const filters = [eq(queueCandidates.tenantId, tenantId)];
+  if (query.knowledgeBaseId) {
+    filters.push(eq(queueCandidates.knowledgeBaseId, query.knowledgeBaseId));
+  }
+  if (query.kind) filters.push(eq(queueCandidates.kind, query.kind));
+  if (query.status) filters.push(eq(queueCandidates.status, query.status));
+
+  const row = await trail.db
+    .select({ n: sql<number>`COUNT(*)`.as('n') })
+    .from(queueCandidates)
+    .where(and(...filters))
+    .get();
+  return row?.n ?? 0;
 }
 
 export async function getCandidate(

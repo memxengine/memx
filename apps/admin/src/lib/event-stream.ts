@@ -123,42 +123,48 @@ export function useEvents(handler: Handler): void {
 export function usePendingCount(kbId: string | undefined): number | null {
   const [count, setCount] = useState<number | null>(null);
 
-  const refetch = (): void => {
+  useEffect(() => {
     if (!kbId) {
       setCount(null);
       return;
     }
-    const qs = new URLSearchParams({ knowledgeBaseId: kbId, status: 'pending', limit: '1' });
-    fetch(`/api/v1/queue?${qs.toString()}`, { credentials: 'include' })
-      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
-      .then((data: { count: number }) => setCount(data.count))
-      .catch(() => setCount(null));
-  };
-
-  useEffect(() => {
+    // One authoritative source of truth: the server's count. Every relevant
+    // event triggers a refetch. Previously we did optimistic increments on
+    // the client, which sounded faster but drifted under any race (double
+    // events, events missed during disconnection, a reject coming in while
+    // a fetch was already in flight) and needed a separate reconcile path.
+    // With server-computed totals plus a refetch-on-event policy, the
+    // badge is always the same number the Queue tab would show if reloaded.
+    let cancelled = false;
+    const refetch = (): void => {
+      const qs = new URLSearchParams({ knowledgeBaseId: kbId, status: 'pending' });
+      fetch(`/api/v1/queue?${qs.toString()}`, { credentials: 'include' })
+        .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+        .then((data: { count: number }) => {
+          if (!cancelled) setCount(data.count);
+        })
+        .catch(() => {
+          if (!cancelled) setCount(null);
+        });
+    };
     refetch();
-    // Re-fetch whenever the stream (re)opens — initial connection or auto-
-    // reconnect after a transient drop. Events missed during disconnection
-    // can't be replayed, so the authoritative recovery path is a fresh
-    // fetch of the count. Cheap — one query against an indexed column.
-    const off = onStreamOpen(refetch);
-    return off;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const offOpen = onStreamOpen(refetch);
+    const offEvents = subscribe((e) => {
+      if (e.kbId !== kbId) return;
+      if (
+        e.type === 'candidate_created' ||
+        e.type === 'candidate_approved' ||
+        e.type === 'candidate_rejected'
+      ) {
+        refetch();
+      }
+    });
+    return () => {
+      cancelled = true;
+      offOpen();
+      offEvents();
+    };
   }, [kbId]);
-
-  useEvents((e) => {
-    if (!kbId || e.kbId !== kbId) return;
-    if (e.type === 'candidate_created' && e.status === 'pending') {
-      setCount((c) => (c === null ? 1 : c + 1));
-    } else if (e.type === 'candidate_approved') {
-      // Auto-approved candidates never transitioned through pending — we
-      // never incremented for them, so don't decrement either.
-      if (e.autoApproved) return;
-      setCount((c) => (c === null ? null : Math.max(0, c - 1)));
-    } else if (e.type === 'candidate_rejected') {
-      setCount((c) => (c === null ? null : Math.max(0, c - 1)));
-    }
-  });
 
   return count;
 }
