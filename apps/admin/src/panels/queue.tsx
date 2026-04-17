@@ -47,6 +47,13 @@ interface CandidateOpMeta {
   filename?: string;
   path?: string;
   tags?: string | null;
+  // Lint-finding shapes carry the affected Neuron id under different keys
+  // depending on the detector. The deep-link resolver falls back through
+  // these so orphan/stale/contradiction candidates all get an Open-editor
+  // link — not just update/archive candidates.
+  documentId?: string;
+  newDocumentId?: string;
+  existingDocumentId?: string;
 }
 
 function parseMetadata(raw: string | null): CandidateOpMeta | null {
@@ -580,9 +587,13 @@ function CandidateRow({
   // manually", show an Open-editor deep-link. Covers update-op candidates
   // (contradiction-alert's manual reconcile, orphan-neuron, stale) where
   // meta.targetDocumentId resolves to a known Neuron filename.
-  const editorSlug = meta?.targetDocumentId
-    ? slugByDocId.get(meta.targetDocumentId)
-    : null;
+  // Try each known metadata shape in order: update/archive candidates use
+  // targetDocumentId, orphan/stale use documentId, contradiction-alerts
+  // use newDocumentId (the just-committed Neuron that triggered the
+  // alert). First hit in slugByDocId wins.
+  const editorDocId =
+    meta?.targetDocumentId ?? meta?.documentId ?? meta?.newDocumentId ?? null;
+  const editorSlug = editorDocId ? slugByDocId.get(editorDocId) : null;
   const editorHref = editorSlug
     ? `/kb/${encodeURIComponent(kbId)}/neurons/${encodeURIComponent(editorSlug)}?edit=1`
     : null;
