@@ -165,7 +165,8 @@
       "trusting": "tillidsfuld",
       "strict": "streng",
       "trustingHint": "Tillidsfuld: afviste lint-fund undertrykkes permanent. Ingen nag-løkke på afviste fund.",
-      "strictHint": "Streng: afviste lint-fund må dukke op igen på næste lint-pass. Fanger fejlagtige afvisninger på bekostning af mere støj."
+      "strictHint": "Streng: afviste lint-fund må dukke op igen på næste lint-pass. Fanger fejlagtige afvisninger på bekostning af mere støj.",
+      "saveFailed": "Kunne ikke gemme lint-politik — {error}. Henter nuværende tilstand."
     }
   },
   "glossary": {

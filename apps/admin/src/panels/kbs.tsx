@@ -9,6 +9,13 @@ export function KnowledgeBasesPanel() {
   useLocale();
   const [kbs, setKbs] = useState<KnowledgeBase[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(null), 4000);
+    return () => clearTimeout(timer);
+  }, [toast]);
 
   const reload = useCallback(() => {
     listKnowledgeBases()
@@ -103,7 +110,11 @@ export function KnowledgeBasesPanel() {
                     ) : null}
                   </a>
                   <div class="flex items-center gap-3 shrink-0">
-                    <LintPolicyToggle kb={kb} onUpdated={reload} />
+                    <LintPolicyToggle
+                      kb={kb}
+                      onUpdated={reload}
+                      onError={(msg) => setToast({ kind: 'error', text: msg })}
+                    />
                     {pending > 0 ? (
                       <span
                         class="inline-flex items-center justify-center min-w-[1.5rem] h-[1.5rem] px-2 rounded-full text-[11px] font-mono font-semibold bg-[color:var(--color-accent)] text-[color:var(--color-accent-fg)]"
@@ -123,6 +134,19 @@ export function KnowledgeBasesPanel() {
           );
         })}
       </ul>
+
+      {toast ? (
+        <div
+          class={
+            'fixed bottom-6 right-6 z-40 px-4 py-3 rounded-md border text-sm shadow-lg max-w-md ' +
+            (toast.kind === 'success'
+              ? 'border-[color:var(--color-success)]/30 bg-[color:var(--color-success)]/10 text-[color:var(--color-fg)]'
+              : 'border-[color:var(--color-danger)]/30 bg-[color:var(--color-danger)]/10 text-[color:var(--color-fg)]')
+          }
+        >
+          {toast.text}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -137,9 +161,11 @@ export function KnowledgeBasesPanel() {
 function LintPolicyToggle({
   kb,
   onUpdated,
+  onError,
 }: {
   kb: KnowledgeBase;
   onUpdated: () => void;
+  onError: (message: string) => void;
 }) {
   const [busy, setBusy] = useState(false);
   const current = kb.lintPolicy ?? 'trusting';
@@ -150,9 +176,15 @@ function LintPolicyToggle({
     try {
       await updateKnowledgeBase(kb.id, { lintPolicy: next });
       onUpdated();
-    } catch {
-      // Silent — the refresh below will show current server state if the
-      // PATCH landed; if it didn't, the toggle stays where it was.
+    } catch (err) {
+      // Surface + log + re-sync. Previously silent, which let a failed
+      // PATCH look like a successful toggle. Surfacing via toast tells
+      // the curator it didn't land; onUpdated re-fetches so the button
+      // reflects the true server state instead of the optimistic value.
+      const detail = err instanceof Error ? err.message : String(err);
+      console.error('[lint-policy] PATCH failed:', detail);
+      onError(t('kbs.lintPolicy.saveFailed', { error: detail }));
+      onUpdated();
     } finally {
       setBusy(false);
     }

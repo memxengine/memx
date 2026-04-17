@@ -165,7 +165,8 @@
       "trusting": "trusting",
       "strict": "strict",
       "trustingHint": "Trusting: rejected lint findings are suppressed permanently. No nag-loop on dismissed findings.",
-      "strictHint": "Strict: rejected lint findings may re-fire on the next lint pass. Catches wrongful dismissals at the cost of more noise."
+      "strictHint": "Strict: rejected lint findings may re-fire on the next lint pass. Catches wrongful dismissals at the cost of more noise.",
+      "saveFailed": "Couldn't save lint policy — {error}. Reloading current state."
     }
   },
   "glossary": {
