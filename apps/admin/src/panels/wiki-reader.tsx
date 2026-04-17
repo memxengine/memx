@@ -7,6 +7,7 @@ import { rewriteWikiLinks } from '../lib/wiki-links';
 import { displayPath } from '../lib/display-path';
 import { t } from '../lib/i18n';
 import { NeuronEditorPanel } from './neuron-editor';
+import { TagChips, parseTags } from '../components/tag-chips';
 
 /**
  * Single-Neuron panel. Routes between the read-only reader and the F91
@@ -59,8 +60,9 @@ function ReaderView() {
     return marked.parse(preprocessed, { async: false }) as string;
   }, [content, kbId]);
 
-  const d = doc as (Document & { filename: string; title: string | null; version: number; path?: string }) | null;
+  const d = doc as (Document & { filename: string; title: string | null; version: number; path?: string; tags?: string | null }) | null;
   const editHref = d ? `/kb/${kbId}/neurons/${encodeURIComponent(slug)}?edit=1` : null;
+  const readerTags = d ? parseTags(d.tags) : [];
 
   return (
     <div class="page-shell">
@@ -111,8 +113,13 @@ function ReaderView() {
             <h1 class="text-3xl font-semibold tracking-tight mb-2">
               {d.title ?? d.filename}
             </h1>
-            <div class="text-[11px] font-mono text-[color:var(--color-fg-subtle)]">
-              v{d.version}
+            <div class="flex items-center gap-3 flex-wrap">
+              <span class="text-[11px] font-mono text-[color:var(--color-fg-subtle)]">
+                v{d.version}
+              </span>
+              {readerTags.length > 0 ? (
+                <TagChips tags={readerTags} />
+              ) : null}
             </div>
           </div>
           {content === null ? (

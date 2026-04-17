@@ -12,6 +12,7 @@ import {
 import { rewriteWikiLinks } from '../lib/wiki-links';
 import { displayPath } from '../lib/display-path';
 import { t } from '../lib/i18n';
+import { TagChips, parseTags, serializeTags } from '../components/tag-chips';
 
 /**
  * F91 — Neuron editor. Split-view markdown editor for Neurons, lifted
@@ -34,10 +35,10 @@ export function NeuronEditorPanel() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [originalContent, setOriginalContent] = useState<string | null>(null);
   const [originalTitle, setOriginalTitle] = useState<string>('');
-  const [originalTags, setOriginalTags] = useState<string>('');
+  const [originalTags, setOriginalTags] = useState<string[]>([]);
   const [content, setContent] = useState<string>('');
   const [title, setTitle] = useState<string>('');
-  const [tags, setTags] = useState<string>('');
+  const [tags, setTags] = useState<string[]>([]);
   const [loadedVersion, setLoadedVersion] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -78,8 +79,9 @@ export function NeuronEditorPanel() {
         setContent(r.content ?? '');
         setOriginalTitle(d.title ?? '');
         setTitle(d.title ?? '');
-        setOriginalTags(d.tags ?? '');
-        setTags(d.tags ?? '');
+        const initial = parseTags(d.tags);
+        setOriginalTags(initial);
+        setTags(initial);
         setLoadedVersion(r.version);
       })
       .catch((err: ApiError) => setLoadError(err.message));
@@ -87,7 +89,9 @@ export function NeuronEditorPanel() {
 
   const dirty =
     originalContent !== null &&
-    (content !== originalContent || title !== originalTitle || tags !== originalTags);
+    (content !== originalContent ||
+      title !== originalTitle ||
+      serializeTags(tags) !== serializeTags(originalTags));
 
   // beforeunload — browser-native "you have unsaved changes" prompt.
   useEffect(() => {
@@ -121,10 +125,11 @@ export function NeuronEditorPanel() {
     setSaveError(null);
     setConflict(null);
     try {
+      const serialized = serializeTags(tags);
       const result = await saveNeuronEdit(doc.id, {
         content,
         title: title.trim() || undefined,
-        tags: tags.trim() === '' ? null : tags,
+        tags: serialized === '' ? null : serialized,
         expectedVersion: loadedVersion,
       });
       setOriginalContent(content);
@@ -228,13 +233,7 @@ export function NeuronEditorPanel() {
           placeholder={t('neuronEditor.titlePlaceholder')}
           class="px-3 py-2 rounded-md border border-[color:var(--color-border)] bg-transparent text-lg font-semibold"
         />
-        <input
-          type="text"
-          value={tags}
-          onInput={(e) => setTags((e.target as HTMLInputElement).value)}
-          placeholder={t('neuronEditor.tagsPlaceholder')}
-          class="px-3 py-2 rounded-md border border-[color:var(--color-border)] bg-transparent text-sm font-mono"
-        />
+        <TagChips mode="editable" tags={tags} onChange={setTags} />
       </div>
 
       {conflict ? (

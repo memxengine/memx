@@ -192,5 +192,10 @@
     "discardConfirm": "Forkast ugemte ændringer?",
     "conflictBanner": "Neuronen er redigeret siden du åbnede den (v{current} vs v{expected}). Genindlæs for at se den nyeste version.",
     "reload": "Genindlæs"
+  },
+  "tagChips": {
+    "placeholder": "Tilføj tag — Enter eller komma",
+    "placeholderMore": "Tilføj endnu et…",
+    "remove": "Fjern tag {tag}"
   }
 }

@@ -192,5 +192,10 @@
     "discardConfirm": "Discard unsaved changes?",
     "conflictBanner": "The Neuron was edited since you opened it (v{current} vs v{expected}). Reload to see the latest version.",
     "reload": "Reload"
+  },
+  "tagChips": {
+    "placeholder": "Add tag — Enter or comma",
+    "placeholderMore": "Add another…",
+    "remove": "Remove tag {tag}"
   }
 }
