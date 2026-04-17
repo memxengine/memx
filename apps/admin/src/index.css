@@ -192,3 +192,10 @@ body {
 @keyframes loading-fade-in {
   to { opacity: 1; }
 }
+
+/* Pulse for the processing-indicator dot. Three-stage fade for a heartbeat
+ * feel rather than a pure sine — keeps the eye noticing. */
+@keyframes pulse-dot {
+  0%, 100% { opacity: 0.3; transform: scale(0.85); }
+  50%      { opacity: 1;   transform: scale(1.1); }
+}

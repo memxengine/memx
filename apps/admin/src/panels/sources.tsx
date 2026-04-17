@@ -4,6 +4,7 @@ import type { Document } from '@trail/shared';
 import { listSources, archiveDocument, retryDocument, ApiError } from '../api';
 import { displayPath } from '../lib/display-path';
 import { UploadDropzone } from '../components/upload-dropzone';
+import { ProcessingIndicator } from '../components/processing-indicator';
 import { useEvents, onStreamOpen, debounce } from '../lib/event-stream';
 
 /**
@@ -151,6 +152,9 @@ export function SourcesPanel() {
                   <div class="mt-2 text-[11px] font-mono text-[color:var(--color-danger)] whitespace-pre-wrap break-words">
                     {doc.errorMessage}
                   </div>
+                ) : null}
+                {doc.status === 'processing' || doc.status === 'pending' ? (
+                  <ProcessingIndicator startedAt={doc.updatedAt} />
                 ) : null}
               </div>
               <div class="flex items-center gap-3 shrink-0">
