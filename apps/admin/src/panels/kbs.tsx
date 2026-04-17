@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'preact/hooks';
 import type { KnowledgeBase } from '@trail/shared';
-import { listKnowledgeBases, ApiError } from '../api';
+import { listKnowledgeBases, updateKnowledgeBase, ApiError } from '../api';
 import { useEvents, onStreamOpen, onFocusRefresh, debounce } from '../lib/event-stream';
 import { invalidateKbs } from '../lib/kb-cache';
 import { t, useLocale } from '../lib/i18n';
@@ -89,17 +89,21 @@ export function KnowledgeBasesPanel() {
               key={kb.id}
               class="border border-[color:var(--color-border)] rounded-md bg-[color:var(--color-bg-card)]/80 hover:border-[color:var(--color-border-strong)] transition"
             >
-              <a href={`/kb/${kb.id}/neurons`} class="block px-4 py-3">
+              <div class="px-4 py-3">
                 <div class="flex items-baseline justify-between gap-4">
-                  <div class="min-w-0">
+                  <a
+                    href={`/kb/${kb.id}/neurons`}
+                    class="min-w-0 flex-1 hover:opacity-90 transition"
+                  >
                     <div class="font-medium">{kb.name}</div>
                     {kb.description ? (
                       <p class="text-sm text-[color:var(--color-fg-muted)] mt-0.5 line-clamp-2">
                         {kb.description}
                       </p>
                     ) : null}
-                  </div>
+                  </a>
                   <div class="flex items-center gap-3 shrink-0">
+                    <LintPolicyToggle kb={kb} onUpdated={reload} />
                     {pending > 0 ? (
                       <span
                         class="inline-flex items-center justify-center min-w-[1.5rem] h-[1.5rem] px-2 rounded-full text-[11px] font-mono font-semibold bg-[color:var(--color-accent)] text-[color:var(--color-accent-fg)]"
@@ -114,11 +118,77 @@ export function KnowledgeBasesPanel() {
                     </code>
                   </div>
                 </div>
-              </a>
+              </div>
             </li>
           );
         })}
       </ul>
+    </div>
+  );
+}
+
+/**
+ * Two-button segmented control for flipping a Trail's lint policy
+ * between 'trusting' (rejected findings stay dismissed) and 'strict'
+ * (rejected findings re-fire on next lint pass). Default is trusting —
+ * the opt-in to strict is a deliberate choice for curators who want the
+ * extra safety net against wrongful dismissals.
+ */
+function LintPolicyToggle({
+  kb,
+  onUpdated,
+}: {
+  kb: KnowledgeBase;
+  onUpdated: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const current = kb.lintPolicy ?? 'trusting';
+
+  const flip = async (next: 'trusting' | 'strict'): Promise<void> => {
+    if (next === current || busy) return;
+    setBusy(true);
+    try {
+      await updateKnowledgeBase(kb.id, { lintPolicy: next });
+      onUpdated();
+    } catch {
+      // Silent — the refresh below will show current server state if the
+      // PATCH landed; if it didn't, the toggle stays where it was.
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div
+      class="inline-flex items-center rounded-md border border-[color:var(--color-border)] overflow-hidden text-[10px] font-mono uppercase tracking-wide"
+      role="group"
+      aria-label={t('kbs.lintPolicy.label')}
+    >
+      {(['trusting', 'strict'] as const).map((p) => {
+        const active = p === current;
+        return (
+          <button
+            key={p}
+            type="button"
+            disabled={busy}
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              void flip(p);
+            }}
+            title={t(`kbs.lintPolicy.${p}Hint`)}
+            class={
+              'px-2 py-1 transition disabled:opacity-50 ' +
+              (active
+                ? 'bg-[color:var(--color-accent)] text-[color:var(--color-accent-fg)]'
+                : 'text-[color:var(--color-fg-muted)] hover:text-[color:var(--color-fg)] hover:bg-[color:var(--color-bg)]')
+            }
+            aria-pressed={active}
+          >
+            {t(`kbs.lintPolicy.${p}`)}
+          </button>
+        );
+      })}
     </div>
   );
 }

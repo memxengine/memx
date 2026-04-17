@@ -159,7 +159,14 @@
     "title": "Stier",
     "empty": "Ingen Stier endnu. Opret én for at komme i gang.",
     "create": "Opret Sti",
-    "pendingBadge": "{n} afventer"
+    "pendingBadge": "{n} afventer",
+    "lintPolicy": {
+      "label": "Lint-politik",
+      "trusting": "tillidsfuld",
+      "strict": "streng",
+      "trustingHint": "Tillidsfuld: afviste lint-fund undertrykkes permanent. Ingen nag-løkke på afviste fund.",
+      "strictHint": "Streng: afviste lint-fund må dukke op igen på næste lint-pass. Fanger fejlagtige afvisninger på bekostning af mere støj."
+    }
   },
   "glossary": {
     "title": "Ordforklaring",

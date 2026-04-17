@@ -159,7 +159,14 @@
     "title": "Trails",
     "empty": "No Trails yet. Create one to get started.",
     "create": "Create Trail",
-    "pendingBadge": "{n} pending"
+    "pendingBadge": "{n} pending",
+    "lintPolicy": {
+      "label": "Lint policy",
+      "trusting": "trusting",
+      "strict": "strict",
+      "trustingHint": "Trusting: rejected lint findings are suppressed permanently. No nag-loop on dismissed findings.",
+      "strictHint": "Strict: rejected lint findings may re-fire on the next lint pass. Catches wrongful dismissals at the cost of more noise."
+    }
   },
   "glossary": {
     "title": "Glossary",
