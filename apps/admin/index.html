@@ -4,8 +4,23 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Trail · Admin</title>
-    <meta name="theme-color" content="#FAF9F5" />
+    <meta name="theme-color" content="#FAF9F5" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#17140F" media="(prefers-color-scheme: dark)" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <script>
+      // Blocking inline script — runs BEFORE stylesheets parse so the first
+      // paint uses the curator's persisted theme instead of the light default.
+      // Matches the `trail.admin.theme` key the client-side theme store reads.
+      // Guards against quota exceptions and non-browser environments.
+      (function () {
+        try {
+          var t = localStorage.getItem('trail.admin.theme');
+          if (t === 'dark' || t === 'light') {
+            document.documentElement.setAttribute('data-theme', t);
+          }
+        } catch (_) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="app"></div>
