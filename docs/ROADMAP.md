@@ -166,6 +166,8 @@ Multi-tenant SaaS, billing, richer pipelines, first 3rd-party adapters.
 | F54 | Analytics Dashboard for Curators | Should |
 | F56 | Wiki Freshness Scoring in Lint | Should |
 | F57 | Gap Suggestions from Low-Confidence Queries | Should |
+| F91 | Neuron Editor (Markdown Split-View) — **Done** | Must |
+| F92 | Tags on Neurons (Filter + Facet + Auto-Suggest) | Should |
 
 ---
 

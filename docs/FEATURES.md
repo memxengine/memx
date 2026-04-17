@@ -98,6 +98,8 @@ Status reflects the engine (this repo). Landing-site and CMS-adapter work lives 
 | F84 | [Dedicated PostgreSQL Option](#f84-dedicated-postgres) | Idea | 3 | — |
 | F85 | [Continuous Lint (Real-Time, Not Periodic)](#f85-continuous-lint) | Idea | 3 | — |
 | F86 | [SLA Contracts + Monitoring](#f86-sla-monitoring) | Idea | 3 | — |
+| F91 | [Neuron Editor (Markdown Split-View)](#f91-neuron-editor) | Done | 2 | [features/F91-neuron-editor.md](features/F91-neuron-editor.md) |
+| F92 | [Tags on Neurons (Filter + Facet + Auto-Suggest)](#f92-tags-on-neurons) | Planned | 2 | [features/F92-tags-on-neurons.md](features/F92-tags-on-neurons.md) |
 
 ---
 
@@ -341,3 +343,9 @@ Lint runs per-commit, not per-cron. Enables "pending contradiction" warnings in 
 
 ### F86 — SLA Monitoring
 Uptime SLA, latency SLA, and a public status page. Integrated with F77 multi-region for failover.
+
+### F91 — Neuron Editor
+Split-view markdown editor on the reader route (`?edit=1`). Saves route through a new `submitCuratorEdit` core helper that inserts a `user-correction` candidate and resolves it as approve in one tx — same audit trail as a manual queue click, no F19 policy surgery, no broken `createdBy`/`autoApprovedAt` semantics. Includes optimistic-concurrency guard (409 on version drift), beforeunload dirty-state guard, editable tag chips, and deep-links from F90 action cards so "reconcile manually" / "link to sources" / "still relevant" land in the editor instead of dead-ending.
+
+### F92 — Tags on Neurons
+Tag chips already render in F91's reader and editor, but no aggregate surface exists. F92 adds a per-KB tag-aggregate endpoint, a filter bar on the Neuron listing, a tag facet on search, and an LLM auto-suggest pass during chat-save so new Neurons arrive pre-tagged. Also introduces a canonicaliser (`lowercase`, `kebab-case`, `[a-z0-9-]` only) + a one-shot backfill for existing tag strings. Colour coding per tag deliberately out of scope.
