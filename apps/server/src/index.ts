@@ -19,7 +19,7 @@ await recoverZombieIngests(trail);
 await rewriteWikiToNeurons(trail);
 
 // F19 axis 3 — contradiction detection subscribes to candidate_approved.
-startContradictionLint(trail);
+const stopContradictionLint = startContradictionLint(trail);
 
 const app = createApp(trail);
 
@@ -31,11 +31,12 @@ const server = Bun.serve({
 console.log(`trail server running on http://localhost:${server.port}`);
 console.log(`  database: ${trail.path}`);
 
-// Graceful shutdown: release the libSQL client so the WAL file is
-// checkpointed cleanly. Bun will otherwise kill the process without
-// letting libSQL flush.
+// Graceful shutdown: tear down background subscribers first so no async
+// handler can race an event against a closing libSQL client, then stop
+// the HTTP server, then close the DB so the WAL checkpoints cleanly.
 const shutdown = async () => {
   console.log('\nshutting down…');
+  stopContradictionLint();
   server.stop();
   await trail.close();
   process.exit(0);
