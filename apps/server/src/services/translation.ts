@@ -40,7 +40,10 @@ import type { TrailDatabase } from '@trail/db';
 import type { CandidateAction, Locale, QueueCandidate } from '@trail/shared';
 
 const CHAT_MODEL = process.env.TRAIL_TRANSLATE_MODEL ?? 'claude-haiku-4-5-20251001';
-const TRANSLATE_TIMEOUT_MS = Number(process.env.TRAIL_TRANSLATE_TIMEOUT_MS ?? 60_000);
+// 60s timed out on the bigger contradictions (title + content + 4 actions).
+// 120s covers the heaviest bundles observed in practice; change via
+// TRAIL_TRANSLATE_TIMEOUT_MS if a locale's payload is even chunkier.
+const TRANSLATE_TIMEOUT_MS = Number(process.env.TRAIL_TRANSLATE_TIMEOUT_MS ?? 120_000);
 
 /**
  * Human-readable locale names for the LLM prompt. "Translate to Danish"

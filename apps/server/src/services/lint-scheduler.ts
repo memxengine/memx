@@ -22,7 +22,11 @@
  *
  * Controls via env:
  *   - TRAIL_LINT_SCHEDULE_HOURS (default 24; 0 disables)
- *   - TRAIL_LINT_INITIAL_DELAY_SECONDS (default 60; delay before first run)
+ *   - TRAIL_LINT_INITIAL_DELAY_SECONDS (default 14400 = 4h; delay before first run.
+ *     Was 60s but every engine restart then triggered a full dreaming pass
+ *     that competed with queue-backfill for the single CLI lane. Four hours
+ *     means a "normal" restart doesn't kick off a fresh LLM scan; the
+ *     nightly 24h schedule carries the load as intended.)
  *   - TRAIL_LINT_SKIP_CONTRADICTIONS (default off; set to 1 to skip the
  *     LLM pass and run only orphans+stale — useful when API/CLI unavailable)
  */
@@ -37,7 +41,7 @@ import {
 
 const SCHEDULE_HOURS = Number(process.env.TRAIL_LINT_SCHEDULE_HOURS ?? 24);
 const INITIAL_DELAY_MS =
-  Number(process.env.TRAIL_LINT_INITIAL_DELAY_SECONDS ?? 60) * 1000;
+  Number(process.env.TRAIL_LINT_INITIAL_DELAY_SECONDS ?? 14_400) * 1000;
 const SKIP_CONTRADICTIONS = process.env.TRAIL_LINT_SKIP_CONTRADICTIONS === '1';
 
 type ScannedKB = {
