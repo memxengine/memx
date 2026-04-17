@@ -4,12 +4,14 @@ import { marked } from 'marked';
 import type { CandidateAction, QueueCandidate, QueueCandidateStatus } from '@trail/shared';
 import {
   listQueue,
+  listWikiPages,
   resolveCandidate,
   reopenCandidate,
   bulkQueue,
   ApiError,
   type QueueListResponse,
 } from '../api';
+import type { Document } from '@trail/shared';
 import { rewriteWikiLinks } from '../lib/wiki-links';
 import { displayPath } from '../lib/display-path';
 import { Modal, ModalButton } from '../components/modal';
@@ -78,6 +80,10 @@ export function QueuePanel() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkReject, setBulkReject] = useState<{ ids: string[]; reason: string } | null>(null);
   const [bulkBusy, setBulkBusy] = useState(false);
+  // F91 — docId → filename-slug map so action cards can deep-link to the
+  // editor via the existing /kb/:kbId/neurons/:slug?edit=1 route. Fetched
+  // once per KB; the page list is already tiny and refreshed on focus.
+  const [slugByDocId, setSlugByDocId] = useState<Map<string, string>>(new Map());
 
   const reload = useCallback(() => {
     setError(null);
@@ -92,6 +98,22 @@ export function QueuePanel() {
   const reloadDebounced = useCallback(debounce(reload, 100), [reload]);
 
   useEffect(reload, [reload]);
+
+  useEffect(() => {
+    if (!kbId) return;
+    listWikiPages(kbId)
+      .then((pages) => {
+        const map = new Map<string, string>();
+        for (const p of pages as Array<Document & { filename: string }>) {
+          map.set(p.id, p.filename.replace(/\.md$/i, ''));
+        }
+        setSlugByDocId(map);
+      })
+      .catch(() => {
+        // Non-fatal — action cards without a resolvable slug just skip
+        // the "Open editor" link. The queue itself still works.
+      });
+  }, [kbId]);
 
   // Event-driven refresh. Any candidate_* event for this KB triggers a
   // re-fetch of the current filter. Debounced so a bulk action that emits
@@ -388,6 +410,7 @@ export function QueuePanel() {
             key={c.id}
             candidate={c}
             kbId={kbId}
+            slugByDocId={slugByDocId}
             isExpanded={expanded.has(c.id)}
             onToggle={() => toggleExpanded(c.id)}
             busy={actingOn === c.id}
@@ -528,6 +551,7 @@ export function QueuePanel() {
 interface RowProps {
   candidate: QueueCandidate;
   kbId: string;
+  slugByDocId: Map<string, string>;
   isExpanded: boolean;
   onToggle: () => void;
   busy: boolean;
@@ -541,6 +565,7 @@ interface RowProps {
 function CandidateRow({
   candidate: c,
   kbId,
+  slugByDocId,
   isExpanded,
   onToggle,
   busy,
@@ -551,6 +576,16 @@ function CandidateRow({
   showCheckbox,
 }: RowProps) {
   const meta = parseMetadata(c.metadata);
+  // F91 — when the candidate's decision leads the curator to "edit
+  // manually", show an Open-editor deep-link. Covers update-op candidates
+  // (contradiction-alert's manual reconcile, orphan-neuron, stale) where
+  // meta.targetDocumentId resolves to a known Neuron filename.
+  const editorSlug = meta?.targetDocumentId
+    ? slugByDocId.get(meta.targetDocumentId)
+    : null;
+  const editorHref = editorSlug
+    ? `/kb/${encodeURIComponent(kbId)}/neurons/${encodeURIComponent(editorSlug)}?edit=1`
+    : null;
   // Localised title + content. `bundle` starts with EN fallback and is
   // populated with the active locale's translations once they arrive (or
   // immediately, if the candidate already has them cached).
@@ -609,6 +644,15 @@ function CandidateRow({
               {c.createdBy ? t('queue.byAuthor', { who: c.createdBy }) : t('queue.byPipeline')}
             </span>
             <CopyId id={c.id} />
+            {editorHref ? (
+              <a
+                href={editorHref}
+                onClick={(e) => e.stopPropagation()}
+                class="underline underline-offset-2 decoration-[color:var(--color-fg-subtle)]/60 hover:decoration-[color:var(--color-accent)] hover:text-[color:var(--color-fg)] transition"
+              >
+                {t('neuronEditor.openEditor')}
+              </a>
+            ) : null}
           </div>
         </div>
         {c.status === 'pending' ? (

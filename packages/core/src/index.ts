@@ -9,6 +9,8 @@ export {
   resolveActions,
   persistActionTranslation,
   persistCandidateTranslation,
+  submitCuratorEdit,
+  VersionConflictError,
   DEFAULT_ACTIONS,
 } from './queue/candidates.js';
 export type {

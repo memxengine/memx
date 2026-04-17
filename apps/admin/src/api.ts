@@ -191,6 +191,67 @@ export function getDocumentContent(
   return api(`/api/v1/documents/${encodeURIComponent(docId)}/content`);
 }
 
+/**
+ * F91 — curator Neuron edit. Routes server-side through the queue via
+ * `submitCuratorEdit`. Throws `NeuronEditConflictError` on HTTP 409 so
+ * the editor can distinguish "someone else edited" from other failures
+ * and prompt the curator to reload.
+ */
+export async function saveNeuronEdit(
+  docId: string,
+  input: {
+    title?: string;
+    content: string;
+    tags?: string | null;
+    expectedVersion: number;
+  },
+): Promise<{ id: string; version: number; wikiEventId: string | null }> {
+  const response = await fetch(
+    `/api/v1/documents/${encodeURIComponent(docId)}/content`,
+    {
+      method: 'PUT',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    },
+  );
+  if (response.status === 409) {
+    const body = (await response.json().catch(() => ({}))) as {
+      currentVersion?: number;
+      expectedVersion?: number;
+      message?: string;
+    };
+    throw new NeuronEditConflictError(
+      body.currentVersion ?? input.expectedVersion + 1,
+      body.expectedVersion ?? input.expectedVersion,
+      body.message ?? 'Version conflict',
+    );
+  }
+  if (!response.ok) {
+    let message = `${response.status} ${response.statusText}`;
+    try {
+      const body = (await response.json()) as { error?: string };
+      if (body.error) message = body.error;
+    } catch {
+      // ignore
+    }
+    throw new ApiError(response.status, message);
+  }
+  return (await response.json()) as { id: string; version: number; wikiEventId: string | null };
+}
+
+export class NeuronEditConflictError extends Error {
+  readonly status = 409 as const;
+  constructor(
+    public currentVersion: number,
+    public expectedVersion: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'NeuronEditConflictError';
+  }
+}
+
 /** Soft-archive a document. Sets archived=true + status='archived'. */
 export function archiveDocument(docId: string): Promise<void> {
   return api(`/api/v1/documents/${encodeURIComponent(docId)}`, { method: 'DELETE' });

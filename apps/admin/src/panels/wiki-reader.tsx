@@ -5,13 +5,20 @@ import type { Document } from '@trail/shared';
 import { listWikiPages, getDocumentContent, ApiError } from '../api';
 import { rewriteWikiLinks } from '../lib/wiki-links';
 import { displayPath } from '../lib/display-path';
+import { t } from '../lib/i18n';
+import { NeuronEditorPanel } from './neuron-editor';
 
 /**
- * Single-Neuron reader. Finds the page by slug (filename without .md)
- * within the KB's wiki documents, fetches its content, and renders it
- * with `[[wiki-links]]` rewritten into navigable anchors.
+ * Single-Neuron panel. Routes between the read-only reader and the F91
+ * edit-mode view based on the `?edit=1` query flag. Sub-components own
+ * their own hooks so the hook-order rule holds across mode flips.
  */
 export function WikiReaderPanel() {
+  const route = useRoute();
+  return route.query.edit === '1' ? <NeuronEditorPanel /> : <ReaderView />;
+}
+
+function ReaderView() {
   const route = useRoute();
   const kbId = route.params.kbId ?? '';
   const slug = decodeURIComponent(route.params.slug ?? '');
@@ -53,16 +60,25 @@ export function WikiReaderPanel() {
   }, [content, kbId]);
 
   const d = doc as (Document & { filename: string; title: string | null; version: number; path?: string }) | null;
+  const editHref = d ? `/kb/${kbId}/neurons/${encodeURIComponent(slug)}?edit=1` : null;
 
   return (
     <div class="page-shell">
-      <header class="mb-4">
+      <header class="mb-4 flex items-center justify-between gap-4">
         <a
           href={`/kb/${kbId}/neurons`}
           class="text-sm text-[color:var(--color-fg-subtle)] hover:text-[color:var(--color-fg)] transition"
         >
           ← Neurons
         </a>
+        {editHref ? (
+          <a
+            href={editHref}
+            class="px-3 py-1.5 rounded-md border border-[color:var(--color-border)] text-sm hover:bg-[color:var(--color-bg-card)] transition"
+          >
+            {t('neuronEditor.editButton')}
+          </a>
+        ) : null}
       </header>
 
       {error ? (

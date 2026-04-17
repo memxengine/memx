@@ -180,5 +180,17 @@
     "notFound": "Ikke fundet.",
     "conflict": "Kan ikke udføres — elementet er ændret siden du åbnede det.",
     "unknown": "Ukendt fejl: {message}"
+  },
+  "neuronEditor": {
+    "editButton": "Rediger",
+    "openEditor": "Åbn editor",
+    "saving": "Gemmer…",
+    "savedToast": "Gemt.",
+    "titlePlaceholder": "Titel",
+    "tagsPlaceholder": "Tags (komma-separeret)",
+    "footerHint": "⌘+S for at gemme · Esc for at annullere",
+    "discardConfirm": "Forkast ugemte ændringer?",
+    "conflictBanner": "Neuronen er redigeret siden du åbnede den (v{current} vs v{expected}). Genindlæs for at se den nyeste version.",
+    "reload": "Genindlæs"
   }
 }

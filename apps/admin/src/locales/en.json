@@ -180,5 +180,17 @@
     "notFound": "Not found.",
     "conflict": "Can't do that — the item changed under your feet.",
     "unknown": "Unknown error: {message}"
+  },
+  "neuronEditor": {
+    "editButton": "Edit",
+    "openEditor": "Open editor",
+    "saving": "Saving…",
+    "savedToast": "Saved.",
+    "titlePlaceholder": "Title",
+    "tagsPlaceholder": "Tags (comma-separated)",
+    "footerHint": "⌘+S to save · Esc to cancel",
+    "discardConfirm": "Discard unsaved changes?",
+    "conflictBanner": "The Neuron was edited since you opened it (v{current} vs v{expected}). Reload to see the latest version.",
+    "reload": "Reload"
   }
 }

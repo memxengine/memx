@@ -100,8 +100,20 @@ export const UpdateDocumentSchema = z.object({
   metadata: z.string().nullable().optional(),
 });
 
+/**
+ * F91 — curator edit payload for `PUT /api/v1/documents/:docId/content`.
+ *
+ * Pre-F91 this schema was `{ content }`-only and the endpoint wrote
+ * directly to the documents row. F91 re-routes the endpoint through the
+ * queue (`submitCuratorEdit`), so the payload now carries the fields the
+ * editor wants to change plus an `expectedVersion` token for optimistic
+ * concurrency. Legacy one-field {content} callers were not in use.
+ */
 export const UpdateContentSchema = z.object({
   content: z.string(),
+  title: z.string().min(1).max(500).optional(),
+  tags: z.string().nullable().optional(),
+  expectedVersion: z.number().int().nonnegative(),
 });
 
 // ── Localisation primitive ────────────────────────────────────────────────────

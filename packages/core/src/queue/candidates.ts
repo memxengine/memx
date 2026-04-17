@@ -63,6 +63,35 @@ export interface CandidateOp {
   filename?: string;
   path?: string;
   tags?: string | null;
+  /** F91: new title for an `update` op. Absent = keep existing. */
+  title?: string;
+  /**
+   * F91: optimistic-concurrency token. When present on an `update`, the
+   * approve path rejects with `VersionConflictError` if the target doc's
+   * current version has moved past this value since the editor loaded.
+   */
+  expectedVersion?: number;
+}
+
+/**
+ * Thrown by `approveUpdate` when the `expectedVersion` guard fails.
+ * The route layer catches this and returns HTTP 409 so the client can
+ * prompt the curator to reload. Keeping a distinct class lets callers
+ * discriminate without string-matching on message text.
+ */
+export class VersionConflictError extends Error {
+  readonly code = 'version_conflict' as const;
+  readonly currentVersion: number;
+  readonly expectedVersion: number;
+  constructor(currentVersion: number, expectedVersion: number) {
+    super(
+      `Version conflict: expected ${expectedVersion}, got ${currentVersion}. ` +
+        `The Neuron was edited since you opened it.`,
+    );
+    this.name = 'VersionConflictError';
+    this.currentVersion = currentVersion;
+    this.expectedVersion = expectedVersion;
+  }
 }
 
 export interface Actor {
@@ -282,6 +311,125 @@ export async function createCandidate(
 }
 
 /**
+ * F91 — curator-initiated Neuron edit.
+ *
+ * The Neuron editor needs a "save" operation that writes immediately but
+ * still flows through the queue so F17's "sole write path" invariant
+ * holds. The naive fix — making `'user-correction'` a TRUSTED_KIND in
+ * F19 — doesn't work: `shouldAutoApprove` short-circuits on
+ * `candidate.createdBy`, deliberately, to keep the `createdBy` /
+ * `autoApprovedAt` audit semantics clean.
+ *
+ * So instead we sit *beside* the policy: one tx inserts a
+ * `'user-correction'` candidate with `createdBy = actor.id`, then
+ * dispatches straight to `approveUpdate`. That's exactly what a human
+ * queue click does — just without the UI round-trip. `autoApprovedAt`
+ * stays `null` (this wasn't auto), `reviewedBy = actor.id` (the curator
+ * *did* approve their own submission).
+ *
+ * Concurrency: the `expectedVersion` the caller supplies flows through
+ * `op.expectedVersion` into `approveUpdate`, which throws
+ * `VersionConflictError` if the target doc has moved on. The route
+ * layer maps that to HTTP 409.
+ */
+export async function submitCuratorEdit(
+  trail: TrailDatabase,
+  tenantId: string,
+  docId: string,
+  input: {
+    title?: string;
+    content: string;
+    tags?: string | null;
+    expectedVersion: number;
+  },
+  actor: Actor,
+): Promise<ResolutionResult> {
+  if (actor.kind !== 'user') {
+    throw new Error('submitCuratorEdit requires a user actor');
+  }
+
+  const doc = await trail.db
+    .select({
+      id: documents.id,
+      knowledgeBaseId: documents.knowledgeBaseId,
+      title: documents.title,
+    })
+    .from(documents)
+    .where(
+      and(
+        eq(documents.id, docId),
+        eq(documents.tenantId, tenantId),
+        eq(documents.kind, 'wiki'),
+      ),
+    )
+    .get();
+  if (!doc) throw new Error(`Target wiki document not found: ${docId}`);
+
+  const candidateId = `cnd_${crypto.randomUUID().slice(0, 12)}`;
+  const op: CandidateOp = {
+    op: 'update',
+    targetDocumentId: docId,
+    expectedVersion: input.expectedVersion,
+    ...(input.title !== undefined ? { title: input.title } : {}),
+    ...(input.tags !== undefined ? { tags: input.tags } : {}),
+  };
+  const candidateTitle = input.title ?? doc.title ?? docId;
+  const now = new Date().toISOString();
+
+  return trail.db.transaction(async (tx) => {
+    await tx
+      .insert(queueCandidates)
+      .values({
+        id: candidateId,
+        tenantId,
+        knowledgeBaseId: doc.knowledgeBaseId,
+        kind: 'user-correction',
+        title: candidateTitle,
+        content: input.content,
+        metadata: JSON.stringify(op),
+        confidence: 1,
+        impactEstimate: null,
+        status: 'pending',
+        createdBy: actor.id,
+        actions: null,
+      })
+      .run();
+
+    const candidate = hydrate(
+      await tx
+        .select()
+        .from(queueCandidates)
+        .where(eq(queueCandidates.id, candidateId))
+        .get(),
+    );
+
+    const ctx: CommitContext = {
+      now,
+      auto: false,
+      summary: `curator edit by ${actor.id}`,
+      metadataJson: null,
+    };
+
+    const approveAction: CandidateAction = {
+      id: 'approve',
+      effect: 'approve',
+      label: { en: 'Approve' },
+      explanation: { en: 'Curator-approved edit via Neuron editor.' },
+    };
+
+    return approveUpdate(
+      tx,
+      candidate,
+      op,
+      { actionId: 'approve' },
+      approveAction,
+      actor,
+      ctx,
+    );
+  });
+}
+
+/**
  * Execute a curator decision. Dispatches on the resolved action's effect.
  *
  * `actionId` references one of `candidate.actions[]` when the producer
@@ -496,6 +644,14 @@ async function approveUpdate(
     throw new Error(`Target wiki document not found: ${op.targetDocumentId}`);
   }
 
+  // F91 — optimistic concurrency. When a curator-initiated edit carries
+  // the doc.version it was loaded at, reject if the row has moved on.
+  // Inside the tx so the check and the subsequent UPDATE are atomic under
+  // SQLite's write lock.
+  if (op.expectedVersion !== undefined && doc.version !== op.expectedVersion) {
+    throw new VersionConflictError(doc.version, op.expectedVersion);
+  }
+
   const content = payload.editedContent ?? candidate.content;
   const newVersion = doc.version + 1;
   const prevEventId = await lastEventIdFor(tx, candidate.tenantId, doc.id);
@@ -507,6 +663,8 @@ async function approveUpdate(
       fileSize: content.length,
       version: newVersion,
       updatedAt: ctx.now,
+      ...(op.title !== undefined ? { title: op.title } : {}),
+      ...(op.tags !== undefined ? { tags: op.tags } : {}),
     })
     .where(eq(documents.id, doc.id))
     .run();

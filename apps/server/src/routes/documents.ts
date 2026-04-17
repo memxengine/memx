@@ -8,6 +8,7 @@ import {
   DocumentKindEnum,
 } from '@trail/shared';
 import { eq, and, inArray } from 'drizzle-orm';
+import { submitCuratorEdit, VersionConflictError } from '@trail/core';
 import { requireAuth, getUser, getTenant, getTrail } from '../middleware/auth.js';
 import { chunkText, storeChunks } from '../services/chunker.js';
 import { processPdfAsync, processDocxAsync } from './uploads.js';
@@ -150,38 +151,82 @@ documentRoutes.post('/knowledge-bases/:kbId/documents/note', async (c) => {
   return c.json(doc, 201);
 });
 
+// F91 — curator Neuron edit. Routes through the queue via
+// `submitCuratorEdit` so F17's "queue is the sole wiki write path"
+// invariant holds. See packages/core/src/queue/candidates.ts for the
+// full rationale on why this is NOT an F19 auto-approval.
 documentRoutes.put('/documents/:docId/content', async (c) => {
   const trail = getTrail(c);
   const tenant = getTenant(c);
+  const user = getUser(c);
   const docId = c.req.param('docId');
   const body = UpdateContentSchema.parse(await c.req.json());
 
-  const existing = await trail.db
-    .select()
-    .from(documents)
-    .where(and(eq(documents.id, docId), eq(documents.tenantId, tenant.id)))
-    .get();
-  if (!existing) return c.json({ error: 'Not found' }, 404);
+  try {
+    const result = await submitCuratorEdit(
+      trail,
+      tenant.id,
+      docId,
+      {
+        content: body.content,
+        title: body.title,
+        tags: body.tags,
+        expectedVersion: body.expectedVersion,
+      },
+      { id: user.id, kind: 'user' },
+    );
 
-  const newVersion = existing.version + 1;
-  await trail.db
-    .update(documents)
-    .set({
-      content: body.content,
-      version: newVersion,
-      updatedAt: new Date().toISOString(),
-    })
-    .where(eq(documents.id, docId))
-    .run();
+    // Chunk-rebuild for search. Kept outside the tx because chunking
+    // can be slow and the write must be durable whether or not chunks
+    // repopulate; a failed chunk rebuild only hurts search, not data.
+    await trail.db.delete(documentChunks).where(eq(documentChunks.documentId, docId)).run();
+    if (body.content.trim()) {
+      const doc = await trail.db
+        .select({ knowledgeBaseId: documents.knowledgeBaseId })
+        .from(documents)
+        .where(and(eq(documents.id, docId), eq(documents.tenantId, tenant.id)))
+        .get();
+      if (doc) {
+        const chunks = chunkText(body.content);
+        await storeChunks(trail, docId, tenant.id, doc.knowledgeBaseId, chunks);
+      }
+    }
 
-  await trail.db.delete(documentChunks).where(eq(documentChunks.documentId, docId)).run();
-  if (body.content.trim()) {
-    const chunks = chunkText(body.content);
-    await storeChunks(trail, docId, tenant.id, existing.knowledgeBaseId, chunks);
+    return c.json({
+      id: docId,
+      version: result.documentId ? await currentVersion(trail, docId) : body.expectedVersion + 1,
+      wikiEventId: result.wikiEventId,
+    });
+  } catch (err) {
+    if (err instanceof VersionConflictError) {
+      return c.json(
+        {
+          error: 'version_conflict',
+          message: err.message,
+          currentVersion: err.currentVersion,
+          expectedVersion: err.expectedVersion,
+        },
+        409,
+      );
+    }
+    if (err instanceof Error && /not found/i.test(err.message)) {
+      return c.json({ error: 'Not found' }, 404);
+    }
+    throw err;
   }
-
-  return c.json({ id: docId, content: body.content, version: newVersion });
 });
+
+async function currentVersion(
+  trail: ReturnType<typeof getTrail>,
+  docId: string,
+): Promise<number> {
+  const row = await trail.db
+    .select({ version: documents.version })
+    .from(documents)
+    .where(eq(documents.id, docId))
+    .get();
+  return row?.version ?? 0;
+}
 
 documentRoutes.patch('/documents/:docId', async (c) => {
   const trail = getTrail(c);
