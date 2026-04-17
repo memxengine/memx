@@ -4,6 +4,7 @@ import { and, eq } from 'drizzle-orm';
 import { requireAuth, getTenant, getUser, getTrail } from '../middleware/auth.js';
 import { runLint, type Actor } from '@trail/core';
 import { INGEST_USER_ID } from '../bootstrap/ingest-user.js';
+import { broadcaster } from '../services/broadcast.js';
 
 /**
  * F32.1 — on-demand lint.
@@ -49,10 +50,44 @@ lintRoutes.post('/knowledge-bases/:kbId/lint', async (c) => {
     hubPages?: string[];
   };
 
-  const report = await runLint(trail, kbId, tenant.id, lintActor(c), {
-    staleDays: typeof body.staleDays === 'number' ? body.staleDays : undefined,
-    hubPages: Array.isArray(body.hubPages) ? body.hubPages : undefined,
-  });
+  const report = await runLint(
+    trail,
+    kbId,
+    tenant.id,
+    lintActor(c),
+    {
+      staleDays: typeof body.staleDays === 'number' ? body.staleDays : undefined,
+      hubPages: Array.isArray(body.hubPages) ? body.hubPages : undefined,
+    },
+    // Broadcast candidate_created per finding so the badge + Queue panel
+    // update the same way a human POST to /queue/candidates would. Without
+    // this, lint-generated candidates landed silently — Christian saw the
+    // "6 new candidates" toast but no badge until the next refetch.
+    ({ candidate, autoApproved, documentId }) => {
+      broadcaster.emit({
+        type: 'candidate_created',
+        tenantId: candidate.tenantId,
+        kbId: candidate.knowledgeBaseId,
+        candidateId: candidate.id,
+        kind: candidate.kind,
+        title: candidate.title,
+        status: autoApproved ? 'approved' : 'pending',
+        autoApproved,
+        confidence: candidate.confidence,
+        createdBy: candidate.createdBy,
+      });
+      if (autoApproved && documentId) {
+        broadcaster.emit({
+          type: 'candidate_approved',
+          tenantId: candidate.tenantId,
+          kbId: candidate.knowledgeBaseId,
+          candidateId: candidate.id,
+          documentId,
+          autoApproved: true,
+        });
+      }
+    },
+  );
 
   return c.json(report);
 });

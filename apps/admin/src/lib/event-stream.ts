@@ -170,23 +170,25 @@ export function usePendingCount(kbId: string | undefined): number | null {
       return;
     }
 
-    // Server is the single source of truth; every relevant event triggers a
-    // fresh fetch and the latest response wins — via a sequence counter so
-    // out-of-order HTTP responses can't overwrite the correct final state
-    // with stale data. The subtle bug this prevents: approve fires → event
-    // arrives → event-triggered fetch kicks off → meanwhile the initial
-    // mount-fetch (started earlier) is still in flight. If the later
-    // approve-fetch returns FIRST with count=0, then the earlier stale
-    // count=1 returns second and overwrites it.
+    // Server is the single source of truth. Every relevant event triggers
+    // a fresh fetch — but coalesced by a 100ms debounce so a bulk action
+    // that emits N events in a burst does ONE refetch (same pattern as the
+    // panels). Sequence counter is the second safety net: if fetches
+    // overlap anyway (reconnect + bulk + focus all hitting), only the
+    // newest response sets state. `cache: 'no-store'` stops the browser
+    // from serving cached responses when the 3 rapid fetches have
+    // identical URLs — seen while debugging a 5-second stale badge.
     let latestSeq = 0;
     let cancelled = false;
     const refetch = (): void => {
       const seq = ++latestSeq;
       const qs = new URLSearchParams({ knowledgeBaseId: kbId, status: 'pending' });
-      fetch(`/api/v1/queue?${qs.toString()}`, { credentials: 'include' })
+      fetch(`/api/v1/queue?${qs.toString()}`, {
+        credentials: 'include',
+        cache: 'no-store',
+      })
         .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
         .then((data: { count: number }) => {
-          // Drop this response if a newer fetch has started since we fired.
           if (cancelled || seq !== latestSeq) return;
           setCount(data.count);
         })
@@ -195,6 +197,7 @@ export function usePendingCount(kbId: string | undefined): number | null {
           setCount(null);
         });
     };
+    const refetchDebounced = debounce(refetch, 100);
     refetch();
     const offOpen = onStreamOpen(refetch);
     const offFocus = onFocusRefresh(refetch);
@@ -205,7 +208,7 @@ export function usePendingCount(kbId: string | undefined): number | null {
         e.type === 'candidate_approved' ||
         e.type === 'candidate_rejected'
       ) {
-        refetch();
+        refetchDebounced();
       }
     });
     return () => {

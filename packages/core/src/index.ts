@@ -26,6 +26,7 @@ export type {
   LintFinding,
   LintOptions,
   LintReport,
+  LintEmitCallback,
   ContradictionCandidate,
   ContradictionChecker,
   LlmContradictionResult,

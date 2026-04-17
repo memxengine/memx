@@ -156,7 +156,7 @@ async function runForEvent(
     if (existingFp) continue;
 
     try {
-      await createCandidate(
+      const { candidate, approval } = await createCandidate(
         trail,
         doc.tenantId,
         {
@@ -169,6 +169,32 @@ async function runForEvent(
         },
         { id: 'system:contradiction-lint', kind: 'system' },
       );
+      // Broadcast so admin badges + panels react the same way they do to a
+      // human POST /queue/candidates. Bypassing the broadcaster means
+      // silent writes — the badge stays stuck at its old value until the
+      // next reconnect or focus refresh.
+      broadcaster.emit({
+        type: 'candidate_created',
+        tenantId: candidate.tenantId,
+        kbId: candidate.knowledgeBaseId,
+        candidateId: candidate.id,
+        kind: candidate.kind,
+        title: candidate.title,
+        status: approval ? 'approved' : 'pending',
+        autoApproved: !!approval,
+        confidence: candidate.confidence,
+        createdBy: candidate.createdBy,
+      });
+      if (approval) {
+        broadcaster.emit({
+          type: 'candidate_approved',
+          tenantId: candidate.tenantId,
+          kbId: candidate.knowledgeBaseId,
+          candidateId: candidate.id,
+          documentId: approval.documentId,
+          autoApproved: true,
+        });
+      }
     } catch (err) {
       console.error('[contradiction-lint] failed to emit candidate:', err);
     }

@@ -19,7 +19,19 @@ import { and, eq, inArray, like } from 'drizzle-orm';
 import { createCandidate, type Actor } from '../queue/candidates.js';
 import { detectOrphans } from './orphans.js';
 import { detectStale } from './stale.js';
+import type { QueueCandidate } from '@trail/shared';
 import type { LintFinding, LintOptions, LintReport } from './types.js';
+
+/**
+ * Callback fired for every candidate the lint pass writes. Used by the HTTP
+ * layer to broadcast candidate_created events so badges + panels update
+ * live. Core stays transport-agnostic; the caller wires whatever it needs.
+ */
+export type LintEmitCallback = (args: {
+  candidate: QueueCandidate;
+  autoApproved: boolean;
+  documentId: string | null;
+}) => void;
 
 export type { LintFinding, LintOptions, LintReport } from './types.js';
 export { detectOrphans } from './orphans.js';
@@ -52,6 +64,7 @@ export async function runLint(
   tenantId: string,
   actor: Actor,
   opts: LintOptions = {},
+  onEmit?: LintEmitCallback,
 ): Promise<LintReport> {
   const existingFingerprints = await loadExistingFingerprints(trail, kbId, tenantId);
   const ranAt = new Date().toISOString();
@@ -69,8 +82,9 @@ export async function runLint(
         skippedExisting += 1;
         continue;
       }
-      await emitFinding(trail, kbId, tenantId, actor, finding);
-      existingFingerprints.add(finding.fingerprint); // don't double-emit within the same run
+      const result = await emitFinding(trail, kbId, tenantId, actor, finding);
+      if (onEmit && result) onEmit(result);
+      existingFingerprints.add(finding.fingerprint);
       emitted += 1;
     }
     totalEmitted += emitted;
@@ -94,14 +108,14 @@ async function emitFinding(
   tenantId: string,
   actor: Actor,
   finding: LintFinding,
-): Promise<void> {
+): Promise<{ candidate: QueueCandidate; autoApproved: boolean; documentId: string | null } | null> {
   const metadata = JSON.stringify({
     op: 'create',
     source: 'lint',
     lintFingerprint: finding.fingerprint,
     ...finding.details,
   });
-  await createCandidate(
+  const { candidate, approval } = await createCandidate(
     trail,
     tenantId,
     {
@@ -114,6 +128,11 @@ async function emitFinding(
     },
     actor,
   );
+  return {
+    candidate,
+    autoApproved: !!approval,
+    documentId: approval?.documentId ?? null,
+  };
 }
 
 /**
