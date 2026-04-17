@@ -4,6 +4,7 @@ import type { Document } from '@trail/shared';
 import { listWikiPages, runLint, ApiError } from '../api';
 import { displayPath } from '../lib/display-path';
 import { useEvents, onStreamOpen, onFocusRefresh, debounce } from '../lib/event-stream';
+import { t, useLocale } from '../lib/i18n';
 
 /**
  * Neurons tree — groups all compiled wiki pages in a KB by their
@@ -13,6 +14,7 @@ import { useEvents, onStreamOpen, onFocusRefresh, debounce } from '../lib/event-
 export function WikiTreePanel() {
   const route = useRoute();
   const kbId = route.params.kbId ?? '';
+  useLocale();
   const [pages, setPages] = useState<Document[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [lintBusy, setLintBusy] = useState(false);
@@ -20,8 +22,8 @@ export function WikiTreePanel() {
 
   useEffect(() => {
     if (!toast) return;
-    const t = setTimeout(() => setToast(null), 4000);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setToast(null), 4000);
+    return () => clearTimeout(timer);
   }, [toast]);
 
   async function onRunLint() {
@@ -29,17 +31,13 @@ export function WikiTreePanel() {
     setLintBusy(true);
     try {
       const r = await runLint(kbId);
-      const parts = r.detectors
-        .filter((d) => d.found > 0 || d.emitted > 0)
-        .map((d) => `${d.name}: ${d.emitted} new${d.skippedExisting ? `, ${d.skippedExisting} skipped` : ''}`);
+      const key = r.totalEmitted === 1 ? 'wikiTree.lintDone' : 'wikiTree.lintDonePlural';
       setToast({
         kind: 'success',
-        text: r.totalEmitted === 0
-          ? 'Lint clean — no new findings.'
-          : `Lint: ${r.totalEmitted} new candidate${r.totalEmitted === 1 ? '' : 's'} in queue (${parts.join(' · ')}).`,
+        text: r.totalEmitted === 0 ? t('wikiTree.lintClean') : t(key, { n: r.totalEmitted }),
       });
     } catch (err) {
-      setToast({ kind: 'error', text: err instanceof Error ? err.message : 'Lint failed' });
+      setToast({ kind: 'error', text: err instanceof Error ? err.message : t('wikiTree.lintFailed') });
     } finally {
       setLintBusy(false);
     }

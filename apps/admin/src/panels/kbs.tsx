@@ -3,8 +3,10 @@ import type { KnowledgeBase } from '@trail/shared';
 import { listKnowledgeBases, ApiError } from '../api';
 import { useEvents, onStreamOpen, onFocusRefresh, debounce } from '../lib/event-stream';
 import { invalidateKbs } from '../lib/kb-cache';
+import { t, useLocale } from '../lib/i18n';
 
 export function KnowledgeBasesPanel() {
+  useLocale();
   const [kbs, setKbs] = useState<KnowledgeBase[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -48,7 +50,7 @@ export function KnowledgeBasesPanel() {
   if (error) {
     return (
       <div class="page-shell">
-        <h1 class="text-2xl font-semibold mb-2">Couldn't load Trails</h1>
+        <h1 class="text-2xl font-semibold mb-2">{t('common.error')}</h1>
         <p class="text-[color:var(--color-fg-muted)]">{error}</p>
       </div>
     );
@@ -57,7 +59,7 @@ export function KnowledgeBasesPanel() {
   if (!kbs) {
     return (
       <div class="page-shell loading-delayed text-[color:var(--color-fg-muted)] text-sm">
-        Loading Trails…
+        {t('common.loading')}
       </div>
     );
   }
@@ -65,11 +67,8 @@ export function KnowledgeBasesPanel() {
   if (!kbs.length) {
     return (
       <div class="page-shell text-center">
-        <h1 class="text-2xl font-semibold mb-2">No Trails yet</h1>
-        <p class="text-[color:var(--color-fg-muted)]">
-          Create your first Trail from the engine API. The admin UI will wire up a "Create Trail"
-          button in the next session.
-        </p>
+        <h1 class="text-2xl font-semibold mb-2">{t('kbs.title')}</h1>
+        <p class="text-[color:var(--color-fg-muted)]">{t('kbs.empty')}</p>
       </div>
     );
   }
@@ -77,10 +76,7 @@ export function KnowledgeBasesPanel() {
   return (
     <div class="page-shell">
       <header class="mb-8">
-        <h1 class="text-2xl font-semibold tracking-tight mb-1">Your Trails</h1>
-        <p class="text-[color:var(--color-fg-muted)] text-sm">
-          Pick a Trail to open its curator queue.
-        </p>
+        <h1 class="text-2xl font-semibold tracking-tight mb-1">{t('kbs.title')}</h1>
       </header>
       <ul class="space-y-2">
         {kbs.map((kb) => {
@@ -107,8 +103,8 @@ export function KnowledgeBasesPanel() {
                     {pending > 0 ? (
                       <span
                         class="inline-flex items-center justify-center min-w-[1.5rem] h-[1.5rem] px-2 rounded-full text-[11px] font-mono font-semibold bg-[color:var(--color-accent)] text-[color:var(--color-accent-fg)]"
-                        title={`${pending} pending in Queue`}
-                        aria-label={`${pending} pending`}
+                        title={t('kbs.pendingBadge', { n: pending })}
+                        aria-label={t('kbs.pendingBadge', { n: pending })}
                       >
                         {pending}
                       </span>

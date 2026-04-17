@@ -40,6 +40,43 @@
     "tryAgain": "Prøv igen"
   },
   "queue": {
+    "kinds": {
+      "chat-answer": "chat-svar",
+      "ingest-summary": "resumé",
+      "ingest-page-update": "side-opdatering",
+      "cross-ref-suggestion": "henvisning",
+      "contradiction-alert": "modsigelse",
+      "gap-detection": "hul",
+      "user-correction": "rettelse",
+      "reader-feedback": "læser-feedback",
+      "external-feed": "ekstern",
+      "version-conflict": "version-konflikt",
+      "source-retraction": "kilde-tilbagetrækning",
+      "scheduled-recompile": "planlagt gen-kompilering"
+    },
+    "status": {
+      "pending": "afventer",
+      "approved": "godkendt",
+      "rejected": "afvist",
+      "ingested": "indlæst",
+      "autoApproved": "auto-godkendt"
+    },
+    "op": {
+      "label": "handling",
+      "create": "opret",
+      "update": "opdater",
+      "archive": "arkivér"
+    },
+    "meta": {
+      "op": "handling",
+      "filename": "filnavn",
+      "path": "sti",
+      "targetDoc": "mål-dokument",
+      "tags": "mærker"
+    },
+    "byPipeline": "af pipeline",
+    "byAuthor": "af {who}",
+    "conf": "sikkerhed {n}",
     "title": "Kø til godkendelse",
     "summary": "{n} kandidat {status}",
     "summaryPlural": "{n} kandidater {status}",

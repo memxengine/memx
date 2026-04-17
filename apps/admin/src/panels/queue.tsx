@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'preact/hooks';
 import { useRoute } from 'preact-iso';
 import { marked } from 'marked';
-import type { QueueCandidate, QueueCandidateStatus } from '@trail/shared';
+import type { CandidateAction, QueueCandidate, QueueCandidateStatus } from '@trail/shared';
 import {
   listQueue,
   resolveCandidate,
@@ -12,16 +12,25 @@ import {
 import { rewriteWikiLinks } from '../lib/wiki-links';
 import { displayPath } from '../lib/display-path';
 import { Modal, ModalButton } from '../components/modal';
+import { DynamicActionButtons } from '../components/dynamic-actions';
 import { useEvents, onStreamOpen, onFocusRefresh, debounce } from '../lib/event-stream';
+import { t, useLocale } from '../lib/i18n';
 
 type FilterStatus = QueueCandidateStatus | 'all';
 
-const STATUS_TABS: Array<{ value: FilterStatus; label: string }> = [
-  { value: 'pending', label: 'Pending' },
-  { value: 'approved', label: 'Approved' },
-  { value: 'rejected', label: 'Rejected' },
-  { value: 'all', label: 'All' },
+// Status tabs. Labels resolve via t() at render time so they switch
+// language without remounting — keeping the value list as a const here
+// + a translateStatus(value) helper at the call sites.
+const STATUS_TABS: Array<{ value: FilterStatus }> = [
+  { value: 'pending' },
+  { value: 'approved' },
+  { value: 'rejected' },
+  { value: 'all' },
 ];
+
+function statusLabel(v: FilterStatus): string {
+  return t(`queue.tabs.${v}`);
+}
 
 /**
  * Parsed shape of `candidate.metadata` JSON — mirrors @trail/core CandidateOp.
@@ -47,6 +56,9 @@ function parseMetadata(raw: string | null): CandidateOpMeta | null {
 export function QueuePanel() {
   const route = useRoute();
   const kbId = route.params.kbId ?? '';
+  // Re-render on locale change so tab labels + button text follow the
+  // active language.
+  useLocale();
   const [status, setStatus] = useState<FilterStatus>('pending');
   const [data, setData] = useState<QueueListResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -54,6 +66,11 @@ export function QueuePanel() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [toast, setToast] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
   const [rejectTarget, setRejectTarget] = useState<QueueCandidate | null>(null);
+  // The actionId behind the open reject modal — defaults to 'reject' for
+  // legacy candidates, but a contradiction-alert's reject-effect action
+  // might be called 'dismiss', so the confirm handler uses this to send
+  // the right id up to /resolve.
+  const [rejectTargetActionId, setRejectTargetActionId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkReject, setBulkReject] = useState<{ ids: string[]; reason: string } | null>(null);
@@ -133,12 +150,14 @@ export function QueuePanel() {
       const r = await bulkQueue({ actionId: 'approve', ids });
       setToast({
         kind: r.failed.length === 0 ? 'success' : 'error',
-        text: `Approved ${r.succeeded.length}/${r.requested}${r.failed.length ? ` — ${r.failed.length} failed` : ''}`,
+        text:
+          t('queue.bulk.approvedToast', { ok: r.succeeded.length, total: r.requested }) +
+          (r.failed.length ? t('queue.bulk.failureSuffix', { n: r.failed.length }) : ''),
       });
       clearSelection();
       reload();
     } catch (err) {
-      setToast({ kind: 'error', text: err instanceof Error ? err.message : 'Bulk approve failed' });
+      setToast({ kind: 'error', text: err instanceof Error ? err.message : t('common.error') });
     } finally {
       setBulkBusy(false);
     }
@@ -157,52 +176,71 @@ export function QueuePanel() {
       const r = await bulkQueue({ actionId: 'reject', ids, reason: reason.trim() || undefined });
       setToast({
         kind: r.failed.length === 0 ? 'success' : 'error',
-        text: `Rejected ${r.succeeded.length}/${r.requested}${r.failed.length ? ` — ${r.failed.length} failed` : ''}`,
+        text:
+          t('queue.bulk.rejectedToast', { ok: r.succeeded.length, total: r.requested }) +
+          (r.failed.length ? t('queue.bulk.failureSuffix', { n: r.failed.length }) : ''),
       });
       clearSelection();
       reload();
     } catch (err) {
-      setToast({ kind: 'error', text: err instanceof Error ? err.message : 'Bulk reject failed' });
+      setToast({ kind: 'error', text: err instanceof Error ? err.message : t('common.error') });
     } finally {
       setBulkBusy(false);
     }
   }
 
-  async function onApprove(c: QueueCandidate) {
+  /**
+   * Central resolution dispatcher — every action button (approve, reject,
+   * retire-neuron, flag-source, acknowledge, etc.) routes through here so
+   * the HTTP call + toast + reload is consistent. Reject actions open a
+   * modal so the curator can type a reason first; everything else is a
+   * one-click commit.
+   */
+  async function onResolve(c: QueueCandidate, action: CandidateAction) {
+    if (action.effect === 'reject') {
+      // Open the modal, pre-populated with the pending action id so the
+      // confirm handler knows which action-id to POST (not always 'reject').
+      setRejectTarget(c);
+      setRejectTargetActionId(action.id);
+      setRejectReason('');
+      return;
+    }
+
     setActingOn(c.id);
     try {
-      const result = await resolveCandidate(c.id, { actionId: 'approve' });
+      const result = await resolveCandidate(c.id, {
+        actionId: action.id,
+        args: action.args,
+      });
       setToast({
         kind: 'success',
-        text: result.documentId
-          ? `Approved — wiki page ${result.documentId.slice(0, 12)}… created.`
-          : 'Approved.',
+        text:
+          result.documentId && result.effect === 'approve'
+            ? t('queue.item.approveSuccess', { docId: result.documentId.slice(0, 12) })
+            : t('queue.item.approveSuccessNoDoc'),
       });
       reload();
     } catch (err) {
-      setToast({ kind: 'error', text: err instanceof Error ? err.message : 'Approval failed' });
+      setToast({ kind: 'error', text: err instanceof Error ? err.message : t('common.error') });
     } finally {
       setActingOn(null);
     }
-  }
-
-  function openRejectDialog(c: QueueCandidate) {
-    setRejectTarget(c);
-    setRejectReason('');
   }
 
   async function confirmReject() {
     const c = rejectTarget;
     if (!c) return;
     const reason = rejectReason.trim();
+    const actionId = rejectTargetActionId ?? 'reject';
     setActingOn(c.id);
     setRejectTarget(null);
+    setRejectTargetActionId(null);
     try {
-      await resolveCandidate(c.id, { actionId: 'reject', reason: reason || undefined });
-      setToast({ kind: 'success', text: 'Rejected.' });
+      await resolveCandidate(c.id, { actionId, reason: reason || undefined });
+      setToast({ kind: 'success', text: t('queue.item.rejectSuccess') });
       reload();
     } catch (err) {
-      setToast({ kind: 'error', text: err instanceof Error ? err.message : 'Reject failed' });
+      setToast({ kind: 'error', text: err instanceof Error ? err.message : t('common.error') });
     } finally {
       setActingOn(null);
     }
@@ -211,12 +249,15 @@ export function QueuePanel() {
   return (
     <div class="page-shell">
       <header class="mb-6">
-        <h1 class="text-2xl font-semibold tracking-tight mb-1">Curator queue</h1>
+        <h1 class="text-2xl font-semibold tracking-tight mb-1">{t('queue.title')}</h1>
         <p class="text-[color:var(--color-fg-muted)] text-sm">
           {data ? (
-            `${data.count} ${STATUS_TABS.find((t) => t.value === status)?.label.toLowerCase()} candidate${data.count === 1 ? '' : 's'}`
+            t(data.count === 1 ? 'queue.summary' : 'queue.summaryPlural', {
+              n: data.count,
+              status: statusLabel(status).toLowerCase(),
+            })
           ) : (
-            <span class="loading-delayed inline-block">Loading…</span>
+            <span class="loading-delayed inline-block">{t('common.loading')}</span>
           )}
         </p>
       </header>
@@ -233,7 +274,7 @@ export function QueuePanel() {
                 : 'border-transparent text-[color:var(--color-fg-muted)] hover:text-[color:var(--color-fg)]')
             }
           >
-            {tab.label}
+            {statusLabel(tab.value)}
           </button>
         ))}
       </nav>
@@ -246,7 +287,7 @@ export function QueuePanel() {
 
       {data && data.items.length === 0 ? (
         <div class="text-center py-16 text-[color:var(--color-fg-subtle)]">
-          No {status === 'all' ? '' : status} candidates.
+          {status === 'all' ? t('queue.emptyAll') : t('queue.empty', { status: statusLabel(status).toLowerCase() })}
         </div>
       ) : null}
 
@@ -265,8 +306,8 @@ export function QueuePanel() {
               />
               <span class="text-[color:var(--color-fg-muted)]">
                 {selected.size === 0
-                  ? `Select all (${data.items.length})`
-                  : `${selected.size} selected`}
+                  ? t('common.selectAll', { n: data.items.length })
+                  : t('common.selected', { n: selected.size })}
               </span>
             </label>
             {selected.size > 0 ? (
@@ -274,7 +315,7 @@ export function QueuePanel() {
                 onClick={clearSelection}
                 class="text-[color:var(--color-fg-subtle)] hover:text-[color:var(--color-fg)] transition"
               >
-                clear
+                {t('common.cancel').toLowerCase()}
               </button>
             ) : null}
           </div>
@@ -286,7 +327,7 @@ export function QueuePanel() {
                   onClick={onBulkApprove}
                   class="px-3 py-1.5 text-[11px] rounded-md bg-[color:var(--color-fg)] text-[color:var(--color-bg)] font-medium hover:bg-[color:var(--color-fg)]/90 disabled:opacity-50 transition"
                 >
-                  Approve {selected.size}
+                  {t('common.approve')} {selected.size}
                 </button>
               ) : null}
               {status === 'pending' ? (
@@ -295,7 +336,7 @@ export function QueuePanel() {
                   onClick={openBulkReject}
                   class="px-3 py-1.5 text-[11px] rounded-md border border-[color:var(--color-border-strong)] hover:bg-[color:var(--color-bg)] disabled:opacity-50 transition"
                 >
-                  Reject {selected.size}…
+                  {t('common.reject')} {selected.size}…
                 </button>
               ) : null}
             </div>
@@ -312,8 +353,7 @@ export function QueuePanel() {
             isExpanded={expanded.has(c.id)}
             onToggle={() => toggleExpanded(c.id)}
             busy={actingOn === c.id}
-            onApprove={onApprove}
-            onReject={openRejectDialog}
+            onResolve={onResolve}
             selected={selected.has(c.id)}
             onToggleSelected={() => toggleSelected(c.id)}
             showCheckbox={status === 'pending'}
@@ -336,13 +376,23 @@ export function QueuePanel() {
 
       <Modal
         open={rejectTarget !== null}
-        title="Reject candidate"
-        onClose={() => setRejectTarget(null)}
+        title={t('queue.item.rejectTitle')}
+        onClose={() => {
+          setRejectTarget(null);
+          setRejectTargetActionId(null);
+        }}
         footer={
           <>
-            <ModalButton onClick={() => setRejectTarget(null)}>Cancel</ModalButton>
+            <ModalButton
+              onClick={() => {
+                setRejectTarget(null);
+                setRejectTargetActionId(null);
+              }}
+            >
+              {t('common.cancel')}
+            </ModalButton>
             <ModalButton variant="danger" onClick={confirmReject}>
-              Reject
+              {t('common.reject')}
             </ModalButton>
           </>
         }
@@ -351,33 +401,26 @@ export function QueuePanel() {
           <div class="space-y-3">
             <div>
               <div class="text-[11px] font-mono uppercase tracking-wider text-[color:var(--color-fg-subtle)] mb-1">
-                Candidate
+                {rejectTarget.kind}
               </div>
               <div class="text-sm font-medium truncate">{rejectTarget.title}</div>
-              <div class="flex items-center gap-2 mt-1.5 text-[10px] font-mono uppercase tracking-wider">
-                <span class="inline-flex items-center px-1.5 py-0.5 rounded bg-[color:var(--color-bg)] border border-[color:var(--color-border)] text-[color:var(--color-fg-muted)]">
-                  {rejectTarget.kind}
-                </span>
-                {rejectTarget.confidence !== null ? (
-                  <span class="text-[color:var(--color-fg-subtle)]">
-                    conf {rejectTarget.confidence.toFixed(2)}
-                  </span>
-                ) : (
-                  <span class="text-[color:var(--color-fg-subtle)]">no confidence</span>
-                )}
-              </div>
+              {rejectTarget.confidence !== null ? (
+                <div class="text-[10px] font-mono text-[color:var(--color-fg-subtle)] mt-1.5">
+                  conf {rejectTarget.confidence.toFixed(2)}
+                </div>
+              ) : null}
             </div>
             <div>
               <label
                 for="reject-reason"
                 class="text-[11px] font-mono uppercase tracking-wider text-[color:var(--color-fg-subtle)]"
               >
-                Reason <span class="normal-case">(optional)</span>
+                {t('common.reason')} <span class="normal-case">({t('common.optional')})</span>
               </label>
               <textarea
                 id="reject-reason"
                 rows={3}
-                placeholder="Why is this not fit for the Trail? Stored on the candidate — curators can see it later."
+                placeholder={t('queue.item.rejectPrompt')}
                 value={rejectReason}
                 onInput={(e) => setRejectReason((e.currentTarget as HTMLTextAreaElement).value)}
                 onKeyDown={(e) => {
@@ -388,9 +431,6 @@ export function QueuePanel() {
                 }}
                 class="mt-1 w-full rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)]/60 px-3 py-2 text-sm focus:outline-none focus:border-[color:var(--color-accent)] transition resize-none"
               />
-              <div class="text-[11px] font-mono text-[color:var(--color-fg-subtle)] mt-1">
-                ⌘+Enter to reject · Esc to cancel
-              </div>
             </div>
           </div>
         ) : null}
@@ -398,38 +438,32 @@ export function QueuePanel() {
 
       <Modal
         open={bulkReject !== null}
-        title={`Reject ${bulkReject?.ids.length ?? 0} candidates`}
+        title={t('queue.bulk.rejectTitle', { n: bulkReject?.ids.length ?? 0 })}
         onClose={() => setBulkReject(null)}
         maxWidth="md"
         footer={
           <>
             <ModalButton onClick={() => setBulkReject(null)} disabled={bulkBusy}>
-              Cancel
+              {t('common.cancel')}
             </ModalButton>
             <ModalButton variant="danger" onClick={confirmBulkReject} disabled={bulkBusy}>
-              {bulkBusy ? '…' : `Reject ${bulkReject?.ids.length ?? 0}`}
+              {bulkBusy ? '…' : t('queue.bulk.confirmReject', { n: bulkReject?.ids.length ?? 0 })}
             </ModalButton>
           </>
         }
       >
         {bulkReject ? (
           <div class="space-y-3">
-            <div class="text-sm text-[color:var(--color-fg-muted)]">
-              About to reject <strong class="text-[color:var(--color-fg)]">{bulkReject.ids.length}</strong>{' '}
-              candidates. Reason is stored on every one so you can trace why they were dropped
-              later.
-            </div>
             <div>
               <label
                 for="bulk-reject-reason"
                 class="text-[11px] font-mono uppercase tracking-wider text-[color:var(--color-fg-subtle)]"
               >
-                Reason <span class="normal-case">(optional, applied to all)</span>
+                {t('queue.bulk.rejectPrompt')}
               </label>
               <textarea
                 id="bulk-reject-reason"
                 rows={3}
-                placeholder="e.g. Resolved by F15 reference extraction — underlying condition no longer present."
                 value={bulkReject.reason}
                 onInput={(e) =>
                   setBulkReject((prev) =>
@@ -444,9 +478,6 @@ export function QueuePanel() {
                 }}
                 class="mt-1 w-full rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)]/60 px-3 py-2 text-sm focus:outline-none focus:border-[color:var(--color-accent)] transition resize-none"
               />
-              <div class="text-[11px] font-mono text-[color:var(--color-fg-subtle)] mt-1">
-                ⌘+Enter to reject all · Esc to cancel
-              </div>
             </div>
           </div>
         ) : null}
@@ -461,8 +492,7 @@ interface RowProps {
   isExpanded: boolean;
   onToggle: () => void;
   busy: boolean;
-  onApprove: (c: QueueCandidate) => void;
-  onReject: (c: QueueCandidate) => void;
+  onResolve: (c: QueueCandidate, action: CandidateAction) => void;
   selected: boolean;
   onToggleSelected: () => void;
   showCheckbox: boolean;
@@ -474,8 +504,7 @@ function CandidateRow({
   isExpanded,
   onToggle,
   busy,
-  onApprove,
-  onReject,
+  onResolve,
   selected,
   onToggleSelected,
   showCheckbox,
@@ -508,17 +537,17 @@ function CandidateRow({
         <div class="flex-1 min-w-0">
           <div class="flex items-center gap-2 mb-1">
             <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono uppercase tracking-wider bg-[color:var(--color-bg)] border border-[color:var(--color-border)] text-[color:var(--color-fg-muted)]">
-              {c.kind}
+              {t(`queue.kinds.${c.kind}`)}
             </span>
             <StatusBadge status={c.status} auto={!!c.autoApprovedAt} />
             {meta?.op ? (
               <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono uppercase tracking-wider bg-[color:var(--color-accent)]/10 text-[color:var(--color-accent)]">
-                op: {meta.op}
+                {t('queue.op.label')}: {t(`queue.op.${meta.op}`)}
               </span>
             ) : null}
             {c.confidence !== null ? (
               <span class="text-[10px] font-mono text-[color:var(--color-fg-subtle)]">
-                conf {c.confidence.toFixed(2)}
+                {t('queue.conf', { n: c.confidence.toFixed(2) })}
               </span>
             ) : null}
           </div>
@@ -528,26 +557,16 @@ function CandidateRow({
           ) : null}
           <div class="mt-2 text-[11px] font-mono text-[color:var(--color-fg-subtle)]">
             {formatTs(c.createdAt)}
-            {c.createdBy ? ` · by ${c.createdBy}` : ' · by pipeline'}
+            {' · '}
+            {c.createdBy ? t('queue.byAuthor', { who: c.createdBy }) : t('queue.byPipeline')}
           </div>
         </div>
         {c.status === 'pending' ? (
-          <div class="flex flex-col gap-2 shrink-0">
-            <button
-              disabled={busy}
-              onClick={() => onApprove(c)}
-              class="px-3 py-1.5 text-sm rounded-md bg-[color:var(--color-fg)] text-[color:var(--color-bg)] font-medium hover:bg-[color:var(--color-fg)]/90 disabled:opacity-50 transition"
-            >
-              {busy ? '…' : 'Approve'}
-            </button>
-            <button
-              disabled={busy}
-              onClick={() => onReject(c)}
-              class="px-3 py-1.5 text-sm rounded-md border border-[color:var(--color-border-strong)] hover:bg-[color:var(--color-bg)] disabled:opacity-50 transition"
-            >
-              Reject
-            </button>
-          </div>
+          <DynamicActionButtons
+            candidate={c}
+            busy={busy}
+            onResolve={(action) => onResolve(c, action)}
+          />
         ) : null}
       </div>
 
@@ -555,7 +574,7 @@ function CandidateRow({
         onClick={onToggle}
         class="w-full text-left px-4 pb-3 text-[11px] font-mono text-[color:var(--color-fg-subtle)] hover:text-[color:var(--color-fg-muted)] transition"
       >
-        {isExpanded ? '▲ Hide content' : '▼ Show full content'}
+        {isExpanded ? `▲ ${t('queue.item.hideContent')}` : `▼ ${t('queue.item.showContent')}`}
       </button>
 
       {isExpanded ? <ExpandedContent candidate={c} meta={meta} kbId={kbId} /> : null}
@@ -585,31 +604,31 @@ function ExpandedContent({
         <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-[12px] font-mono mb-4 text-[color:var(--color-fg-muted)]">
           {meta.op ? (
             <>
-              <dt class="text-[color:var(--color-fg-subtle)]">op</dt>
-              <dd>{meta.op}</dd>
+              <dt class="text-[color:var(--color-fg-subtle)]">{t('queue.meta.op')}</dt>
+              <dd>{t(`queue.op.${meta.op}`)}</dd>
             </>
           ) : null}
           {meta.filename ? (
             <>
-              <dt class="text-[color:var(--color-fg-subtle)]">filename</dt>
+              <dt class="text-[color:var(--color-fg-subtle)]">{t('queue.meta.filename')}</dt>
               <dd>{meta.filename}</dd>
             </>
           ) : null}
           {meta.path ? (
             <>
-              <dt class="text-[color:var(--color-fg-subtle)]">path</dt>
+              <dt class="text-[color:var(--color-fg-subtle)]">{t('queue.meta.path')}</dt>
               <dd>{displayPath(meta.path)}</dd>
             </>
           ) : null}
           {meta.targetDocumentId ? (
             <>
-              <dt class="text-[color:var(--color-fg-subtle)]">target doc</dt>
+              <dt class="text-[color:var(--color-fg-subtle)]">{t('queue.meta.targetDoc')}</dt>
               <dd class="text-[color:var(--color-accent)]">{meta.targetDocumentId}</dd>
             </>
           ) : null}
           {meta.tags ? (
             <>
-              <dt class="text-[color:var(--color-fg-subtle)]">tags</dt>
+              <dt class="text-[color:var(--color-fg-subtle)]">{t('queue.meta.tags')}</dt>
               <dd>{meta.tags}</dd>
             </>
           ) : null}
@@ -625,7 +644,9 @@ function ExpandedContent({
 }
 
 function StatusBadge({ status, auto }: { status: QueueCandidateStatus; auto: boolean }) {
-  const label = status === 'approved' && auto ? 'auto-approved' : status;
+  const label = t(
+    status === 'approved' && auto ? 'queue.status.autoApproved' : `queue.status.${status}`,
+  );
   const tone =
     status === 'approved'
       ? 'bg-[color:var(--color-success)]/10 text-[color:var(--color-success)]'

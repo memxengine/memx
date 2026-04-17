@@ -40,6 +40,43 @@
     "tryAgain": "Try again"
   },
   "queue": {
+    "kinds": {
+      "chat-answer": "chat answer",
+      "ingest-summary": "ingest summary",
+      "ingest-page-update": "ingest update",
+      "cross-ref-suggestion": "cross-ref",
+      "contradiction-alert": "contradiction",
+      "gap-detection": "gap",
+      "user-correction": "correction",
+      "reader-feedback": "feedback",
+      "external-feed": "external",
+      "version-conflict": "version conflict",
+      "source-retraction": "source retraction",
+      "scheduled-recompile": "scheduled recompile"
+    },
+    "status": {
+      "pending": "pending",
+      "approved": "approved",
+      "rejected": "rejected",
+      "ingested": "ingested",
+      "autoApproved": "auto-approved"
+    },
+    "op": {
+      "label": "op",
+      "create": "create",
+      "update": "update",
+      "archive": "archive"
+    },
+    "meta": {
+      "op": "op",
+      "filename": "filename",
+      "path": "path",
+      "targetDoc": "target doc",
+      "tags": "tags"
+    },
+    "byPipeline": "by pipeline",
+    "byAuthor": "by {who}",
+    "conf": "conf {n}",
     "title": "Curator queue",
     "summary": "{n} {status} candidate",
     "summaryPlural": "{n} {status} candidates",
