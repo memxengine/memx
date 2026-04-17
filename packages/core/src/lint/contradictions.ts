@@ -9,6 +9,7 @@
  * wires the real Anthropic API. A CLI or test can wire a stub LLM that
  * returns deterministic results. Same contradiction logic, different LLM.
  */
+import type { CandidateAction } from '@trail/shared';
 import type { LintFinding } from './types.js';
 
 export interface ContradictionCandidate {
@@ -83,10 +84,90 @@ export async function detectContradictions(
         newQuote: result.newQuote ?? null,
         existingQuote: result.existingQuote ?? null,
       },
+      actions: buildContradictionActions(neuron, cand),
     });
   }
 
   return findings;
+}
+
+/**
+ * Build the four curator actions offered on a contradiction-alert:
+ *
+ *   - retire-a — archive the newly-committed Neuron (it's the one that's
+ *     wrong). Semantics: the existing Neuron was correct; this new one
+ *     contradicts it without new evidence.
+ *   - retire-b — archive the existing Neuron. Semantics: the new Neuron's
+ *     claim supersedes; the old one was outdated or wrong.
+ *   - reconcile — "I'll edit both manually to not conflict." No mutation
+ *     — just marks the candidate as handled. Effect: acknowledge.
+ *   - dismiss — false positive, this isn't actually a contradiction.
+ *     Effect: reject.
+ *
+ * Labels and explanations are in English; the admin's translation service
+ * lazy-fills Danish (and other locales) on first view and persists the
+ * translations back onto the candidate. The strings read as lay language —
+ * no jargon like "Neuron" where "page" conveys the same meaning to a
+ * first-time user, but we keep "Neuron" here because the admin is aimed
+ * at curators who've internalised the term.
+ */
+function buildContradictionActions(
+  neuron: NewNeuron,
+  cand: ContradictionCandidate,
+): CandidateAction[] {
+  const labelNew = labelOf(neuron);
+  const labelExisting = labelOf(cand);
+  return [
+    {
+      id: 'retire-a',
+      effect: 'retire-neuron',
+      args: { documentId: neuron.documentId },
+      label: { en: `Retire "${labelNew}"` },
+      explanation: {
+        en:
+          `Archive "${labelNew}" and keep "${labelExisting}". Pick this if the existing ` +
+          `page was already correct and the new one introduced a wrong claim. The page will ` +
+          `disappear from the Neurons list; every link pointing to it becomes a broken link ` +
+          `until you clean them up. Nothing else changes.`,
+      },
+    },
+    {
+      id: 'retire-b',
+      effect: 'retire-neuron',
+      args: { documentId: cand.documentId },
+      label: { en: `Retire "${labelExisting}"` },
+      explanation: {
+        en:
+          `Archive "${labelExisting}" and keep "${labelNew}". Pick this if the new claim ` +
+          `supersedes the existing one — a better source, a correction, a newer version. ` +
+          `The existing page disappears from the Neurons list; any link pointing to it ` +
+          `becomes a broken link until you clean them up.`,
+      },
+    },
+    {
+      id: 'reconcile',
+      effect: 'acknowledge',
+      label: { en: 'Reconcile manually' },
+      explanation: {
+        en:
+          `Close this alert and fix the conflict yourself. Neither page is archived — ` +
+          `you go to the Neurons tab, open both pages, and edit them so they agree. ` +
+          `Pick this when the truth is somewhere in between and both pages need nuance.`,
+      },
+    },
+    {
+      id: 'dismiss',
+      effect: 'reject',
+      label: { en: 'Dismiss as false positive' },
+      explanation: {
+        en:
+          `Discard this alert. Pick this when the two passages don't actually contradict — ` +
+          `the detector was confused by different phrasing or a narrower/wider focus. ` +
+          `Nothing changes in your Trail. The alert won't re-appear unless the pages are ` +
+          `rewritten.`,
+      },
+    },
+  ];
 }
 
 function labelOf(n: { title: string | null; filename: string }): string {

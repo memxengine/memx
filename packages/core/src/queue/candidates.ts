@@ -321,6 +321,8 @@ export async function resolveCandidate(
       return executeApprove(trail, candidate, action, payload, actor, ctx);
     case 'reject':
       return executeReject(trail, candidate, action, payload, actor, ctx);
+    case 'acknowledge':
+      return executeAcknowledge(trail, candidate, action, actor, ctx);
     case 'retire-neuron':
       return executeRetireNeuron(trail, candidate, action, actor, ctx);
     case 'flag-source':
@@ -331,6 +333,42 @@ export async function resolveCandidate(
     case 'refresh-from-source':
       throw new Error(`Effect "${action.effect}" is planned for a later iteration.`);
   }
+}
+
+// ── Effect: acknowledge ────────────────────────────────────────────
+// "I've seen this, I'll handle it outside the queue." Marks the candidate
+// resolved with status='approved' — the curator accepted the finding was
+// real — without mutating any document. Used for contradictions the
+// curator wants to reconcile by hand in the Neuron editor.
+
+async function executeAcknowledge(
+  trail: TrailDatabase,
+  candidate: QueueCandidate,
+  action: CandidateAction,
+  actor: Actor,
+  ctx: CommitContext,
+): Promise<ResolutionResult> {
+  await trail.db
+    .update(queueCandidates)
+    .set({
+      status: 'approved',
+      reviewedBy: actor.id,
+      reviewedAt: ctx.now,
+      autoApprovedAt: ctx.auto ? ctx.now : null,
+      resolvedAction: action.id,
+    })
+    .where(eq(queueCandidates.id, candidate.id))
+    .run();
+
+  return {
+    candidateId: candidate.id,
+    actionId: action.id,
+    effect: action.effect,
+    documentId: null,
+    wikiEventId: null,
+    autoApproved: ctx.auto,
+    status: 'approved',
+  };
 }
 
 // ── Effect: approve (existing create/update/archive dispatch) ───────

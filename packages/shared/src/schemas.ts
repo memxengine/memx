@@ -138,6 +138,10 @@ export const CandidateEffectKindEnum = z.enum([
   // Legacy defaults — present on every candidate via `defaultActions`.
   'approve',
   'reject',
+  // "I've seen this and I'll handle it outside the queue." No DB mutation —
+  // candidate resolves as status='approved'. Distinct from reject because
+  // the curator accepted the finding; they just chose to act manually.
+  'acknowledge',
   // Rich effects — used by contradiction/stale/orphan producers.
   'retire-neuron',
   'merge-into-new',

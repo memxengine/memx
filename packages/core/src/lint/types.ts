@@ -1,4 +1,4 @@
-import type { QueueCandidateKind } from '@trail/shared';
+import type { QueueCandidateKind, CandidateAction } from '@trail/shared';
 
 /**
  * A single finding from one of the lint detectors. The lint runner converts
@@ -23,6 +23,15 @@ export interface LintFinding {
   confidence: number;
   /** Free-form structured payload. Serialised into candidate.metadata. */
   details: Record<string, unknown>;
+  /**
+   * Resolution options offered to the curator. Optional — when omitted, the
+   * queue reader stamps the default Approve/Reject pair. Producers that
+   * know the finding has a richer decision space (contradiction-alert:
+   * reconcile / retire-A / retire-B / dismiss) populate this directly.
+   * Strings are English at creation time; the admin's translation service
+   * lazy-fills other locales on first view.
+   */
+  actions?: CandidateAction[];
 }
 
 export interface LintReport {

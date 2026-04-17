@@ -16,6 +16,7 @@ import {
 } from '@trail/core';
 import { INGEST_USER_ID } from '../bootstrap/ingest-user.js';
 import { broadcaster } from '../services/broadcast.js';
+import { ensureActionsInLocale } from '../services/translation.js';
 
 export const queueRoutes = new Hono();
 
@@ -127,6 +128,35 @@ queueRoutes.get('/queue/:id', async (c) => {
   const candidate = await getCandidate(getTrail(c), tenant.id, c.req.param('id'));
   if (!candidate) return c.json({ error: 'Candidate not found' }, 404);
   return c.json(candidate);
+});
+
+/**
+ * GET /queue/:id/actions?locale=da — ensure every action has a label +
+ * explanation in the requested locale, calling the translation service
+ * (LLM) when a locale is missing. Cached back into the stored actions
+ * JSON so subsequent reads are instant.
+ *
+ * Primary consumer: the admin, which calls this after loading a candidate
+ * to guarantee the user's preferred language is populated before rendering
+ * the action buttons. EN is free — returns immediately from the DB.
+ */
+queueRoutes.get('/queue/:id/actions', async (c) => {
+  const tenant = getTenant(c);
+  const url = new URL(c.req.url);
+  const rawLocale = url.searchParams.get('locale') ?? 'en';
+  // Only 'en' and 'da' are supported transports — see translation service.
+  // Any other value falls back to 'en' so a mistyped locale doesn't burn
+  // tokens trying to translate to something like '', '*', or 'xx-YY'.
+  const locale: 'en' | 'da' = rawLocale === 'da' ? 'da' : 'en';
+
+  const actions = await ensureActionsInLocale(
+    getTrail(c),
+    tenant.id,
+    c.req.param('id'),
+    locale,
+  );
+  if (!actions) return c.json({ error: 'Candidate not found or has no actions' }, 404);
+  return c.json({ locale, actions });
 });
 
 /**

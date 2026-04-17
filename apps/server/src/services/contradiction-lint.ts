@@ -200,6 +200,7 @@ async function runForEvent(
           content: f.content,
           metadata: JSON.stringify({ op: 'create', source: 'contradiction-lint', lintFingerprint: f.fingerprint, ...f.details }),
           confidence: f.confidence,
+          actions: f.actions,
         },
         { id: 'system:contradiction-lint', kind: 'system' },
       );

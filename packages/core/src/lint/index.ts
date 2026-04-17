@@ -125,6 +125,7 @@ async function emitFinding(
       content: finding.content,
       metadata,
       confidence: finding.confidence,
+      actions: finding.actions,
     },
     actor,
   );
