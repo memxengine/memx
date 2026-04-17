@@ -24,6 +24,13 @@ import type { LintFinding, LintOptions, LintReport } from './types.js';
 export type { LintFinding, LintOptions, LintReport } from './types.js';
 export { detectOrphans } from './orphans.js';
 export { detectStale } from './stale.js';
+export {
+  detectContradictions,
+  type ContradictionCandidate,
+  type ContradictionChecker,
+  type LlmContradictionResult,
+  type NewNeuron,
+} from './contradictions.js';
 
 const DETECTORS = [
   { name: 'orphans', run: detectOrphans },

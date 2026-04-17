@@ -9,12 +9,26 @@ import type { QueueCandidate, QueueCandidateKind } from '@trail/shared';
  * it, and if it passes, the approval handler fires immediately — same code
  * path a human click would take, same audit trail.
  *
- * The plan (docs/FEATURES.md#F19, docs/PLAN-PATCH.md) names three axes to
- * stack, strictest bypass first:
+ * Three axes, strictest bypass first:
  *
  *   Axis 1 — Trusted pipeline (kind + non-human actor)          [live]
- *   Axis 2 — Confidence ≥ threshold for anything else           [live, this file]
- *   Axis 3 — No contradictions against existing claims          [blocked on F32]
+ *   Axis 2 — Confidence ≥ threshold for anything else           [live]
+ *   Axis 3 — No contradictions against existing claims          [live, reactive]
+ *
+ * Axis 3 is implemented as a *post-approval* subscriber rather than a
+ * blocking pre-approval check:
+ *
+ *   - Pre-approval would add 1-3s LLM latency to every auto-approve path.
+ *     Human curators wouldn't notice; bulk buddy F39 ingest would.
+ *   - Post-approval emission (`contradiction-alert` candidates) matches
+ *     the spec's "no-contradictions" semantic because the alert lands in
+ *     the queue pending human adjudication. The Neuron is live, but the
+ *     dispute is live too — and the curator, not the policy, picks which
+ *     side is right.
+ *
+ * The contradiction subscriber lives at
+ * `apps/server/src/services/contradiction-lint.ts` and listens on the F87
+ * broadcaster for `candidate_approved` events.
  *
  * A human-originated candidate (createdBy set) NEVER auto-approves. That's
  * by design — people click "submit"; machines emit confidences. Mixing the

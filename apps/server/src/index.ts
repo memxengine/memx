@@ -3,6 +3,7 @@ import { createApp } from './app.js';
 import { ensureIngestUser } from './bootstrap/ingest-user.js';
 import { recoverZombieIngests } from './bootstrap/zombie-ingest.js';
 import { rewriteWikiToNeurons } from './bootstrap/rewrite-wiki-paths.js';
+import { startContradictionLint } from './services/contradiction-lint.js';
 
 const PORT = Number(process.env.PORT ?? 3031);
 
@@ -16,6 +17,9 @@ await trail.initFTS();
 await ensureIngestUser(trail);
 await recoverZombieIngests(trail);
 await rewriteWikiToNeurons(trail);
+
+// F19 axis 3 — contradiction detection subscribes to candidate_approved.
+startContradictionLint(trail);
 
 const app = createApp(trail);
 

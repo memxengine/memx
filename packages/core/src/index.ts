@@ -16,8 +16,21 @@ export type {
 export { shouldAutoApprove } from './queue/policy.js';
 
 // Lint pass (F32) — orphans, stale, contradictions.
-export { runLint, detectOrphans, detectStale } from './lint/index.js';
-export type { LintFinding, LintOptions, LintReport } from './lint/index.js';
+export {
+  runLint,
+  detectOrphans,
+  detectStale,
+  detectContradictions,
+} from './lint/index.js';
+export type {
+  LintFinding,
+  LintOptions,
+  LintReport,
+  ContradictionCandidate,
+  ContradictionChecker,
+  LlmContradictionResult,
+  NewNeuron,
+} from './lint/index.js';
 
 // Utilities
 export { slugify, uniqueSlug } from './slug.js';

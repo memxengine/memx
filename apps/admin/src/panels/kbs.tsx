@@ -21,9 +21,19 @@ export function KnowledgeBasesPanel() {
   // A new Trail created by any route (admin UI, bearer API, future CLI)
   // surfaces here live without a reload. Also bust the module-level KB
   // cache so the next useKb(newId) call in TrailNav can resolve it.
+  //
+  // Candidate events trigger a refetch too so the per-Trail pending badges
+  // update live — the server's LIST_SQL recomputes pendingCandidateCount
+  // per row, and re-issuing the same query is cheap.
   useEvents((e) => {
     if (e.type === 'kb_created') {
       invalidateKbs();
+      reload();
+    } else if (
+      e.type === 'candidate_created' ||
+      e.type === 'candidate_approved' ||
+      e.type === 'candidate_rejected'
+    ) {
       reload();
     }
   });
@@ -67,28 +77,45 @@ export function KnowledgeBasesPanel() {
         </p>
       </header>
       <ul class="space-y-2">
-        {kbs.map((kb) => (
-          <li
-            key={kb.id}
-            class="border border-[color:var(--color-border)] rounded-md bg-[color:var(--color-bg-card)]/80 hover:border-[color:var(--color-border-strong)] transition"
-          >
-            <a href={`/kb/${kb.id}/neurons`} class="block px-4 py-3">
-              <div class="flex items-baseline justify-between gap-4">
-                <div>
-                  <div class="font-medium">{kb.name}</div>
-                  {kb.description ? (
-                    <p class="text-sm text-[color:var(--color-fg-muted)] mt-0.5 line-clamp-2">
-                      {kb.description}
-                    </p>
-                  ) : null}
+        {kbs.map((kb) => {
+          // The LIST_SQL endpoint returns a pendingCandidateCount field the
+          // shared KnowledgeBase type doesn't declare; read it defensively.
+          const pending = (kb as KnowledgeBase & { pendingCandidateCount?: number })
+            .pendingCandidateCount ?? 0;
+          return (
+            <li
+              key={kb.id}
+              class="border border-[color:var(--color-border)] rounded-md bg-[color:var(--color-bg-card)]/80 hover:border-[color:var(--color-border-strong)] transition"
+            >
+              <a href={`/kb/${kb.id}/neurons`} class="block px-4 py-3">
+                <div class="flex items-baseline justify-between gap-4">
+                  <div class="min-w-0">
+                    <div class="font-medium">{kb.name}</div>
+                    {kb.description ? (
+                      <p class="text-sm text-[color:var(--color-fg-muted)] mt-0.5 line-clamp-2">
+                        {kb.description}
+                      </p>
+                    ) : null}
+                  </div>
+                  <div class="flex items-center gap-3 shrink-0">
+                    {pending > 0 ? (
+                      <span
+                        class="inline-flex items-center justify-center min-w-[1.5rem] h-[1.5rem] px-2 rounded-full text-[11px] font-mono font-semibold bg-[color:var(--color-accent)] text-[color:var(--color-accent-fg)]"
+                        title={`${pending} pending in Queue`}
+                        aria-label={`${pending} pending`}
+                      >
+                        {pending}
+                      </span>
+                    ) : null}
+                    <code class="text-xs text-[color:var(--color-fg-subtle)] font-mono">
+                      {kb.slug}
+                    </code>
+                  </div>
                 </div>
-                <code class="text-xs text-[color:var(--color-fg-subtle)] font-mono">
-                  {kb.slug}
-                </code>
-              </div>
-            </a>
-          </li>
-        ))}
+              </a>
+            </li>
+          );
+        })}
       </ul>
     </div>
   );

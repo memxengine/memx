@@ -22,7 +22,10 @@ const LIST_SQL = `
          (SELECT COUNT(*) FROM documents d
             WHERE d.knowledge_base_id = kb.id
               AND d.kind = 'wiki'
-              AND d.archived = 0) AS wikiPageCount
+              AND d.archived = 0) AS wikiPageCount,
+         (SELECT COUNT(*) FROM queue_candidates q
+            WHERE q.knowledge_base_id = kb.id
+              AND q.status = 'pending') AS pendingCandidateCount
     FROM knowledge_bases kb
    WHERE kb.tenant_id = ?
    ORDER BY kb.updated_at DESC
