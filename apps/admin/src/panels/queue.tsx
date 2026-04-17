@@ -13,7 +13,7 @@ import {
 import { rewriteWikiLinks } from '../lib/wiki-links';
 import { displayPath } from '../lib/display-path';
 import { Modal, ModalButton } from '../components/modal';
-import { useEvents, onStreamOpen } from '../lib/event-stream';
+import { useEvents, onStreamOpen, debounce } from '../lib/event-stream';
 
 type FilterStatus = QueueCandidateStatus | 'all';
 
@@ -70,13 +70,14 @@ export function QueuePanel() {
       .then(setData)
       .catch((err: ApiError) => setError(err.message));
   }, [kbId, status]);
+  const reloadDebounced = useCallback(debounce(reload, 100), [reload]);
 
   useEffect(reload, [reload]);
 
   // Event-driven refresh. Any candidate_* event for this KB triggers a
-  // re-fetch of the current filter — that way Pending/Approved/Rejected/All
-  // tabs all stay in sync without each tab needing its own transition
-  // logic. Also refreshes on SSE (re)open to self-heal after drops.
+  // re-fetch of the current filter. Debounced so a bulk action that emits
+  // 22 rejects in a burst coalesces into a single refetch once the burst
+  // ends — otherwise out-of-order HTTP responses can leave stale state.
   useEvents((e) => {
     if (e.kbId !== kbId) return;
     if (
@@ -84,7 +85,7 @@ export function QueuePanel() {
       e.type === 'candidate_approved' ||
       e.type === 'candidate_rejected'
     ) {
-      reload();
+      reloadDebounced();
     }
   });
   useEffect(() => onStreamOpen(reload), [reload]);

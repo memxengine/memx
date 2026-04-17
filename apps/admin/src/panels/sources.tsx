@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'preact/hooks';
 import { useRoute } from 'preact-iso';
 import type { Document } from '@trail/shared';
-import { listSources, ApiError } from '../api';
+import { listSources, archiveDocument, ApiError } from '../api';
 import { displayPath } from '../lib/display-path';
 import { UploadDropzone } from '../components/upload-dropzone';
-import { useEvents, onStreamOpen } from '../lib/event-stream';
+import { useEvents, onStreamOpen, debounce } from '../lib/event-stream';
 
 /**
  * Sources panel — the original documents uploaded into a Trail. Supports
@@ -24,14 +24,16 @@ export function SourcesPanel() {
       .then((list) => setDocs(list.slice().sort((a, b) => a.filename.localeCompare(b.filename))))
       .catch((err: ApiError) => setError(err.message));
   }, [kbId]);
+  const reloadDebounced = useCallback(debounce(reload, 100), [reload]);
 
   useEffect(() => {
     reload();
   }, [reload]);
 
   // Replace the old 3s poller with event-driven updates. Any ingest lifecycle
-  // event on this KB means a source row's status changed — refetch. Same
-  // pattern for SSE (re)open so we self-heal after a transient drop.
+  // event on this KB means a source row's status changed — refetch. Debounced
+  // so a batch upload that fires N ingest events in a burst coalesces into
+  // one refetch.
   useEvents((e) => {
     if (e.kbId !== kbId) return;
     if (
@@ -39,7 +41,7 @@ export function SourcesPanel() {
       e.type === 'ingest_completed' ||
       e.type === 'ingest_failed'
     ) {
-      reload();
+      reloadDebounced();
     }
   });
   useEffect(() => onStreamOpen(reload), [reload]);
@@ -52,6 +54,20 @@ export function SourcesPanel() {
       reload();
     },
     [reload],
+  );
+
+  const onArchive = useCallback(
+    async (doc: Document) => {
+      const ok = window.confirm(`Archive "${doc.filename}"? This soft-deletes the source — its rows stay in the DB, just hidden from the list.`);
+      if (!ok) return;
+      try {
+        await archiveDocument(doc.id);
+        setDocs((prev) => (prev ? prev.filter((d) => d.id !== doc.id) : prev));
+      } catch (err) {
+        setError(err instanceof ApiError ? err.message : String(err));
+      }
+    },
+    [],
   );
 
   return (
@@ -85,7 +101,12 @@ export function SourcesPanel() {
         {docs?.map((doc) => (
           <li
             key={doc.id}
-            class="border border-[color:var(--color-border)] rounded-md bg-[color:var(--color-bg-card)]/80 hover:border-[color:var(--color-border-strong)] transition"
+            class={
+              'border rounded-md transition ' +
+              (doc.status === 'failed'
+                ? 'border-[color:var(--color-danger)]/40 bg-[color:var(--color-danger)]/5'
+                : 'border-[color:var(--color-border)] bg-[color:var(--color-bg-card)]/80 hover:border-[color:var(--color-border-strong)]')
+            }
           >
             <div class="px-4 py-3 flex items-baseline justify-between gap-4">
               <div class="min-w-0">
@@ -107,14 +128,30 @@ export function SourcesPanel() {
                 <div class="text-[11px] font-mono text-[color:var(--color-fg-subtle)] truncate">
                   {displayPath(doc.path)}{doc.filename}
                 </div>
+                {doc.status === 'failed' && doc.errorMessage ? (
+                  <div class="mt-2 text-[11px] font-mono text-[color:var(--color-danger)] whitespace-pre-wrap break-words">
+                    {doc.errorMessage}
+                  </div>
+                ) : null}
               </div>
+              <div class="flex items-center gap-3 shrink-0">
+                {doc.status === 'failed' ? (
+                  <button
+                    onClick={() => onArchive(doc)}
+                    class="text-[11px] font-mono text-[color:var(--color-danger)] hover:text-[color:var(--color-fg)] transition"
+                    title="Archive this source — soft-deletes, audit trail intact"
+                  >
+                    archive
+                  </button>
+                ) : null}
               <a
                 href={`/api/v1/documents/${encodeURIComponent(doc.id)}/content`}
-                class="shrink-0 text-[11px] font-mono text-[color:var(--color-fg-subtle)] hover:text-[color:var(--color-accent)] transition"
+                class="text-[11px] font-mono text-[color:var(--color-fg-subtle)] hover:text-[color:var(--color-accent)] transition"
                 title="Open raw content"
               >
                 open →
               </a>
+              </div>
             </div>
           </li>
         ))}

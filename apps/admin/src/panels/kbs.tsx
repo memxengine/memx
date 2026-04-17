@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'preact/hooks';
 import type { KnowledgeBase } from '@trail/shared';
 import { listKnowledgeBases, ApiError } from '../api';
-import { useEvents, onStreamOpen } from '../lib/event-stream';
+import { useEvents, onStreamOpen, debounce } from '../lib/event-stream';
 import { invalidateKbs } from '../lib/kb-cache';
 
 export function KnowledgeBasesPanel() {
@@ -13,6 +13,11 @@ export function KnowledgeBasesPanel() {
       .then(setKbs)
       .catch((err: ApiError) => setError(err.message));
   }, []);
+  // Event-driven refetch must be debounced so bulk actions (reject 22 at
+  // once) coalesce into a single fetch. Without this the browser queues
+  // 22 fetches and out-of-order HTTP responses can overwrite the correct
+  // final state with stale data.
+  const reloadDebounced = useCallback(debounce(reload, 100), [reload]);
 
   useEffect(() => {
     reload();
@@ -28,13 +33,13 @@ export function KnowledgeBasesPanel() {
   useEvents((e) => {
     if (e.type === 'kb_created') {
       invalidateKbs();
-      reload();
+      reloadDebounced();
     } else if (
       e.type === 'candidate_created' ||
       e.type === 'candidate_approved' ||
       e.type === 'candidate_rejected'
     ) {
-      reload();
+      reloadDebounced();
     }
   });
   useEffect(() => onStreamOpen(reload), [reload]);

@@ -143,6 +143,11 @@ export function getDocumentContent(
   return api(`/api/v1/documents/${encodeURIComponent(docId)}/content`);
 }
 
+/** Soft-archive a document. Sets archived=true + status='archived'. */
+export function archiveDocument(docId: string): Promise<void> {
+  return api(`/api/v1/documents/${encodeURIComponent(docId)}`, { method: 'DELETE' });
+}
+
 // ── Search ───────────────────────────────────────────────────────
 
 export interface DocumentSearchHit {
@@ -177,6 +182,30 @@ export interface SearchResponse {
 export function searchKb(kbId: string, q: string, limit = 10): Promise<SearchResponse> {
   const qs = new URLSearchParams({ q, limit: String(limit) });
   return api(`/api/v1/knowledge-bases/${encodeURIComponent(kbId)}/search?${qs.toString()}`);
+}
+
+// ── Lint (F32) ──────────────────────────────────────────────────
+
+export interface LintReport {
+  kbId: string;
+  ranAt: string;
+  detectors: Array<{
+    name: string;
+    scanned: number;
+    found: number;
+    emitted: number;
+    skippedExisting: number;
+    elapsedMs: number;
+  }>;
+  totalEmitted: number;
+}
+
+/** Run lint detectors on demand. Idempotent via lint fingerprints. */
+export function runLint(kbId: string): Promise<LintReport> {
+  return api(`/api/v1/knowledge-bases/${encodeURIComponent(kbId)}/lint`, {
+    method: 'POST',
+    body: JSON.stringify({}),
+  });
 }
 
 // ── Chat ────────────────────────────────────────────────────────

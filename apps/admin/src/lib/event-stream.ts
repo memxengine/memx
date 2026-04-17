@@ -106,6 +106,27 @@ export function onStreamOpen(handler: OpenHandler): () => void {
   };
 }
 
+/**
+ * Debounce wrapper — coalesces rapid-fire invocations into a single call
+ * after `delayMs` of silence. Use for event-driven refetches where a bulk
+ * action (reject 22, approve all) emits many events in milliseconds and
+ * one final refetch is all that matters. Browsers cap concurrent fetches
+ * per origin; 22 un-debounced refetches make the final state land late.
+ */
+export function debounce<T extends unknown[]>(
+  fn: (...args: T) => void,
+  delayMs: number,
+): (...args: T) => void {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  return (...args: T) => {
+    if (timer !== null) clearTimeout(timer);
+    timer = setTimeout(() => {
+      timer = null;
+      fn(...args);
+    }, delayMs);
+  };
+}
+
 /** Subscribe with a React-friendly hook. Cleans up on unmount. */
 export function useEvents(handler: Handler): void {
   const saved = useRef(handler);
