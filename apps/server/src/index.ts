@@ -4,6 +4,7 @@ import { ensureIngestUser } from './bootstrap/ingest-user.js';
 import { recoverZombieIngests } from './bootstrap/zombie-ingest.js';
 import { rewriteWikiToNeurons } from './bootstrap/rewrite-wiki-paths.js';
 import { startContradictionLint } from './services/contradiction-lint.js';
+import { backfillReferences, startReferenceExtractor } from './services/reference-extractor.js';
 
 const PORT = Number(process.env.PORT ?? 3031);
 
@@ -17,6 +18,10 @@ await trail.initFTS();
 await ensureIngestUser(trail);
 await recoverZombieIngests(trail);
 await rewriteWikiToNeurons(trail);
+await backfillReferences(trail);
+
+// F15 — reference extractor subscribes to candidate_approved.
+const stopReferenceExtractor = startReferenceExtractor(trail);
 
 // F19 axis 3 — contradiction detection subscribes to candidate_approved.
 const stopContradictionLint = startContradictionLint(trail);
@@ -36,6 +41,7 @@ console.log(`  database: ${trail.path}`);
 // the HTTP server, then close the DB so the WAL checkpoints cleanly.
 const shutdown = async () => {
   console.log('\nshutting down…');
+  stopReferenceExtractor();
   stopContradictionLint();
   server.stop();
   await trail.close();
