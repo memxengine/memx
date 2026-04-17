@@ -59,11 +59,12 @@ export async function detectStale(
 
   for (const d of stale) {
     const ageDays = Math.floor((Date.now() - new Date(d.updatedAt).getTime()) / (24 * 60 * 60 * 1000));
+    const label = d.title ?? d.filename;
     findings.push({
       kind: 'gap-detection',
-      title: `Stale Neuron: ${d.title ?? d.filename} (${ageDays} days)`,
+      title: `Stale Neuron: ${label} (${ageDays} days)`,
       content: [
-        `# Stale Neuron: ${d.title ?? d.filename}`,
+        `# Stale Neuron: ${label}`,
         '',
         `The Neuron **${d.filename}** at \`${d.path}\` has not been updated in ${ageDays} days (last touched ${d.updatedAt}).`,
         '',
@@ -82,6 +83,45 @@ export async function detectStale(
         updatedAt: d.updatedAt,
         ageDays,
       },
+      actions: [
+        {
+          id: 'still-relevant',
+          effect: 'mark-still-relevant',
+          args: { documentId: d.id },
+          label: { en: 'Still relevant' },
+          explanation: {
+            en:
+              `Confirm "${label}" is still accurate. The update-timestamp gets bumped to ` +
+              `today so the stale detector stops flagging it for another ${staleDays} days. ` +
+              `Nothing else changes — the page content stays exactly as it is.`,
+          },
+        },
+        {
+          id: 'archive-neuron',
+          effect: 'retire-neuron',
+          args: { documentId: d.id },
+          label: { en: `Archive "${label}"` },
+          explanation: {
+            en:
+              `Archive "${label}". Pick this when the topic is obsolete — the Source it ` +
+              `compiled from has been retracted, the domain has moved on, or the page is ` +
+              `superseded by a newer Neuron. The page disappears from the Neurons list; ` +
+              `reversible via the archived-documents tab.`,
+          },
+        },
+        {
+          id: 'dismiss',
+          effect: 'reject',
+          label: { en: 'Dismiss as false positive' },
+          explanation: {
+            en:
+              `Discard this alert without touching the page. Pick this when the Neuron is ` +
+              `deliberately evergreen — a definition, a historical note, a reference page ` +
+              `that simply doesn't change. The alert won't re-fire until the Neuron drifts ` +
+              `past another staleness threshold.`,
+          },
+        },
+      ],
     });
   }
 

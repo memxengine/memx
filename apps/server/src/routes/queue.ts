@@ -16,7 +16,7 @@ import {
 } from '@trail/core';
 import { INGEST_USER_ID } from '../bootstrap/ingest-user.js';
 import { broadcaster } from '../services/broadcast.js';
-import { ensureActionsInLocale } from '../services/translation.js';
+import { ensureCandidateInLocale } from '../services/translation.js';
 
 export const queueRoutes = new Hono();
 
@@ -131,32 +131,35 @@ queueRoutes.get('/queue/:id', async (c) => {
 });
 
 /**
- * GET /queue/:id/actions?locale=da — ensure every action has a label +
- * explanation in the requested locale, calling the translation service
- * (LLM) when a locale is missing. Cached back into the stored actions
- * JSON so subsequent reads are instant.
+ * GET /queue/:id/translate?locale=da — ensure every translatable piece of
+ * the candidate (title, content, action labels + explanations) has a
+ * value in the requested locale. Calls the LLM once on first view,
+ * caches all fields back into the candidate row so subsequent reads are
+ * instant.
  *
- * Primary consumer: the admin, which calls this after loading a candidate
- * to guarantee the user's preferred language is populated before rendering
- * the action buttons. EN is free — returns immediately from the DB.
+ * Primary consumer: the admin, which calls this right after loading a
+ * candidate in a non-EN locale. EN is free — returns directly from the
+ * primary columns. The response shape is always the same
+ * ({ locale, title, content, actions }) so callers don't branch per locale.
  */
-queueRoutes.get('/queue/:id/actions', async (c) => {
+queueRoutes.get('/queue/:id/translate', async (c) => {
   const tenant = getTenant(c);
   const url = new URL(c.req.url);
   const rawLocale = url.searchParams.get('locale') ?? 'en';
-  // Only 'en' and 'da' are supported transports — see translation service.
-  // Any other value falls back to 'en' so a mistyped locale doesn't burn
-  // tokens trying to translate to something like '', '*', or 'xx-YY'.
+  // Only 'en' and 'da' are currently supported — other codes fall back to
+  // 'en' so a mistyped locale doesn't burn tokens trying to translate to
+  // something like '', '*', or 'xx-YY'. Adding a locale = one entry in
+  // LOCALE_NAMES in translation service + one in shared's Locale union.
   const locale: 'en' | 'da' = rawLocale === 'da' ? 'da' : 'en';
 
-  const actions = await ensureActionsInLocale(
+  const bundle = await ensureCandidateInLocale(
     getTrail(c),
     tenant.id,
     c.req.param('id'),
     locale,
   );
-  if (!actions) return c.json({ error: 'Candidate not found or has no actions' }, 404);
-  return c.json({ locale, actions });
+  if (!bundle) return c.json({ error: 'Candidate not found' }, 404);
+  return c.json({ locale, ...bundle });
 });
 
 /**

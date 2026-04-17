@@ -37,7 +37,9 @@
     "all": "All",
     "nothing": "Nothing to show.",
     "error": "Something went wrong.",
-    "tryAgain": "Try again"
+    "tryAgain": "Try again",
+    "copyId": "Copy ID",
+    "copied": "Copied!"
   },
   "queue": {
     "kinds": {

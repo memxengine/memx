@@ -7,6 +7,7 @@ import { startContradictionLint } from './services/contradiction-lint.js';
 import { backfillReferences, startReferenceExtractor } from './services/reference-extractor.js';
 import { backfillBacklinks, startBacklinkExtractor } from './services/backlink-extractor.js';
 import { startLintScheduler } from './services/lint-scheduler.js';
+import { startQueueBackfill } from './services/queue-backfill.js';
 
 const PORT = Number(process.env.PORT ?? 3031);
 
@@ -39,6 +40,13 @@ const stopContradictionLint = startContradictionLint(trail);
 // made an existing Neuron orphaned), which no event flow would notice.
 const stopLintScheduler = startLintScheduler(trail);
 
+// F90 — one-shot enrichment of existing queue candidates: populate
+// actions[] on rows that landed before the primitive existed, and
+// pre-translate pending candidates into every configured locale so the
+// Danish admin boots with Danish content already cached. Runs 30s after
+// boot; sequential so the CLI subprocess doesn't fan out.
+const stopQueueBackfill = startQueueBackfill(trail);
+
 const app = createApp(trail);
 
 const server = Bun.serve({
@@ -65,6 +73,7 @@ const shutdown = async () => {
   stopBacklinkExtractor();
   stopContradictionLint();
   stopLintScheduler();
+  stopQueueBackfill();
   server.stop();
   await trail.close();
   process.exit(0);

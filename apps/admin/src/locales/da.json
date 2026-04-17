@@ -37,7 +37,9 @@
     "all": "Alle",
     "nothing": "Der er ikke noget at vise.",
     "error": "Noget gik galt.",
-    "tryAgain": "Prøv igen"
+    "tryAgain": "Prøv igen",
+    "copyId": "Kopiér ID",
+    "copied": "Kopieret!"
   },
   "queue": {
     "kinds": {

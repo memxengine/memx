@@ -67,11 +67,12 @@ export async function detectOrphans(
 
   for (const w of wikiRows) {
     if (w.refCount > 0) continue;
+    const label = w.title ?? w.filename;
     findings.push({
       kind: 'cross-ref-suggestion',
-      title: `Orphan Neuron: ${w.title ?? w.filename}`,
+      title: `Orphan Neuron: ${label}`,
       content: [
-        `# Orphan Neuron: ${w.title ?? w.filename}`,
+        `# Orphan Neuron: ${label}`,
         '',
         `The Neuron **${w.filename}** at \`${w.path}\` has no tracked citations back to any Source — either the compiler wrote it without linking evidence, or the references were lost.`,
         '',
@@ -85,6 +86,46 @@ export async function detectOrphans(
         path: w.path,
         updatedAt: w.updatedAt,
       },
+      actions: [
+        {
+          id: 'link-sources',
+          effect: 'acknowledge',
+          args: { documentId: w.id },
+          label: { en: 'Link to sources' },
+          explanation: {
+            en:
+              `Open "${label}" in the Neurons tab and add \`sources: [...]\` to its frontmatter ` +
+              `listing the Source filenames its claims came from. The reference extractor picks ` +
+              `those up on save and this alert resolves on the next lint pass. Nothing else is ` +
+              `modified now — you do the linking yourself.`,
+          },
+        },
+        {
+          id: 'archive-neuron',
+          effect: 'retire-neuron',
+          args: { documentId: w.id },
+          label: { en: `Archive "${label}"` },
+          explanation: {
+            en:
+              `Archive "${label}". Pick this when the Neuron's claims cannot be defended — ` +
+              `no Source to link, no independent verification. The page disappears from the ` +
+              `Neurons list and every link pointing to it becomes a broken link until you ` +
+              `clean them up. Reversible via the archived-documents tab.`,
+          },
+        },
+        {
+          id: 'dismiss',
+          effect: 'reject',
+          label: { en: 'Dismiss as false positive' },
+          explanation: {
+            en:
+              `Discard this alert. Pick this when "${label}" is meant to stand on its own ` +
+              `without Source citations — an opinion page, a meta-note, a concept that the ` +
+              `Trail considers axiomatic. Nothing changes. The alert won't re-fire unless the ` +
+              `Neuron is rewritten.`,
+          },
+        },
+      ],
     });
   }
 
@@ -119,11 +160,12 @@ export async function detectOrphans(
 
   for (const s of sourceRows) {
     if (s.refCount > 0) continue;
+    const label = s.title ?? s.filename;
     findings.push({
       kind: 'gap-detection',
-      title: `Unused Source: ${s.title ?? s.filename}`,
+      title: `Unused Source: ${label}`,
       content: [
-        `# Unused Source: ${s.title ?? s.filename}`,
+        `# Unused Source: ${label}`,
         '',
         `The Source **${s.filename}** (${s.fileType}) was ingested and compiled, but no Neuron cites it.`,
         '',
@@ -140,6 +182,43 @@ export async function detectOrphans(
         path: s.path,
         fileType: s.fileType,
       },
+      actions: [
+        {
+          id: 'keep-source',
+          effect: 'acknowledge',
+          args: { documentId: s.id },
+          label: { en: 'Keep for now' },
+          explanation: {
+            en:
+              `Leave "${label}" in place — you plan to cite it in a future Neuron, or the ` +
+              `compiler should eventually pick it up. Nothing changes; this alert will re-fire ` +
+              `on the next lint pass if the Source is still uncited.`,
+          },
+        },
+        {
+          id: 'archive-source',
+          effect: 'retire-neuron',
+          args: { documentId: s.id },
+          label: { en: `Archive "${label}"` },
+          explanation: {
+            en:
+              `Archive "${label}". Pick this when the Source turned out to be irrelevant or ` +
+              `duplicative — nothing cites it and nothing will. The file disappears from the ` +
+              `Sources list but stays on disk; reversible via the archived-documents tab.`,
+          },
+        },
+        {
+          id: 'dismiss',
+          effect: 'reject',
+          label: { en: 'Dismiss as false positive' },
+          explanation: {
+            en:
+              `Discard this alert. Pick this when the Source IS cited but the reference ` +
+              `extractor missed it — e.g. the frontmatter uses a different filename spelling. ` +
+              `Nothing changes. Fixing the reference is a manual task in the Neuron editor.`,
+          },
+        },
+      ],
     });
   }
 

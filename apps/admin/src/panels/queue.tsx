@@ -13,8 +13,10 @@ import { rewriteWikiLinks } from '../lib/wiki-links';
 import { displayPath } from '../lib/display-path';
 import { Modal, ModalButton } from '../components/modal';
 import { DynamicActionButtons } from '../components/dynamic-actions';
+import { CopyId } from '../components/copy-id';
 import { useEvents, onStreamOpen, onFocusRefresh, debounce } from '../lib/event-stream';
 import { t, useLocale } from '../lib/i18n';
+import { useCandidateBundle } from '../lib/translate-candidate';
 
 type FilterStatus = QueueCandidateStatus | 'all';
 
@@ -510,8 +512,14 @@ function CandidateRow({
   showCheckbox,
 }: RowProps) {
   const meta = parseMetadata(c.metadata);
+  // Localised title + content. `bundle` starts with EN fallback and is
+  // populated with the active locale's translations once they arrive (or
+  // immediately, if the candidate already has them cached).
+  const bundle = useCandidateBundle(c);
   const preview =
-    c.content.length > 200 ? c.content.slice(0, 200).replace(/\s+/g, ' ').trim() + '…' : c.content;
+    bundle.content.length > 200
+      ? bundle.content.slice(0, 200).replace(/\s+/g, ' ').trim() + '…'
+      : bundle.content;
 
   return (
     <li
@@ -551,19 +559,23 @@ function CandidateRow({
               </span>
             ) : null}
           </div>
-          <div class="font-medium">{c.title}</div>
+          <div class="font-medium">{bundle.title}</div>
           {!isExpanded ? (
             <p class="text-sm text-[color:var(--color-fg-muted)] mt-1 line-clamp-3">{preview}</p>
           ) : null}
-          <div class="mt-2 text-[11px] font-mono text-[color:var(--color-fg-subtle)]">
-            {formatTs(c.createdAt)}
-            {' · '}
-            {c.createdBy ? t('queue.byAuthor', { who: c.createdBy }) : t('queue.byPipeline')}
+          <div class="mt-2 flex items-center gap-2 text-[11px] font-mono text-[color:var(--color-fg-subtle)]">
+            <span>
+              {formatTs(c.createdAt)}
+              {' · '}
+              {c.createdBy ? t('queue.byAuthor', { who: c.createdBy }) : t('queue.byPipeline')}
+            </span>
+            <CopyId id={c.id} />
           </div>
         </div>
         {c.status === 'pending' ? (
           <DynamicActionButtons
             candidate={c}
+            localisedActions={bundle.actions}
             busy={busy}
             onResolve={(action) => onResolve(c, action)}
           />
@@ -577,26 +589,30 @@ function CandidateRow({
         {isExpanded ? `▲ ${t('queue.item.hideContent')}` : `▼ ${t('queue.item.showContent')}`}
       </button>
 
-      {isExpanded ? <ExpandedContent candidate={c} meta={meta} kbId={kbId} /> : null}
+      {isExpanded ? <ExpandedContent candidate={c} meta={meta} kbId={kbId} content={bundle.content} /> : null}
     </li>
   );
 }
 
 function ExpandedContent({
-  candidate: c,
+  candidate: _c,
   meta,
   kbId,
+  content,
 }: {
   candidate: QueueCandidate;
   meta: CandidateOpMeta | null;
   kbId: string;
+  /** Localised markdown body to render — parent supplies the already-
+   *  translated version for the active locale (or the EN original). */
+  content: string;
 }) {
   // Render markdown content. Trust the candidate content — it comes from
   // either an authenticated user (chat-answer) or our own pipelines
   // (ingest-*, reader-feedback will need sanitisation once F31 lands).
   // Rewrite `[[wiki-link]]` before marked.parse so cross-Neuron references
   // become real anchors here too, not just in the reader.
-  const html = marked.parse(rewriteWikiLinks(c.content, kbId), { async: false }) as string;
+  const html = marked.parse(rewriteWikiLinks(content, kbId), { async: false }) as string;
 
   return (
     <div class="border-t border-[color:var(--color-border)] px-4 py-4 bg-[color:var(--color-bg)]">

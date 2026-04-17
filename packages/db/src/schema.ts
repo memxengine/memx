@@ -174,6 +174,12 @@ export const queueCandidates = sqliteTable(
     // resolved. Distinct from status: 'approved' is the final state, but a
     // candidate could have reached it via many different actions.
     resolvedAction: text('resolved_action'),
+    // Per-locale cache of LLM-translated title + content. Shape:
+    //   {"da": {"title": "...", "content": "..."}, "de": ...}
+    // Populated lazily on first view in a non-EN locale via the
+    // translation service; never re-translated once cached. Null means
+    // no locales have been requested yet.
+    translations: text('translations'),
   },
   (table) => [
     index('idx_queue_kb_status').on(table.knowledgeBaseId, table.status),

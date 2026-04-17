@@ -6,68 +6,52 @@
  *     pair rendered with system strings from the admin's i18n dict.
  *   - Rich candidates (non-null `actions`) render one button per action
  *     plus a per-action "What does this mean?" expander with the LLM-
- *     generated explanation in the user's locale.
+ *     generated explanation in the active locale.
  *
- * Locale is tracked via `useLocale()`. For non-EN locales the component
- * fires GET /queue/:id/actions?locale=<loc> to ensure translations are
- * populated, then renders from the fresh data. While the first LLM
- * translation is in flight the EN strings show — no spinner, no blank
- * buttons. A second view in the same locale is cached and instant.
+ * Locale-aware strings arrive pre-translated via the parent's
+ * `useCandidateBundle()` hook: the parent fetches /queue/:id/translate
+ * once per card and hands us the already-populated actions array. That
+ * keeps the LLM call off the per-component critical path and avoids two
+ * components racing to request the same translation.
  *
- * Action click → `onResolve(actionId)` — the parent handles the HTTP
- * POST, error toasts, and state reload.
+ * Width is pinned so expanding an explanation doesn't reflow the rest of
+ * the card — see the class list on the action column.
  */
 import { useEffect, useState } from 'preact/hooks';
 import type { CandidateAction, QueueCandidate } from '@trail/shared';
 import { bilingual, t, useLocale } from '../lib/i18n';
-import { api } from '../api';
 
 interface Props {
   candidate: QueueCandidate;
+  /**
+   * Pre-localised actions from the parent's translation bundle. Falls
+   * back to `candidate.actions` when the parent hasn't fetched a locale
+   * yet; falls back to the default Approve/Reject pair when both are
+   * null (legacy candidates).
+   */
+  localisedActions: CandidateAction[] | null;
   busy: boolean;
   /** Called when the curator clicks an action. Receives the whole action
    *  so the parent can reach into args (e.g. which Neuron to retire). */
   onResolve: (action: CandidateAction) => void;
 }
 
-export function DynamicActionButtons({ candidate, busy, onResolve }: Props) {
+export function DynamicActionButtons({
+  candidate,
+  localisedActions,
+  busy,
+  onResolve,
+}: Props) {
   const locale = useLocale();
-  const [actions, setActions] = useState<CandidateAction[] | null>(
-    candidate.actions,
-  );
+  const actions = localisedActions ?? candidate.actions;
   const [expanded, setExpanded] = useState<string | null>(null);
 
+  // Close the expander when the underlying candidate changes so a row
+  // whose DOM node gets re-used for a different candidate doesn't show
+  // a stale explanation.
   useEffect(() => {
-    setActions(candidate.actions);
     setExpanded(null);
-  }, [candidate.id, candidate.actions]);
-
-  useEffect(() => {
-    // Only fetch translations for rich candidates in a non-EN locale where
-    // at least one action is missing the locale string. Legacy candidates
-    // (null actions) render via default i18n dict — no LLM call needed.
-    if (!candidate.actions || locale === 'en') return;
-    const missing = candidate.actions.some((a) => {
-      const label = (a.label as Record<string, unknown>)[locale];
-      const explanation = (a.explanation as Record<string, unknown>)[locale];
-      return typeof label !== 'string' || typeof explanation !== 'string';
-    });
-    if (!missing) return;
-
-    let cancelled = false;
-    api<{ locale: string; actions: CandidateAction[] }>(
-      `/api/v1/queue/${encodeURIComponent(candidate.id)}/actions?locale=${locale}`,
-    )
-      .then((r) => {
-        if (!cancelled) setActions(r.actions);
-      })
-      .catch(() => {
-        // Translation failure degrades gracefully — English stays shown.
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [candidate.id, candidate.actions, locale]);
+  }, [candidate.id]);
 
   if (candidate.status !== 'pending') return null;
 
@@ -111,8 +95,15 @@ export function DynamicActionButtons({ candidate, busy, onResolve }: Props) {
   // Rich candidate: one button per action. The primary styling goes to
   // the first action in the list — producers are responsible for ordering
   // so the most curator-useful choice is first.
+  //
+  // Width is pinned (`w-[280px]`) so the column stays the same size in
+  // both closed and expanded states. Without this the explanation body
+  // grows the column and every other row on the page reflows — the button
+  // the curator was about to click jumps away. Fixed width trades a tiny
+  // bit of text wrapping (fine: labels are ≤4 words by design) for a
+  // stable layout that never "chases" the mouse.
   return (
-    <div class="flex flex-col gap-1.5 shrink-0 min-w-[180px] max-w-[260px]">
+    <div class="flex flex-col gap-1.5 shrink-0 w-[280px]">
       {actions.map((action, i) => {
         const isPrimary = i === 0;
         const isExpanded = expanded === action.id;
@@ -122,7 +113,7 @@ export function DynamicActionButtons({ candidate, busy, onResolve }: Props) {
               disabled={busy}
               onClick={() => onResolve(action)}
               class={
-                'px-3 py-1.5 text-sm rounded-md font-medium disabled:opacity-50 transition text-left ' +
+                'w-full px-3 py-1.5 text-sm rounded-md font-medium disabled:opacity-50 transition text-left break-words ' +
                 (isPrimary
                   ? 'bg-[color:var(--color-fg)] text-[color:var(--color-bg)] hover:bg-[color:var(--color-fg)]/90'
                   : 'border border-[color:var(--color-border-strong)] hover:bg-[color:var(--color-bg)]')
@@ -132,12 +123,12 @@ export function DynamicActionButtons({ candidate, busy, onResolve }: Props) {
             </button>
             <button
               onClick={() => setExpanded(isExpanded ? null : action.id)}
-              class="text-[10px] font-mono text-[color:var(--color-fg-subtle)] hover:text-[color:var(--color-fg-muted)] transition px-1 text-left"
+              class="w-full text-[10px] font-mono text-[color:var(--color-fg-subtle)] hover:text-[color:var(--color-fg-muted)] transition px-1 text-left"
             >
               {isExpanded ? `▲ ${t('common.close')}` : `▼ ${t('queue.item.whatDoesThisMean')}`}
             </button>
             {isExpanded ? (
-              <div class="text-xs text-[color:var(--color-fg-muted)] leading-relaxed bg-[color:var(--color-bg)] border border-[color:var(--color-border)] rounded-md px-3 py-2 mt-1">
+              <div class="w-full text-xs text-[color:var(--color-fg-muted)] leading-relaxed bg-[color:var(--color-bg)] border border-[color:var(--color-border)] rounded-md px-3 py-2 mt-1 break-words">
                 {bilingual(action.explanation, locale)}
               </div>
             ) : null}

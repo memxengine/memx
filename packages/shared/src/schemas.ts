@@ -197,6 +197,21 @@ export const QueueCandidateSchema = z.object({
   // Distinct from status so we can distinguish "approved via 'reconcile'"
   // from "approved via default approve" in audit logs.
   resolvedAction: z.string().nullable(),
+  // Per-locale cache of translated title + content.
+  //   { da: { title, content }, de: ..., ... }
+  // Populated lazily by the translation service on first non-EN view.
+  // Null means no locales have been cached yet. `en` is canonical and
+  // never stored here — readers fall back to the plain `title` + `content`
+  // columns for English.
+  translations: z
+    .record(
+      z.string(),
+      z.object({
+        title: z.string().optional(),
+        content: z.string().optional(),
+      }),
+    )
+    .nullable(),
 });
 
 // ── Document References (bidirectional wiki ↔ source) ─────────────────────────

@@ -1,0 +1,1 @@
+ALTER TABLE `queue_candidates` ADD `translations` text;

@@ -7,6 +7,7 @@ export {
   getCandidate,
   resolveActions,
   persistActionTranslation,
+  persistCandidateTranslation,
   DEFAULT_ACTIONS,
 } from './queue/candidates.js';
 export type {

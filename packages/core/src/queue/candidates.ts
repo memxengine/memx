@@ -179,25 +179,41 @@ async function lastEventIdFor(
 
 /**
  * Attach the stamped-default actions to a QueueCandidate shape returned
- * from a raw SELECT. The stored `actions` column is text (nullable JSON);
- * the typed schema says `CandidateAction[] | null`, so the conversion has
- * to happen somewhere between DB and caller. Doing it here means every
- * list/get response is uniform.
+ * from a raw SELECT. The stored `actions` and `translations` columns are
+ * text (nullable JSON); the typed schema unpacks them into arrays/maps.
+ * Doing the conversion here means every list/get response is uniform.
  */
 function hydrate(row: unknown): QueueCandidate {
-  const r = row as QueueCandidate & { actions?: unknown };
+  const r = row as QueueCandidate & { actions?: unknown; translations?: unknown };
   const actions = r.actions
     ? typeof r.actions === 'string'
       ? safeParseActions(r.actions)
       : (r.actions as CandidateAction[])
     : null;
-  return { ...r, actions };
+  const translations = r.translations
+    ? typeof r.translations === 'string'
+      ? safeParseTranslations(r.translations)
+      : (r.translations as QueueCandidate['translations'])
+    : null;
+  return { ...r, actions, translations };
 }
 
 function safeParseActions(raw: string): CandidateAction[] | null {
   try {
     const parsed = JSON.parse(raw) as unknown;
     if (Array.isArray(parsed)) return parsed as CandidateAction[];
+  } catch {
+    // fall through
+  }
+  return null;
+}
+
+function safeParseTranslations(raw: string): QueueCandidate['translations'] {
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return parsed as QueueCandidate['translations'];
+    }
   } catch {
     // fall through
   }
@@ -944,6 +960,44 @@ export async function getCandidate(
     )
     .get();
   return row ? hydrate(row) : null;
+}
+
+/**
+ * Persist a title+content translation into the candidate's `translations`
+ * JSON column, merged with any existing locales. Called by the
+ * translation service after a non-EN view triggers an LLM translation.
+ * `content` is optional so producers can translate title-only when the
+ * body is mostly user content that should stay verbatim.
+ */
+export async function persistCandidateTranslation(
+  trail: TrailDatabase,
+  tenantId: string,
+  candidateId: string,
+  locale: string,
+  fields: { title?: string; content?: string },
+): Promise<void> {
+  const candidate = await getCandidate(trail, tenantId, candidateId);
+  if (!candidate) return;
+  const prev = candidate.translations ?? {};
+  const existingForLocale = prev[locale] ?? {};
+  const next = {
+    ...prev,
+    [locale]: {
+      ...existingForLocale,
+      ...(fields.title !== undefined ? { title: fields.title } : {}),
+      ...(fields.content !== undefined ? { content: fields.content } : {}),
+    },
+  };
+  await trail.db
+    .update(queueCandidates)
+    .set({ translations: JSON.stringify(next) })
+    .where(
+      and(
+        eq(queueCandidates.id, candidateId),
+        eq(queueCandidates.tenantId, tenantId),
+      ),
+    )
+    .run();
 }
 
 /**
