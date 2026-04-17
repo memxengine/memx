@@ -41,6 +41,7 @@ export async function detectStale(
       title: documents.title,
       path: documents.path,
       updatedAt: documents.updatedAt,
+      version: documents.version,
     })
     .from(documents)
     .where(
@@ -74,7 +75,12 @@ export async function detectStale(
         `- Re-compile it against its current Sources.`,
         `- Archive it if the topic is obsolete.`,
       ].join('\n'),
-      fingerprint: `lint:stale-neuron:${d.id}`,
+      // Version-aware fingerprint: if the Neuron is rewritten the
+      // staleness clock technically restarts anyway (updatedAt bumps),
+      // but including version keeps the format consistent and means a
+      // dismissed-stale finding doesn't need a full month to re-qualify
+      // — a genuine edit re-surfaces it immediately if it's still old.
+      fingerprint: `lint:stale-neuron:${d.id}:v${d.version}`,
       confidence: 0.5,
       details: {
         documentId: d.id,

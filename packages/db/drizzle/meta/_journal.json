@@ -29,6 +29,13 @@
       "when": 1776417642309,
       "tag": "0003_acoustic_loners",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1776420312544,
+      "tag": "0004_lucky_red_wolf",
+      "breakpoints": true
     }
   ]
 }

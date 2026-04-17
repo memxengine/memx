@@ -50,6 +50,7 @@ export async function detectOrphans(
       title: documents.title,
       path: documents.path,
       updatedAt: documents.updatedAt,
+      version: documents.version,
       refCount: sql<number>`COUNT(${documentReferences.id})`.as('ref_count'),
     })
     .from(documents)
@@ -82,7 +83,13 @@ export async function detectOrphans(
         '',
         `Curator action: either link its claims to the Sources they came from, or archive the Neuron if its claims cannot be defended.`,
       ].join('\n'),
-      fingerprint: `lint:orphan-neuron:${w.id}`,
+      // Include Neuron version in the fingerprint: a substantive rewrite
+      // bumps doc.version → new fingerprint → old suppressions no longer
+      // match, so a previously-dismissed orphan finding re-qualifies once
+      // the page has actually changed. Pre-F90 candidates used a
+      // version-less fingerprint (`lint:orphan-neuron:<id>`); those still
+      // match themselves, so backfill idempotency is preserved.
+      fingerprint: `lint:orphan-neuron:${w.id}:v${w.version}`,
       confidence: 0.7,
       details: {
         documentId: w.id,
@@ -144,6 +151,7 @@ export async function detectOrphans(
       path: documents.path,
       status: documents.status,
       fileType: documents.fileType,
+      version: documents.version,
       refCount: sql<number>`COUNT(${documentReferences.id})`.as('ref_count'),
     })
     .from(documents)
@@ -183,7 +191,11 @@ export async function detectOrphans(
         `- The pipeline missed it — consider re-ingesting.`,
         `- Compilation succeeded but dropped claim anchors — investigate the ingest logs.`,
       ].join('\n'),
-      fingerprint: `lint:orphan-source:${s.id}`,
+      // Version bump on Source-orphan is rare (Sources are mostly
+      // immutable) but including it keeps the format uniform across
+      // detectors and opens the door to re-qualifying a finding after a
+      // source is re-ingested.
+      fingerprint: `lint:orphan-source:${s.id}:v${s.version}`,
       confidence: 0.6,
       details: {
         documentId: s.id,

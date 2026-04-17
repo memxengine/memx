@@ -31,6 +31,7 @@ export const KnowledgeBaseSchema = z.object({
   slug: z.string(),
   description: z.string().nullable(),
   language: z.string().default('da'),
+  lintPolicy: z.enum(['trusting', 'strict']).default('trusting'),
   sourceCount: z.number().int().optional(),
   wikiPageCount: z.number().int().optional(),
   createdAt: z.string(),
@@ -43,10 +44,14 @@ export const CreateKBSchema = z.object({
   language: z.string().optional(),
 });
 
+export const LintPolicyEnum = z.enum(['trusting', 'strict']);
+export type LintPolicy = z.infer<typeof LintPolicyEnum>;
+
 export const UpdateKBSchema = z.object({
   name: z.string().min(1).max(100).optional(),
   description: z.string().max(500).nullable().optional(),
   language: z.string().optional(),
+  lintPolicy: LintPolicyEnum.optional(),
 });
 
 // ── Sources & Wiki Pages ──────────────────────────────────────────────────────

@@ -159,6 +159,7 @@ async function runForEvent(
       tenantId: documents.tenantId,
       knowledgeBaseId: documents.knowledgeBaseId,
       userId: documents.userId,
+      version: documents.version,
     })
     .from(documents)
     .where(eq(documents.id, event.documentId))
@@ -175,6 +176,7 @@ async function runForEvent(
     filename: doc.filename,
     title: doc.title,
     content: doc.content,
+    version: doc.version,
   };
 
   const findings = await detectContradictions(neuron, similars, check);
@@ -279,6 +281,7 @@ async function findSimilarNeurons(
         filename: documents.filename,
         title: documents.title,
         content: documents.content,
+        version: documents.version,
       })
       .from(documents)
       .where(and(eq(documents.id, hit.id), ne(documents.kind, 'source')))
@@ -289,6 +292,7 @@ async function findSimilarNeurons(
       filename: row.filename,
       title: row.title,
       content: row.content,
+      version: row.version,
     });
   }
   return results;

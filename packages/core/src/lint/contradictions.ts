@@ -17,6 +17,7 @@ export interface ContradictionCandidate {
   filename: string;
   title: string | null;
   content: string;
+  version: number;
 }
 
 export interface LlmContradictionResult {
@@ -39,6 +40,7 @@ export interface NewNeuron {
   filename: string;
   title: string | null;
   content: string;
+  version: number;
 }
 
 /**
@@ -71,11 +73,19 @@ export async function detectContradictions(
 
     if (!result.contradicts) continue;
 
+    // Version-aware fingerprint: both Neurons' versions go in, so any
+    // rewrite of either page creates a fresh fingerprint. A curator who
+    // dismissed last week's contradiction still gets re-prompted if
+    // either side was edited since — the premise may have changed.
+    // Sort by docId so the pair (A, B) and (B, A) produce the same id.
+    const [firstId, secondId] = [neuron.documentId, cand.documentId].sort();
+    const firstVersion = firstId === neuron.documentId ? neuron.version : cand.version;
+    const secondVersion = firstId === neuron.documentId ? cand.version : neuron.version;
     findings.push({
       kind: 'contradiction-alert',
       title: `Contradiction: ${labelOf(neuron)} vs. ${labelOf(cand)}`,
       content: buildContent(neuron, cand, result),
-      fingerprint: `lint:contradiction:${[neuron.documentId, cand.documentId].sort().join(':')}`,
+      fingerprint: `lint:contradiction:${firstId}:v${firstVersion}:${secondId}:v${secondVersion}`,
       confidence: 0.75,
       details: {
         newDocumentId: neuron.documentId,

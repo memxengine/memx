@@ -14,7 +14,7 @@
  * Invariant: findings become candidates via `createCandidate`. No direct
  * writes to `documents`. The queue is the sole write path.
  */
-import { queueCandidates, type TrailDatabase } from '@trail/db';
+import { queueCandidates, knowledgeBases, type TrailDatabase } from '@trail/db';
 import { and, eq, inArray, like } from 'drizzle-orm';
 import { createCandidate, type Actor } from '../queue/candidates.js';
 import { detectOrphans } from './orphans.js';
@@ -66,7 +66,8 @@ export async function runLint(
   opts: LintOptions = {},
   onEmit?: LintEmitCallback,
 ): Promise<LintReport> {
-  const existingFingerprints = await loadExistingFingerprints(trail, kbId, tenantId);
+  const policy = await resolveLintPolicy(trail, kbId, tenantId);
+  const existingFingerprints = await loadExistingFingerprints(trail, kbId, tenantId, policy);
   const ranAt = new Date().toISOString();
   const detectorsOut: LintReport['detectors'] = [];
   let totalEmitted = 0;
@@ -136,32 +137,59 @@ async function emitFinding(
   };
 }
 
+type LintPolicy = 'trusting' | 'strict';
+
 /**
- * Pre-load every fingerprint that already has a pending, approved, OR
- * rejected candidate in this KB. Done once per lint run so we don't
- * round-trip per finding.
+ * Resolve the Trail-level lint rejection policy. Defaults to 'trusting'
+ * for KBs that haven't set a value (pre-F90 rows). The default matches
+ * the schema default — duplicated here so the function can be called
+ * on historical snapshots where the column was null.
+ */
+async function resolveLintPolicy(
+  trail: TrailDatabase,
+  kbId: string,
+  tenantId: string,
+): Promise<LintPolicy> {
+  const row = await trail.db
+    .select({ policy: knowledgeBases.lintPolicy })
+    .from(knowledgeBases)
+    .where(and(eq(knowledgeBases.id, kbId), eq(knowledgeBases.tenantId, tenantId)))
+    .get();
+  return row?.policy === 'strict' ? 'strict' : 'trusting';
+}
+
+/**
+ * Pre-load every fingerprint that blocks re-emission for this KB. Done
+ * once per lint run so we don't round-trip per finding.
  *
- * Rejected candidates were previously allowed to re-emit on the theory
- * that "the underlying issue may have come back". In practice that
- * produced a nag-loop: a curator dismisses a contradiction as a false
- * positive → next nightly lint re-emits the exact same finding →
- * curator dismisses again → loop until the curator loses trust in the
- * queue and cancels their subscription.
+ * Statuses `pending` + `approved` always block — there's already a live
+ * candidate or a committed decision in-flight. The `rejected` status is
+ * controlled by the KB's `lintPolicy`:
  *
- * With the F90 action primitive a rejection is a specific, deliberate
- * signal ("dismiss as false positive", "still relevant") meaning
- * "stop flagging this fingerprint". Honour it.
+ *   - 'trusting' (default) blocks rejected too. A dismissed finding
+ *     stays dismissed — no nag-loop when the curator said "not a real
+ *     problem". Paired with the revision flow (POST /queue/:id/reopen)
+ *     and versioned fingerprints (a rewritten Neuron gets a new
+ *     fingerprint and bypasses old suppressions).
+ *   - 'strict' allows rejected fingerprints to re-fire. Higher noise,
+ *     lower blind-spot risk — use on Trails where the curator wants a
+ *     second chance to catch a wrongful dismissal.
  *
- * `ingested` status is excluded because that's a terminal state where
- * the candidate's fingerprint no longer corresponds to anything live —
- * the underlying Neuron may have been rewritten and a new finding on
- * the same file is now legitimate.
+ * `ingested` is always excluded — terminal state where the fingerprint
+ * no longer corresponds to anything live; a fresh finding on the same
+ * file is legitimately new.
  */
 async function loadExistingFingerprints(
   trail: TrailDatabase,
   kbId: string,
   tenantId: string,
+  policy: LintPolicy,
 ): Promise<Set<string>> {
+  const blocked =
+    policy === 'trusting'
+      ? (['pending', 'approved', 'rejected'] as const)
+      : (['pending', 'approved'] as const);
+
   const rows = await trail.db
     .select({ metadata: queueCandidates.metadata })
     .from(queueCandidates)
@@ -169,7 +197,7 @@ async function loadExistingFingerprints(
       and(
         eq(queueCandidates.knowledgeBaseId, kbId),
         eq(queueCandidates.tenantId, tenantId),
-        inArray(queueCandidates.status, ['pending', 'approved', 'rejected']),
+        inArray(queueCandidates.status, [...blocked]),
         like(queueCandidates.metadata, '%"lintFingerprint":%'),
       ),
     )

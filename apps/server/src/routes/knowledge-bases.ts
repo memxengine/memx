@@ -14,6 +14,7 @@ kbRoutes.use('/knowledge-bases', requireAuth);
 const LIST_SQL = `
   SELECT kb.id, kb.tenant_id AS tenantId, kb.created_by AS createdBy,
          kb.name, kb.slug, kb.description, kb.language,
+         kb.lint_policy AS lintPolicy,
          kb.created_at AS createdAt, kb.updated_at AS updatedAt,
          (SELECT COUNT(*) FROM documents d
             WHERE d.knowledge_base_id = kb.id
@@ -140,6 +141,7 @@ kbRoutes.patch('/knowledge-bases/:id', async (c) => {
   }
   if (body.description !== undefined) updates.description = body.description;
   if (body.language !== undefined) updates.language = body.language;
+  if (body.lintPolicy !== undefined) updates.lintPolicy = body.lintPolicy;
 
   await trail.db.update(knowledgeBases).set(updates).where(eq(knowledgeBases.id, kbId)).run();
 

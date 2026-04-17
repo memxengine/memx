@@ -50,6 +50,17 @@ export const knowledgeBases = sqliteTable(
     slug: text('slug').notNull(),
     description: text('description'),
     language: text('language').notNull().default('da'),
+    // Lint rejection policy:
+    //   'trusting'  — rejected fingerprints are suppressed permanently.
+    //                 No nag-loop on dismissed findings. Default.
+    //   'strict'    — rejected fingerprints may re-emit on the next lint
+    //                 pass, giving the curator a second chance to catch a
+    //                 wrongful dismissal. Higher noise, lower blind-spot
+    //                 risk.
+    // Per-Trail so owners can dial their own signal/noise tradeoff.
+    lintPolicy: text('lint_policy', { enum: ['trusting', 'strict'] })
+      .notNull()
+      .default('trusting'),
     createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
     updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
   },

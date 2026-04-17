@@ -1,0 +1,1 @@
+ALTER TABLE `knowledge_bases` ADD `lint_policy` text DEFAULT 'trusting' NOT NULL;

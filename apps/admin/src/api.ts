@@ -54,6 +54,26 @@ export function listKnowledgeBases(): Promise<KnowledgeBase[]> {
   return api('/api/v1/knowledge-bases');
 }
 
+/**
+ * Partial update of a Trail's settings. PATCH body is whatever subset of
+ * fields are being changed — the engine validates via UpdateKBSchema.
+ * Returns the full updated row.
+ */
+export function updateKnowledgeBase(
+  kbId: string,
+  patch: {
+    name?: string;
+    description?: string | null;
+    language?: string;
+    lintPolicy?: 'trusting' | 'strict';
+  },
+): Promise<KnowledgeBase> {
+  return api(`/api/v1/knowledge-bases/${encodeURIComponent(kbId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(patch),
+  });
+}
+
 export interface QueueListResponse {
   items: QueueCandidate[];
   count: number;
