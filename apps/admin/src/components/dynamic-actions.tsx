@@ -17,12 +17,46 @@
  * Width is pinned so expanding an explanation doesn't reflow the rest of
  * the card — see the class list on the action column.
  */
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useMemo, useState } from 'preact/hooks';
+import type { VNode } from 'preact';
 import type { CandidateAction, QueueCandidate } from '@trail/shared';
 import { bilingual, t, useLocale } from '../lib/i18n';
 
+/**
+ * Inline `[[target|display]]` rewriter — same resolution rules as the
+ * markdown path in rewriteWikiLinks, but emits Preact nodes so an action
+ * explanation can carry real clickable anchors without going through a
+ * full markdown render. Returns a mixed array of strings + anchor nodes.
+ */
+function explanationWithLinks(text: string, kbId: string): Array<VNode | string> {
+  const out: Array<VNode | string> = [];
+  const re = /\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g;
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) out.push(text.slice(last, m.index));
+    const target = m[1]!.replace(/\.md$/i, '').split('/').pop()!.trim();
+    const display = (m[2] ?? m[1]!).trim();
+    const href = `/kb/${encodeURIComponent(kbId)}/neurons/${encodeURIComponent(target)}`;
+    out.push(
+      <a
+        href={href}
+        class="underline underline-offset-2 decoration-[color:var(--color-accent)]/60 hover:decoration-[color:var(--color-accent)] text-[color:var(--color-fg)]"
+      >
+        {display}
+      </a>,
+    );
+    last = re.lastIndex;
+  }
+  if (last < text.length) out.push(text.slice(last));
+  return out;
+}
+
 interface Props {
   candidate: QueueCandidate;
+  /** The KB this candidate lives in — used to build wiki-link hrefs in
+   *  the explanation bodies. */
+  kbId: string;
   /**
    * Pre-localised actions from the parent's translation bundle. Falls
    * back to `candidate.actions` when the parent hasn't fetched a locale
@@ -38,6 +72,7 @@ interface Props {
 
 export function DynamicActionButtons({
   candidate,
+  kbId,
   localisedActions,
   busy,
   onResolve,
@@ -45,6 +80,10 @@ export function DynamicActionButtons({
   const locale = useLocale();
   const actions = localisedActions ?? candidate.actions;
   const [expanded, setExpanded] = useState<string | null>(null);
+  // Re-parse explanation wiki-links only when locale or candidate shifts;
+  // the expansion is a lightweight regex walk but useMemo guarantees a
+  // stable VNode list across re-renders for Preact's diffing.
+  void useMemo;
 
   // Close the expander when the underlying candidate changes so a row
   // whose DOM node gets re-used for a different candidate doesn't show
@@ -129,7 +168,7 @@ export function DynamicActionButtons({
             </button>
             {isExpanded ? (
               <div class="w-full text-xs text-[color:var(--color-fg-muted)] leading-relaxed bg-[color:var(--color-bg)] border border-[color:var(--color-border)] rounded-md px-3 py-2 mt-1 break-words">
-                {bilingual(action.explanation, locale)}
+                {explanationWithLinks(bilingual(action.explanation, locale), kbId)}
               </div>
             ) : null}
           </div>

@@ -98,7 +98,8 @@
       "confirmReject": "Reject {n}",
       "approvedToast": "Approved {ok}/{total}",
       "rejectedToast": "Rejected {ok}/{total}",
-      "failureSuffix": " — {n} failed"
+      "failureSuffix": " — {n} failed",
+      "approveDisabledRich": "One or more selected items need a specific choice (contradiction, orphan, stale) — handle those one at a time."
     },
     "item": {
       "approveAction": "Approve",
@@ -111,7 +112,10 @@
       "hideContent": "Hide content",
       "rejectTitle": "Reject this candidate?",
       "rejectPrompt": "Optional reason",
-      "whatDoesThisMean": "What does this mean?"
+      "whatDoesThisMean": "What does this mean?",
+      "reopen": "Re-open",
+      "reopenSuccess": "Re-opened — back in Pending.",
+      "reopenHint": "Puts this candidate back in the Pending queue so you can decide again."
     }
   },
   "sources": {

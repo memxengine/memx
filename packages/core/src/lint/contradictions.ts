@@ -117,6 +117,11 @@ function buildContradictionActions(
 ): CandidateAction[] {
   const labelNew = labelOf(neuron);
   const labelExisting = labelOf(cand);
+  // [[filename|Display]] — the admin's explanation renderer turns this
+  // into a real clickable anchor pointing at the Neuron reader, so the
+  // curator can jump to the page without leaving the queue.
+  const linkNew = `[[${stripExt(neuron.filename)}|${labelNew}]]`;
+  const linkExisting = `[[${stripExt(cand.filename)}|${labelExisting}]]`;
   return [
     {
       id: 'retire-a',
@@ -125,10 +130,10 @@ function buildContradictionActions(
       label: { en: `Retire "${labelNew}"` },
       explanation: {
         en:
-          `Archive "${labelNew}" and keep "${labelExisting}". Pick this if the existing ` +
-          `page was already correct and the new one introduced a wrong claim. The page will ` +
-          `disappear from the Neurons list; every link pointing to it becomes a broken link ` +
-          `until you clean them up. Nothing else changes.`,
+          `Archive ${linkNew} and keep ${linkExisting}. Pick this if the existing page was ` +
+          `already correct and the new one introduced a wrong claim. The page will disappear ` +
+          `from the Neurons list; every link pointing to it becomes a broken link until you ` +
+          `clean them up. Nothing else changes.`,
       },
     },
     {
@@ -138,10 +143,10 @@ function buildContradictionActions(
       label: { en: `Retire "${labelExisting}"` },
       explanation: {
         en:
-          `Archive "${labelExisting}" and keep "${labelNew}". Pick this if the new claim ` +
-          `supersedes the existing one — a better source, a correction, a newer version. ` +
-          `The existing page disappears from the Neurons list; any link pointing to it ` +
-          `becomes a broken link until you clean them up.`,
+          `Archive ${linkExisting} and keep ${linkNew}. Pick this if the new claim supersedes ` +
+          `the existing one — a better source, a correction, a newer version. The existing ` +
+          `page disappears from the Neurons list; any link pointing to it becomes a broken ` +
+          `link until you clean them up.`,
       },
     },
     {
@@ -150,9 +155,9 @@ function buildContradictionActions(
       label: { en: 'Reconcile manually' },
       explanation: {
         en:
-          `Close this alert and fix the conflict yourself. Neither page is archived — ` +
-          `you go to the Neurons tab, open both pages, and edit them so they agree. ` +
-          `Pick this when the truth is somewhere in between and both pages need nuance.`,
+          `Close this alert and fix the conflict yourself. Neither page is archived — open ` +
+          `${linkNew} and ${linkExisting}, then edit them so they agree. Pick this when the ` +
+          `truth is somewhere in between and both pages need nuance.`,
       },
     },
     {
@@ -168,6 +173,10 @@ function buildContradictionActions(
       },
     },
   ];
+}
+
+function stripExt(filename: string): string {
+  return filename.replace(/\.md$/i, '');
 }
 
 function labelOf(n: { title: string | null; filename: string }): string {

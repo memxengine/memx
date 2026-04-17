@@ -8,6 +8,10 @@ import type { LintFinding, LintOptions } from './types.js';
 
 const DEFAULT_HUB_PAGES = ['overview.md', 'log.md'];
 
+function stripMd(filename: string): string {
+  return filename.replace(/\.md$/i, '');
+}
+
 /**
  * Orphan detector — two flavours:
  *
@@ -94,10 +98,11 @@ export async function detectOrphans(
           label: { en: 'Link to sources' },
           explanation: {
             en:
-              `Open "${label}" in the Neurons tab and add \`sources: [...]\` to its frontmatter ` +
-              `listing the Source filenames its claims came from. The reference extractor picks ` +
-              `those up on save and this alert resolves on the next lint pass. Nothing else is ` +
-              `modified now — you do the linking yourself.`,
+              `Open [[${stripMd(w.filename)}|${label}]] in the Neurons tab and add ` +
+              `\`sources: [...]\` to its frontmatter listing the Source filenames its claims ` +
+              `came from. The reference extractor picks those up on save and this alert ` +
+              `resolves on the next lint pass. Nothing else is modified now — you do the ` +
+              `linking yourself.`,
           },
         },
         {
@@ -107,10 +112,10 @@ export async function detectOrphans(
           label: { en: `Archive "${label}"` },
           explanation: {
             en:
-              `Archive "${label}". Pick this when the Neuron's claims cannot be defended — ` +
-              `no Source to link, no independent verification. The page disappears from the ` +
-              `Neurons list and every link pointing to it becomes a broken link until you ` +
-              `clean them up. Reversible via the archived-documents tab.`,
+              `Archive [[${stripMd(w.filename)}|${label}]]. Pick this when the Neuron's claims ` +
+              `cannot be defended — no Source to link, no independent verification. The page ` +
+              `disappears from the Neurons list and every link pointing to it becomes a broken ` +
+              `link until you clean them up. Reversible via the archived-documents tab.`,
           },
         },
         {
@@ -119,10 +124,10 @@ export async function detectOrphans(
           label: { en: 'Dismiss as false positive' },
           explanation: {
             en:
-              `Discard this alert. Pick this when "${label}" is meant to stand on its own ` +
-              `without Source citations — an opinion page, a meta-note, a concept that the ` +
-              `Trail considers axiomatic. Nothing changes. The alert won't re-fire unless the ` +
-              `Neuron is rewritten.`,
+              `Discard this alert. Pick this when [[${stripMd(w.filename)}|${label}]] is ` +
+              `meant to stand on its own without Source citations — an opinion page, a ` +
+              `meta-note, a concept that the Trail considers axiomatic. Nothing changes. ` +
+              `The alert won't re-fire unless the Neuron is rewritten.`,
           },
         },
       ],
@@ -161,6 +166,10 @@ export async function detectOrphans(
   for (const s of sourceRows) {
     if (s.refCount > 0) continue;
     const label = s.title ?? s.filename;
+    // Sources don't live under /neurons/<slug>/, so wrapping them in
+    // [[wiki-link]] would produce a broken target — the admin's reader
+    // can't open a source at that URL. Keep quotes only.
+    void label;
     findings.push({
       kind: 'gap-detection',
       title: `Unused Source: ${label}`,

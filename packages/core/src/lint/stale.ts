@@ -91,9 +91,10 @@ export async function detectStale(
           label: { en: 'Still relevant' },
           explanation: {
             en:
-              `Confirm "${label}" is still accurate. The update-timestamp gets bumped to ` +
-              `today so the stale detector stops flagging it for another ${staleDays} days. ` +
-              `Nothing else changes — the page content stays exactly as it is.`,
+              `Confirm [[${d.filename.replace(/\.md$/i, '')}|${label}]] is still accurate. The ` +
+              `update-timestamp gets bumped to today so the stale detector stops flagging it ` +
+              `for another ${staleDays} days. Nothing else changes — the page content stays ` +
+              `exactly as it is.`,
           },
         },
         {
@@ -103,10 +104,10 @@ export async function detectStale(
           label: { en: `Archive "${label}"` },
           explanation: {
             en:
-              `Archive "${label}". Pick this when the topic is obsolete — the Source it ` +
-              `compiled from has been retracted, the domain has moved on, or the page is ` +
-              `superseded by a newer Neuron. The page disappears from the Neurons list; ` +
-              `reversible via the archived-documents tab.`,
+              `Archive [[${d.filename.replace(/\.md$/i, '')}|${label}]]. Pick this when the ` +
+              `topic is obsolete — the Source it compiled from has been retracted, the domain ` +
+              `has moved on, or the page is superseded by a newer Neuron. The page disappears ` +
+              `from the Neurons list; reversible via the archived-documents tab.`,
           },
         },
         {
@@ -115,10 +116,10 @@ export async function detectStale(
           label: { en: 'Dismiss as false positive' },
           explanation: {
             en:
-              `Discard this alert without touching the page. Pick this when the Neuron is ` +
-              `deliberately evergreen — a definition, a historical note, a reference page ` +
-              `that simply doesn't change. The alert won't re-fire until the Neuron drifts ` +
-              `past another staleness threshold.`,
+              `Discard this alert without touching the page. Pick this when ` +
+              `[[${d.filename.replace(/\.md$/i, '')}|${label}]] is deliberately evergreen — a ` +
+              `definition, a historical note, a reference page that simply doesn't change. ` +
+              `The alert won't re-fire until the Neuron drifts past another staleness threshold.`,
           },
         },
       ],

@@ -104,22 +104,42 @@ export function resolveCandidate(
   });
 }
 
+/**
+ * Flip a rejected candidate back to pending. Use-case: the curator made
+ * a wrong call and wants a do-over. Returns the previous rejection
+ * reason so the admin can show "you had written: '...'" as a hint.
+ */
+export function reopenCandidate(
+  id: string,
+): Promise<{ candidateId: string; previousReason: string | null }> {
+  return api(`/api/v1/queue/${encodeURIComponent(id)}/reopen`, {
+    method: 'POST',
+    body: JSON.stringify({}),
+  });
+}
+
 export interface BulkQueueResult {
-  actionId: string;
+  actionId: string | null;
+  effect: string | null;
   requested: number;
-  succeeded: Array<{ id: string }>;
+  succeeded: Array<{ id: string; actionId: string }>;
   failed: Array<{ id: string; error: string }>;
 }
 
 /**
- * Apply the SAME actionId to many candidates. Common cases: bulk-approve
- * with actionId='approve' + path, bulk-reject with actionId='reject' + reason.
- * Richer actions (retire-neuron, flag-source) are theoretically bulkable too
- * but the caller must supply the right args for every candidate — rarely
- * what you want.
+ * Apply the same decision to many candidates. Two dispatch styles:
+ *   - `actionId`: find THAT specific action on each candidate. Works when
+ *     every selected candidate exposes the same actionId (legacy default
+ *     'approve'/'reject').
+ *   - `effect`: find ANY action with that effect on each candidate.
+ *     The only universal mode — every candidate has a reject-effect
+ *     action ('reject' on legacy, 'dismiss' on rich), so a bulk
+ *     "Dismiss" works even when selected rows have different action
+ *     catalogues.
  */
 export function bulkQueue(args: {
-  actionId: string;
+  actionId?: string;
+  effect?: string;
   ids: string[];
   reason?: string;
   filename?: string;

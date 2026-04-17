@@ -963,6 +963,52 @@ export async function getCandidate(
 }
 
 /**
+ * Flip a rejected candidate back to pending so the curator gets another
+ * chance to handle it. Clears the rejection reason + resolvedAction
+ * while preserving reviewedBy/reviewedAt for the audit trail (a future
+ * review will overwrite them). Throws on "not rejected" to keep the
+ * operation honest — callers shouldn't use reopen to un-approve.
+ */
+export async function reopenCandidate(
+  trail: TrailDatabase,
+  tenantId: string,
+  candidateId: string,
+  actor: Actor,
+): Promise<{ candidateId: string; previousReason: string | null }> {
+  const candidate = await getCandidate(trail, tenantId, candidateId);
+  if (!candidate) throw new Error(`Candidate not found: ${candidateId}`);
+  if (candidate.status !== 'rejected') {
+    throw new Error(
+      `Can only reopen rejected candidates (current status=${candidate.status})`,
+    );
+  }
+
+  const previousReason = candidate.rejectionReason;
+  await trail.db
+    .update(queueCandidates)
+    .set({
+      status: 'pending',
+      rejectionReason: null,
+      resolvedAction: null,
+      // Keep reviewedBy/reviewedAt for the audit trail — the next
+      // resolution will overwrite them.
+    })
+    .where(
+      and(
+        eq(queueCandidates.id, candidateId),
+        eq(queueCandidates.tenantId, tenantId),
+      ),
+    )
+    .run();
+
+  // No wiki_event emitted: nothing about the wiki changed, we just
+  // walked a decision back. The audit trail lives in the candidate's
+  // own columns + the next resolution's event.
+  void actor; // reserved for a future audit log on the reopen itself
+  return { candidateId, previousReason };
+}
+
+/**
  * Persist a title+content translation into the candidate's `translations`
  * JSON column, merged with any existing locales. Called by the
  * translation service after a non-EN view triggers an LLM translation.

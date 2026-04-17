@@ -8,6 +8,8 @@ import { requireAuth, getTenant, getUser, getTrail } from '../middleware/auth.js
 import {
   createCandidate,
   resolveCandidate,
+  reopenCandidate,
+  resolveActions,
   listCandidates,
   countCandidates,
   getCandidate,
@@ -163,6 +165,51 @@ queueRoutes.get('/queue/:id/translate', async (c) => {
 });
 
 /**
+ * POST /queue/:id/reopen — flip a rejected candidate back to pending so
+ * the curator gets another chance. Use-case: "I accidentally clicked
+ * Dismiss" or "on reflection this IS a real problem". Clears rejection
+ * reason + resolvedAction; preserves reviewedBy/reviewedAt in the row
+ * for audit.
+ *
+ * Fires a candidate_created event so admin badges + the queue panel
+ * reflect the newly-pending state live. The event carries `status:
+ * pending` and a synthetic title prefix so consumers can tell a reopen
+ * from a brand-new emission if they care; the simple case (just update
+ * the count) doesn't need to.
+ */
+queueRoutes.post('/queue/:id/reopen', async (c) => {
+  const tenant = getTenant(c);
+  const existing = await getCandidate(getTrail(c), tenant.id, c.req.param('id'));
+  if (!existing) return c.json({ error: 'Candidate not found' }, 404);
+  try {
+    const result = await reopenCandidate(
+      getTrail(c),
+      tenant.id,
+      c.req.param('id'),
+      userActor(c),
+    );
+    broadcaster.emit({
+      type: 'candidate_created',
+      tenantId: tenant.id,
+      kbId: existing.knowledgeBaseId,
+      candidateId: result.candidateId,
+      kind: existing.kind,
+      title: existing.title,
+      status: 'pending',
+      autoApproved: false,
+      confidence: existing.confidence,
+      createdBy: existing.createdBy,
+    });
+    return c.json(result);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Unknown error';
+    if (msg.startsWith('Candidate not found')) return c.json({ error: msg }, 404);
+    if (msg.startsWith('Can only reopen')) return c.json({ error: msg }, 409);
+    return c.json({ error: msg }, 500);
+  }
+});
+
+/**
  * The canonical curator-decision endpoint. Replaces the old approve + reject
  * split. Body: `{ actionId, args?, filename?, path?, editedContent?, reason?,
  * notes? }`. `actionId` must match one of the candidate's actions (or
@@ -197,18 +244,33 @@ queueRoutes.post('/queue/:id/resolve', async (c) => {
 });
 
 /**
- * Bulk resolve. Takes a list of candidate ids and applies the SAME actionId
- * to each. Per-candidate errors don't abort the batch — we return a summary
- * telling the caller exactly which ones succeeded, which failed, and why.
+ * Bulk resolve. Applies the SAME decision to a list of candidates. The
+ * decision can be specified two ways:
  *
- * Runs serially — parallel would stampede the write path, and at curator
- * click pace sequential is fine. Each resolution emits its own event pair,
- * same as individual /resolve.
+ *   - `actionId: "approve"` — look up that action by id on each candidate.
+ *     Works for legacy candidates (default Approve/Reject) and for rich
+ *     candidates that happen to use the same actionId, but fails on any
+ *     candidate where the actionId doesn't match — caller gets a
+ *     per-row error.
+ *
+ *   - `effect: "reject"` — look up an action by its effect kind. Per-
+ *     candidate: find an action whose effect matches and execute it. The
+ *     only universal bulk operation because every candidate has at least
+ *     one reject-effect action (default 'reject' on legacy, 'dismiss' on
+ *     rich). Use this for "dismiss the selection" without caring which
+ *     actionId each row uses internally.
+ *
+ * Per-candidate errors don't abort the batch — we return a summary
+ * telling the caller exactly which ones succeeded, which failed, and why.
+ * Runs serially — parallel would stampede the write path; at curator
+ * click pace sequential is fine. Each resolution emits its own event
+ * pair, same as individual /resolve.
  */
 queueRoutes.post('/queue/bulk', async (c) => {
   const body = (await c.req.json().catch(() => null)) as
     | {
         actionId?: string;
+        effect?: string;
         ids?: unknown;
         reason?: unknown;
         filename?: unknown;
@@ -217,6 +279,7 @@ queueRoutes.post('/queue/bulk', async (c) => {
       }
     | null;
   const actionId = typeof body?.actionId === 'string' ? body.actionId : null;
+  const effect = typeof body?.effect === 'string' ? body.effect : null;
   const ids = Array.isArray(body?.ids)
     ? body!.ids.filter((id): id is string => typeof id === 'string')
     : [];
@@ -228,7 +291,7 @@ queueRoutes.post('/queue/bulk', async (c) => {
       ? (body.args as Record<string, unknown>)
       : undefined;
 
-  if (!actionId) return c.json({ error: 'actionId required' }, 400);
+  if (!actionId && !effect) return c.json({ error: 'actionId or effect required' }, 400);
   if (ids.length === 0) return c.json({ error: 'ids array required' }, 400);
   if (ids.length > 500) return c.json({ error: 'max 500 ids per batch' }, 400);
 
@@ -238,8 +301,9 @@ queueRoutes.post('/queue/bulk', async (c) => {
 
   const results = {
     actionId,
+    effect,
     requested: ids.length,
-    succeeded: [] as Array<{ id: string }>,
+    succeeded: [] as Array<{ id: string; actionId: string }>,
     failed: [] as Array<{ id: string; error: string }>,
   };
 
@@ -249,9 +313,32 @@ queueRoutes.post('/queue/bulk', async (c) => {
       results.failed.push({ id, error: 'not found' });
       continue;
     }
+
+    // Resolve which actionId this candidate should receive. Direct
+    // actionId: use verbatim. Effect: pick the candidate's own action
+    // whose effect matches. If neither matches, bail with a helpful
+    // error so the admin can tell the curator which row skipped.
+    let finalActionId: string | null = actionId;
+    if (!finalActionId && effect) {
+      const actions = resolveActions(existing);
+      const match = actions.find((a) => a.effect === effect);
+      if (!match) {
+        results.failed.push({
+          id,
+          error: `no action with effect "${effect}" (available: ${actions.map((a) => a.effect).join(', ')})`,
+        });
+        continue;
+      }
+      finalActionId = match.id;
+    }
+    if (!finalActionId) {
+      results.failed.push({ id, error: 'no action resolved' });
+      continue;
+    }
+
     try {
       const parsed = ResolveCandidateSchema.safeParse({
-        actionId,
+        actionId: finalActionId,
         args,
         filename,
         path,
@@ -263,7 +350,7 @@ queueRoutes.post('/queue/bulk', async (c) => {
       }
       const r = await resolveCandidate(trail, tenant.id, id, actor, parsed.data);
       emitResolution(r, existing);
-      results.succeeded.push({ id });
+      results.succeeded.push({ id, actionId: finalActionId });
     } catch (err) {
       results.failed.push({ id, error: err instanceof Error ? err.message : String(err) });
     }

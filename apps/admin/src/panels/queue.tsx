@@ -5,6 +5,7 @@ import type { CandidateAction, QueueCandidate, QueueCandidateStatus } from '@tra
 import {
   listQueue,
   resolveCandidate,
+  reopenCandidate,
   bulkQueue,
   ApiError,
   type QueueListResponse,
@@ -144,6 +145,15 @@ export function QueuePanel() {
     setSelected(new Set());
   }, [status]);
 
+  // Any candidate in the selection carrying rich (non-null) actions
+  // makes bulk-approve ambiguous: there's no universal "accept this"
+  // effect across contradiction/orphan/stale — each kind expects a
+  // specific per-case choice. We DO support bulk-reject via effect
+  // matching because every kind has a reject-effect action ('dismiss'
+  // on rich, 'reject' on legacy).
+  const selectedItems = (data?.items ?? []).filter((c) => selected.has(c.id));
+  const anySelectedHasRichActions = selectedItems.some((c) => c.actions !== null);
+
   async function onBulkApprove() {
     const ids = Array.from(selected);
     if (ids.length === 0) return;
@@ -175,7 +185,10 @@ export function QueuePanel() {
     setBulkBusy(true);
     setBulkReject(null);
     try {
-      const r = await bulkQueue({ actionId: 'reject', ids, reason: reason.trim() || undefined });
+      // Dispatch by effect, not actionId: every candidate kind has at
+      // least one reject-effect action ('dismiss' on rich, 'reject' on
+      // legacy), so this works across mixed selections.
+      const r = await bulkQueue({ effect: 'reject', ids, reason: reason.trim() || undefined });
       setToast({
         kind: r.failed.length === 0 ? 'success' : 'error',
         text:
@@ -240,6 +253,24 @@ export function QueuePanel() {
     try {
       await resolveCandidate(c.id, { actionId, reason: reason || undefined });
       setToast({ kind: 'success', text: t('queue.item.rejectSuccess') });
+      reload();
+    } catch (err) {
+      setToast({ kind: 'error', text: err instanceof Error ? err.message : t('common.error') });
+    } finally {
+      setActingOn(null);
+    }
+  }
+
+  /**
+   * Revision: pull a rejected candidate back into Pending so the curator
+   * can reconsider. Fires candidate_created (as pending) via the engine
+   * so the badge + other panels update live.
+   */
+  async function onReopen(c: QueueCandidate) {
+    setActingOn(c.id);
+    try {
+      await reopenCandidate(c.id);
+      setToast({ kind: 'success', text: t('queue.item.reopenSuccess') });
       reload();
     } catch (err) {
       setToast({ kind: 'error', text: err instanceof Error ? err.message : t('common.error') });
@@ -325,9 +356,14 @@ export function QueuePanel() {
             <div class="flex items-center gap-2">
               {status === 'pending' ? (
                 <button
-                  disabled={bulkBusy}
+                  disabled={bulkBusy || anySelectedHasRichActions}
                   onClick={onBulkApprove}
-                  class="px-3 py-1.5 text-[11px] rounded-md bg-[color:var(--color-fg)] text-[color:var(--color-bg)] font-medium hover:bg-[color:var(--color-fg)]/90 disabled:opacity-50 transition"
+                  title={
+                    anySelectedHasRichActions
+                      ? t('queue.bulk.approveDisabledRich')
+                      : undefined
+                  }
+                  class="px-3 py-1.5 text-[11px] rounded-md bg-[color:var(--color-fg)] text-[color:var(--color-bg)] font-medium hover:bg-[color:var(--color-fg)]/90 disabled:opacity-50 disabled:cursor-not-allowed transition"
                 >
                   {t('common.approve')} {selected.size}
                 </button>
@@ -356,6 +392,7 @@ export function QueuePanel() {
             onToggle={() => toggleExpanded(c.id)}
             busy={actingOn === c.id}
             onResolve={onResolve}
+            onReopen={onReopen}
             selected={selected.has(c.id)}
             onToggleSelected={() => toggleSelected(c.id)}
             showCheckbox={status === 'pending'}
@@ -495,6 +532,7 @@ interface RowProps {
   onToggle: () => void;
   busy: boolean;
   onResolve: (c: QueueCandidate, action: CandidateAction) => void;
+  onReopen: (c: QueueCandidate) => void;
   selected: boolean;
   onToggleSelected: () => void;
   showCheckbox: boolean;
@@ -507,6 +545,7 @@ function CandidateRow({
   onToggle,
   busy,
   onResolve,
+  onReopen,
   selected,
   onToggleSelected,
   showCheckbox,
@@ -575,10 +614,27 @@ function CandidateRow({
         {c.status === 'pending' ? (
           <DynamicActionButtons
             candidate={c}
+            kbId={kbId}
             localisedActions={bundle.actions}
             busy={busy}
             onResolve={(action) => onResolve(c, action)}
           />
+        ) : c.status === 'rejected' ? (
+          <div class="flex flex-col gap-1 shrink-0 items-end">
+            <button
+              disabled={busy}
+              onClick={() => onReopen(c)}
+              title={t('queue.item.reopenHint')}
+              class="px-3 py-1.5 text-sm rounded-md border border-[color:var(--color-border-strong)] hover:border-[color:var(--color-accent)] hover:text-[color:var(--color-accent)] disabled:opacity-50 transition"
+            >
+              {busy ? '…' : t('queue.item.reopen')}
+            </button>
+            {c.rejectionReason ? (
+              <span class="text-[10px] font-mono text-[color:var(--color-fg-subtle)] max-w-[200px] text-right truncate" title={c.rejectionReason}>
+                "{c.rejectionReason}"
+              </span>
+            ) : null}
+          </div>
         ) : null}
       </div>
 

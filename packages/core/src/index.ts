@@ -2,6 +2,7 @@
 export {
   createCandidate,
   resolveCandidate,
+  reopenCandidate,
   listCandidates,
   countCandidates,
   getCandidate,

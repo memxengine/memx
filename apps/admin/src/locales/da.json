@@ -98,7 +98,8 @@
       "confirmReject": "Afvis {n}",
       "approvedToast": "Godkendte {ok}/{total}",
       "rejectedToast": "Afviste {ok}/{total}",
-      "failureSuffix": " — {n} fejlede"
+      "failureSuffix": " — {n} fejlede",
+      "approveDisabledRich": "En eller flere af de valgte kræver et specifikt valg (modsigelse, forældreløs, forældet) — håndtér dem enkeltvis."
     },
     "item": {
       "approveAction": "Godkend",
@@ -111,7 +112,10 @@
       "hideContent": "Skjul indhold",
       "rejectTitle": "Afvis denne kandidat?",
       "rejectPrompt": "Begrundelse (valgfri)",
-      "whatDoesThisMean": "Hvad betyder det her?"
+      "whatDoesThisMean": "Hvad betyder det her?",
+      "reopen": "Genåbn",
+      "reopenSuccess": "Genåbnet — tilbage i Afventer.",
+      "reopenHint": "Sætter kandidaten tilbage i Afventer-køen så du kan vælge igen."
     }
   },
   "sources": {

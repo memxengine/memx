@@ -158,44 +158,57 @@ async function buildActionsFromMetadata(
   if (fp.startsWith('lint:orphan-neuron:')) {
     const docId = typeof meta?.documentId === 'string' ? meta.documentId : null;
     if (!docId) return null;
-    const label = await labelFor(trail, docId);
-    return orphanNeuronActions(docId, label);
+    const l = await labelFor(trail, docId);
+    return orphanNeuronActions(docId, l);
   }
   if (fp.startsWith('lint:orphan-source:')) {
     const docId = typeof meta?.documentId === 'string' ? meta.documentId : null;
     if (!docId) return null;
-    const label = await labelFor(trail, docId);
-    return orphanSourceActions(docId, label);
+    const l = await labelFor(trail, docId);
+    return orphanSourceActions(docId, l.label);
   }
   if (fp.startsWith('lint:stale-neuron:')) {
     const docId = typeof meta?.documentId === 'string' ? meta.documentId : null;
     if (!docId) return null;
-    const label = await labelFor(trail, docId);
-    return staleNeuronActions(docId, label);
+    const l = await labelFor(trail, docId);
+    return staleNeuronActions(docId, l);
   }
   if (fp.startsWith('lint:contradiction:')) {
     const newId = typeof meta?.newDocumentId === 'string' ? meta.newDocumentId : null;
     const existingId = typeof meta?.existingDocumentId === 'string' ? meta.existingDocumentId : null;
     if (!newId || !existingId) return null;
-    const [newLabel, existingLabel] = await Promise.all([
-      labelFor(trail, newId),
-      labelFor(trail, existingId),
-    ]);
-    return contradictionActions(newId, existingId, newLabel, existingLabel);
+    const [n, e] = await Promise.all([labelFor(trail, newId), labelFor(trail, existingId)]);
+    return contradictionActions(newId, existingId, n, e);
   }
   return null;
 }
 
-async function labelFor(trail: TrailDatabase, docId: string): Promise<string> {
+interface DocLabel {
+  /** Display text, title preferred over filename. */
+  label: string;
+  /** Wiki-link slug — filename minus .md — for building `[[slug|display]]`. */
+  slug: string;
+}
+
+async function labelFor(trail: TrailDatabase, docId: string): Promise<DocLabel> {
   const row = await trail.db
     .select({ title: documents.title, filename: documents.filename })
     .from(documents)
     .where(eq(documents.id, docId))
     .get();
-  return row?.title ?? row?.filename ?? 'unknown';
+  const filename = row?.filename ?? 'unknown';
+  return {
+    label: row?.title ?? filename,
+    slug: filename.replace(/\.md$/i, ''),
+  };
 }
 
-function orphanNeuronActions(docId: string, label: string): CandidateAction[] {
+function wikiLink(d: DocLabel): string {
+  return `[[${d.slug}|${d.label}]]`;
+}
+
+function orphanNeuronActions(docId: string, d: DocLabel): CandidateAction[] {
+  const link = wikiLink(d);
   return [
     {
       id: 'link-sources',
@@ -204,7 +217,7 @@ function orphanNeuronActions(docId: string, label: string): CandidateAction[] {
       label: { en: 'Link to sources' },
       explanation: {
         en:
-          `Open "${label}" in the Neurons tab and add \`sources: [...]\` to its frontmatter ` +
+          `Open ${link} in the Neurons tab and add \`sources: [...]\` to its frontmatter ` +
           `listing the Source filenames its claims came from. The reference extractor picks ` +
           `those up on save and this alert resolves on the next lint pass. Nothing else is ` +
           `modified now — you do the linking yourself.`,
@@ -214,10 +227,10 @@ function orphanNeuronActions(docId: string, label: string): CandidateAction[] {
       id: 'archive-neuron',
       effect: 'retire-neuron',
       args: { documentId: docId },
-      label: { en: `Archive "${label}"` },
+      label: { en: `Archive "${d.label}"` },
       explanation: {
         en:
-          `Archive "${label}". Pick this when the Neuron's claims cannot be defended — ` +
+          `Archive ${link}. Pick this when the Neuron's claims cannot be defended — ` +
           `no Source to link, no independent verification. The page disappears from the ` +
           `Neurons list and every link pointing to it becomes a broken link until you ` +
           `clean them up. Reversible via the archived-documents tab.`,
@@ -229,7 +242,7 @@ function orphanNeuronActions(docId: string, label: string): CandidateAction[] {
       label: { en: 'Dismiss as false positive' },
       explanation: {
         en:
-          `Discard this alert. Pick this when "${label}" is meant to stand on its own ` +
+          `Discard this alert. Pick this when ${link} is meant to stand on its own ` +
           `without Source citations — an opinion page, a meta-note, a concept that the ` +
           `Trail considers axiomatic. Nothing changes. The alert won't re-fire unless the ` +
           `Neuron is rewritten.`,
@@ -278,7 +291,8 @@ function orphanSourceActions(docId: string, label: string): CandidateAction[] {
   ];
 }
 
-function staleNeuronActions(docId: string, label: string): CandidateAction[] {
+function staleNeuronActions(docId: string, d: DocLabel): CandidateAction[] {
+  const link = wikiLink(d);
   return [
     {
       id: 'still-relevant',
@@ -287,7 +301,7 @@ function staleNeuronActions(docId: string, label: string): CandidateAction[] {
       label: { en: 'Still relevant' },
       explanation: {
         en:
-          `Confirm "${label}" is still accurate. The update-timestamp gets bumped to ` +
+          `Confirm ${link} is still accurate. The update-timestamp gets bumped to ` +
           `today so the stale detector stops flagging it. Nothing else changes — the page ` +
           `content stays exactly as it is.`,
       },
@@ -296,10 +310,10 @@ function staleNeuronActions(docId: string, label: string): CandidateAction[] {
       id: 'archive-neuron',
       effect: 'retire-neuron',
       args: { documentId: docId },
-      label: { en: `Archive "${label}"` },
+      label: { en: `Archive "${d.label}"` },
       explanation: {
         en:
-          `Archive "${label}". Pick this when the topic is obsolete — the Source it ` +
+          `Archive ${link}. Pick this when the topic is obsolete — the Source it ` +
           `compiled from has been retracted, the domain has moved on, or the page is ` +
           `superseded by a newer Neuron. The page disappears from the Neurons list; ` +
           `reversible via the archived-documents tab.`,
@@ -311,7 +325,7 @@ function staleNeuronActions(docId: string, label: string): CandidateAction[] {
       label: { en: 'Dismiss as false positive' },
       explanation: {
         en:
-          `Discard this alert without touching the page. Pick this when the Neuron is ` +
+          `Discard this alert without touching ${link}. Pick this when the Neuron is ` +
           `deliberately evergreen — a definition, a historical note, a reference page ` +
           `that simply doesn't change.`,
       },
@@ -322,33 +336,35 @@ function staleNeuronActions(docId: string, label: string): CandidateAction[] {
 function contradictionActions(
   newId: string,
   existingId: string,
-  newLabel: string,
-  existingLabel: string,
+  n: DocLabel,
+  e: DocLabel,
 ): CandidateAction[] {
+  const linkNew = wikiLink(n);
+  const linkExisting = wikiLink(e);
   return [
     {
       id: 'retire-a',
       effect: 'retire-neuron',
       args: { documentId: newId },
-      label: { en: `Retire "${newLabel}"` },
+      label: { en: `Retire "${n.label}"` },
       explanation: {
         en:
-          `Archive "${newLabel}" and keep "${existingLabel}". Pick this if the existing ` +
-          `page was already correct and the new one introduced a wrong claim. The page ` +
-          `disappears from the Neurons list; every link pointing to it becomes a broken ` +
-          `link until you clean them up.`,
+          `Archive ${linkNew} and keep ${linkExisting}. Pick this if the existing page was ` +
+          `already correct and the new one introduced a wrong claim. The page disappears from ` +
+          `the Neurons list; every link pointing to it becomes a broken link until you clean ` +
+          `them up.`,
       },
     },
     {
       id: 'retire-b',
       effect: 'retire-neuron',
       args: { documentId: existingId },
-      label: { en: `Retire "${existingLabel}"` },
+      label: { en: `Retire "${e.label}"` },
       explanation: {
         en:
-          `Archive "${existingLabel}" and keep "${newLabel}". Pick this if the new claim ` +
-          `supersedes the existing one — a better source, a correction, a newer version. ` +
-          `The existing page disappears; any link pointing to it becomes a broken link.`,
+          `Archive ${linkExisting} and keep ${linkNew}. Pick this if the new claim supersedes ` +
+          `the existing one — a better source, a correction, a newer version. The existing ` +
+          `page disappears; any link pointing to it becomes a broken link.`,
       },
     },
     {
@@ -357,9 +373,9 @@ function contradictionActions(
       label: { en: 'Reconcile manually' },
       explanation: {
         en:
-          `Close this alert and fix the conflict yourself. Neither page is archived — ` +
-          `you go to the Neurons tab, open both pages, and edit them so they agree. ` +
-          `Pick this when the truth is somewhere in between and both pages need nuance.`,
+          `Close this alert and fix the conflict yourself. Neither page is archived — open ` +
+          `${linkNew} and ${linkExisting}, then edit them so they agree. Pick this when the ` +
+          `truth is somewhere in between and both pages need nuance.`,
       },
     },
     {
