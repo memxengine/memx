@@ -6,6 +6,7 @@
     "queue": "Kø",
     "sources": "Kilder",
     "trails": "Stier",
+    "glossary": "Ordforklaring",
     "signOut": "Log ud",
     "theme": {
       "toggle": "Skift tema",
@@ -159,6 +160,11 @@
     "empty": "Ingen Stier endnu. Opret én for at komme i gang.",
     "create": "Opret Sti",
     "pendingBadge": "{n} afventer"
+  },
+  "glossary": {
+    "title": "Ordforklaring",
+    "subtitle": "Alle termer Trail-admin bruger, forklaret. Én sand kilde — samme definition overalt.",
+    "seeAlso": "Se også"
   },
   "errors": {
     "network": "Netværksfejl. Tjek din forbindelse og prøv igen.",

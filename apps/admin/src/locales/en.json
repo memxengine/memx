@@ -6,6 +6,7 @@
     "queue": "Queue",
     "sources": "Sources",
     "trails": "Trails",
+    "glossary": "Glossary",
     "signOut": "Sign out",
     "theme": {
       "toggle": "Toggle theme",
@@ -159,6 +160,11 @@
     "empty": "No Trails yet. Create one to get started.",
     "create": "Create Trail",
     "pendingBadge": "{n} pending"
+  },
+  "glossary": {
+    "title": "Glossary",
+    "subtitle": "Every term the Trail admin uses, defined. A single source of truth — same definition everywhere.",
+    "seeAlso": "See also"
   },
   "errors": {
     "network": "Network error. Check your connection and try again.",

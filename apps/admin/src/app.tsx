@@ -73,6 +73,12 @@ export function App({ children }: { children: ComponentChildren }) {
               <span class="text-[color:var(--color-fg-subtle)] text-sm ml-1">admin</span>
             </a>
             <div class="ml-auto flex items-center gap-3 text-sm">
+              <a
+                href="/glossary"
+                class="text-[color:var(--color-fg-muted)] hover:text-[color:var(--color-fg)] transition"
+              >
+                {t('nav.glossary')}
+              </a>
               {me ? (
                 <span class="text-[color:var(--color-fg-muted)]">{displayName(me)}</span>
               ) : null}

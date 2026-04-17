@@ -8,6 +8,7 @@ import { WikiReaderPanel } from './panels/wiki-reader';
 import { SourcesPanel } from './panels/sources';
 import { SearchPanel } from './panels/search';
 import { ChatPanel } from './panels/chat';
+import { GlossaryPanel } from './panels/glossary';
 import { NotFound } from './panels/not-found';
 import { initTheme } from './theme';
 import './index.css';
@@ -27,6 +28,7 @@ function Main() {
           <Route path="/kb/:kbId/sources" component={SourcesPanel} />
           <Route path="/kb/:kbId/search" component={SearchPanel} />
           <Route path="/kb/:kbId/chat" component={ChatPanel} />
+          <Route path="/glossary" component={GlossaryPanel} />
           <Route default component={NotFound} />
         </Router>
       </App>
