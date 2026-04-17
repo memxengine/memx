@@ -5,6 +5,7 @@ import { recoverZombieIngests } from './bootstrap/zombie-ingest.js';
 import { rewriteWikiToNeurons } from './bootstrap/rewrite-wiki-paths.js';
 import { startContradictionLint } from './services/contradiction-lint.js';
 import { backfillReferences, startReferenceExtractor } from './services/reference-extractor.js';
+import { backfillBacklinks, startBacklinkExtractor } from './services/backlink-extractor.js';
 import { startLintScheduler } from './services/lint-scheduler.js';
 
 const PORT = Number(process.env.PORT ?? 3031);
@@ -20,9 +21,14 @@ await ensureIngestUser(trail);
 await recoverZombieIngests(trail);
 await rewriteWikiToNeurons(trail);
 await backfillReferences(trail);
+await backfillBacklinks(trail);
 
 // F15 — reference extractor subscribes to candidate_approved.
 const stopReferenceExtractor = startReferenceExtractor(trail);
+
+// F15 iter 2 — wiki-wiki backlink extractor subscribes to the same event.
+// Graph of [[link]]s between Neurons, populated live + at boot.
+const stopBacklinkExtractor = startBacklinkExtractor(trail);
 
 // F19 axis 3 — contradiction detection subscribes to candidate_approved.
 const stopContradictionLint = startContradictionLint(trail);
@@ -56,6 +62,7 @@ console.log(`  database: ${trail.path}`);
 const shutdown = async () => {
   console.log('\nshutting down…');
   stopReferenceExtractor();
+  stopBacklinkExtractor();
   stopContradictionLint();
   stopLintScheduler();
   server.stop();

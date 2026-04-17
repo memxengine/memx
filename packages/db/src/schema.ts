@@ -224,3 +224,35 @@ export const documentReferences = sqliteTable(
     uniqueIndex('idx_refs_triple').on(table.wikiDocumentId, table.sourceDocumentId, table.claimAnchor),
   ],
 );
+
+// ── Wiki Backlinks (Neuron → Neuron navigation graph) ─────────────────────────
+// F15 iter 2: `[[wiki-link]]` syntax in Neuron bodies. Separate from
+// document_references because its semantic is navigation, not provenance —
+// a [[link]] says "related page", not "cited source". Populated by the
+// backlink-extractor service at boot-time backfill + on every
+// candidate_approved.
+
+export const wikiBacklinks = sqliteTable(
+  'wiki_backlinks',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+    knowledgeBaseId: text('knowledge_base_id').notNull().references(() => knowledgeBases.id, { onDelete: 'cascade' }),
+    // The Neuron containing the [[link]]
+    fromDocumentId: text('from_document_id').notNull().references(() => documents.id, { onDelete: 'cascade' }),
+    // The Neuron being linked to
+    toDocumentId: text('to_document_id').notNull().references(() => documents.id, { onDelete: 'cascade' }),
+    // The exact text inside the brackets. Can differ from the resolved
+    // filename — e.g. `[[Orphans + Stale]]` resolves to `orphans-stale.md`
+    // but we keep the authored form for display + debugging.
+    linkText: text('link_text').notNull(),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (table) => [
+    index('idx_backlinks_from').on(table.fromDocumentId),
+    index('idx_backlinks_to').on(table.toDocumentId),
+    // Prevents re-extracting the same link over and over. The link text is
+    // part of the key so a Neuron can link twice with different phrasings.
+    uniqueIndex('idx_backlinks_unique').on(table.fromDocumentId, table.toDocumentId, table.linkText),
+  ],
+);
