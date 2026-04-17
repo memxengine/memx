@@ -5,6 +5,7 @@ import { chat, saveChatAsNeuron, ApiError, type ChatResponse, type ChatCitation 
 import { rewriteWikiLinks } from '../lib/wiki-links';
 import { displayPath } from '../lib/display-path';
 import { Modal, ModalButton } from '../components/modal';
+import { ThinkingAnimation } from '../components/thinking-animation';
 
 /**
  * Chat-against-a-Trail. Retrieves from the KB's FTS index + asks Claude via
@@ -35,6 +36,7 @@ export function ChatPanel() {
   const [input, setInput] = useState('');
   const [turns, setTurns] = useState<Turn[]>([]);
   const [busy, setBusy] = useState(false);
+  const [askStartTime, setAskStartTime] = useState<number | null>(null);
   const [saveTarget, setSaveTarget] = useState<Turn | null>(null);
   const [saveTitle, setSaveTitle] = useState('');
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -62,6 +64,7 @@ export function ChatPanel() {
       { id: turnId, question: q, answer: null, citations: [], error: null, savedAs: null },
     ]);
     setBusy(true);
+    setAskStartTime(Date.now());
     try {
       const res: ChatResponse = await chat(kbId, q);
       setTurns((prev) =>
@@ -76,6 +79,7 @@ export function ChatPanel() {
       setTurns((prev) => prev.map((t) => (t.id === turnId ? { ...t, error: msg } : t)));
     } finally {
       setBusy(false);
+      setAskStartTime(null);
     }
   }, [input, busy, kbId]);
 
@@ -136,8 +140,8 @@ export function ChatPanel() {
           ))
         )}
         {busy ? (
-          <div class="loading-delayed text-[color:var(--color-fg-muted)] text-sm">
-            Thinking…
+          <div class="pt-2">
+            <ThinkingAnimation label="Thinking…" startTime={askStartTime} />
           </div>
         ) : null}
       </div>
