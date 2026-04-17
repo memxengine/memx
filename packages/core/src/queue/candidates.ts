@@ -10,10 +10,11 @@ import {
 } from '@trail/db';
 import type {
   CreateQueueCandidate,
-  ApproveCandidatePayload,
-  RejectCandidatePayload,
+  ResolveCandidatePayload,
   QueueCandidate,
   ListQueueQuery,
+  CandidateAction,
+  CandidateEffectKind,
 } from '@trail/shared';
 import { slugify } from '../slug.js';
 import { shouldAutoApprove } from './policy.js';
@@ -27,11 +28,13 @@ import { shouldAutoApprove } from './policy.js';
  * module-level global. F40.2 replaces that per-request resolution
  * with a per-tenant pool — the signature here is unchanged.
  *
- * Every wiki mutation goes through `approveCandidate`, which runs the
- * create / update / archive branch inside a single Drizzle transaction
- * and emits a `wiki_events` row with a full content snapshot. Auto-
- * approval (see `shouldAutoApprove`) flips trusted-pipeline candidates
- * through the same path instead of bypassing the queue.
+ * Post-F90 refactor: every curator decision flows through the single
+ * `resolveCandidate(id, actionId)` entry point. The candidate's
+ * `actions: CandidateAction[]` lists the resolution options the producer
+ * wanted to offer; the engine dispatches on each action's `effect` to a
+ * dedicated handler. The legacy binary approve/reject split is collapsed
+ * into two default actions (id='approve', id='reject') that every
+ * candidate carries unless a producer overrides them.
  */
 
 /**
@@ -68,16 +71,20 @@ export interface Actor {
   kind: 'user' | 'llm' | 'system';
 }
 
-export interface ApprovalResult {
+/**
+ * Uniform result of a resolution — whichever effect ran. `documentId` is
+ * populated when the effect touched a Neuron; null for side-effect-only
+ * actions (flag-source, mark-still-relevant).
+ */
+export interface ResolutionResult {
   candidateId: string;
-  documentId: string;
-  wikiEventId: string;
+  actionId: string;
+  effect: CandidateEffectKind;
+  documentId: string | null;
+  wikiEventId: string | null;
   autoApproved: boolean;
-}
-
-export interface RejectionResult {
-  candidateId: string;
-  reason: string | null;
+  /** Final candidate status after the resolution. */
+  status: 'approved' | 'rejected';
 }
 
 interface CommitContext {
@@ -85,6 +92,54 @@ interface CommitContext {
   auto: boolean;
   summary: string;
   metadataJson: string | null;
+}
+
+// ── Default actions ────────────────────────────────────────────────
+// Every candidate gets Approve/Reject unless its producer overrides. The
+// user-facing strings live in English (LLM native tongue); the admin
+// UI fills Danish via its static i18n dict because these strings are
+// system-level, not content-level, so they don't need per-candidate
+// translation caching.
+
+const APPROVE_ACTION: CandidateAction = {
+  id: 'approve',
+  effect: 'approve',
+  label: { en: 'Approve' },
+  explanation: {
+    en: 'Accept this candidate and apply its change to the Trail.',
+  },
+};
+
+const REJECT_ACTION: CandidateAction = {
+  id: 'reject',
+  effect: 'reject',
+  label: { en: 'Reject' },
+  explanation: {
+    en: "Discard this candidate. Nothing in the Trail changes.",
+  },
+};
+
+export const DEFAULT_ACTIONS: CandidateAction[] = [APPROVE_ACTION, REJECT_ACTION];
+
+/**
+ * Return the candidate's actions, filling in defaults when the producer
+ * didn't specify any. Reads the JSON column and validates shape loosely —
+ * malformed data degrades to DEFAULT_ACTIONS rather than throwing, so one
+ * bad row doesn't brick the queue.
+ */
+export function resolveActions(candidate: QueueCandidate): CandidateAction[] {
+  const raw = (candidate as { actions?: unknown }).actions;
+  if (!raw) return DEFAULT_ACTIONS;
+  if (Array.isArray(raw)) return raw as CandidateAction[];
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed as CandidateAction[];
+    } catch {
+      // fall through
+    }
+  }
+  return DEFAULT_ACTIONS;
 }
 
 // ── Helpers (pure) ─────────────────────────────────────────────────
@@ -122,6 +177,33 @@ async function lastEventIdFor(
   return row?.id ?? null;
 }
 
+/**
+ * Attach the stamped-default actions to a QueueCandidate shape returned
+ * from a raw SELECT. The stored `actions` column is text (nullable JSON);
+ * the typed schema says `CandidateAction[] | null`, so the conversion has
+ * to happen somewhere between DB and caller. Doing it here means every
+ * list/get response is uniform.
+ */
+function hydrate(row: unknown): QueueCandidate {
+  const r = row as QueueCandidate & { actions?: unknown };
+  const actions = r.actions
+    ? typeof r.actions === 'string'
+      ? safeParseActions(r.actions)
+      : (r.actions as CandidateAction[])
+    : null;
+  return { ...r, actions };
+}
+
+function safeParseActions(raw: string): CandidateAction[] | null {
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (Array.isArray(parsed)) return parsed as CandidateAction[];
+  } catch {
+    // fall through
+  }
+  return null;
+}
+
 // ── Public API ─────────────────────────────────────────────────────
 
 /** Enqueue a candidate. Runs the auto-approval policy inline; stays pending otherwise. */
@@ -130,7 +212,7 @@ export async function createCandidate(
   tenantId: string,
   input: CreateQueueCandidate,
   actor: Actor,
-): Promise<{ candidate: QueueCandidate; approval?: ApprovalResult }> {
+): Promise<{ candidate: QueueCandidate; approval?: ResolutionResult }> {
   const { db } = trail;
 
   const kb = await db
@@ -160,22 +242,21 @@ export async function createCandidate(
       impactEstimate: input.impactEstimate ?? null,
       status: 'pending',
       createdBy: actor.kind === 'user' ? actor.id : null,
+      actions: input.actions ? JSON.stringify(input.actions) : null,
     })
     .run();
 
-  const candidate = (await db
-    .select()
-    .from(queueCandidates)
-    .where(eq(queueCandidates.id, id))
-    .get()) as QueueCandidate;
+  const candidate = hydrate(
+    await db.select().from(queueCandidates).where(eq(queueCandidates.id, id)).get(),
+  );
 
   if (shouldAutoApprove(candidate)) {
-    const approval = await approveCandidate(
+    const approval = await resolveCandidate(
       trail,
       tenantId,
       id,
       actor,
-      { path: '/neurons/auto/' },
+      { actionId: 'approve', path: '/neurons/auto/' },
       { auto: true },
     );
     return { candidate, approval };
@@ -185,56 +266,88 @@ export async function createCandidate(
 }
 
 /**
- * Approve a candidate and commit its change to the wiki.
+ * Execute a curator decision. Dispatches on the resolved action's effect.
  *
- * Dispatches on `candidate.metadata.op`:
- *   - create   → insert a new wiki page
- *   - update   → replace content, bump version
- *   - archive  → soft-delete
- *
- * Every branch runs inside the same Drizzle transaction and emits a
- * replay-able `wiki_events` row with a full content snapshot and a
- * `source_candidate_id` back-pointer.
+ * `actionId` references one of `candidate.actions[]` when the producer
+ * populated them, or 'approve'/'reject' on legacy (null-actions) candidates.
+ * Unknown actionIds throw so the caller's UI can't silently drop a click.
  */
-export async function approveCandidate(
+export async function resolveCandidate(
   trail: TrailDatabase,
   tenantId: string,
   candidateId: string,
   actor: Actor,
-  payload: ApproveCandidatePayload,
+  payload: ResolveCandidatePayload,
   opts: { auto?: boolean } = {},
-): Promise<ApprovalResult> {
+): Promise<ResolutionResult> {
   const { db } = trail;
 
-  const candidate = await db
-    .select()
-    .from(queueCandidates)
-    .where(
-      and(
-        eq(queueCandidates.id, candidateId),
-        eq(queueCandidates.tenantId, tenantId),
-      ),
-    )
-    .get();
-  if (!candidate) throw new Error(`Candidate not found: ${candidateId}`);
+  const candidate = hydrate(
+    await db
+      .select()
+      .from(queueCandidates)
+      .where(
+        and(
+          eq(queueCandidates.id, candidateId),
+          eq(queueCandidates.tenantId, tenantId),
+        ),
+      )
+      .get(),
+  );
+  if (!candidate.id) throw new Error(`Candidate not found: ${candidateId}`);
   if (candidate.status !== 'pending') {
+    throw new Error(`Candidate is not pending (current status=${candidate.status})`);
+  }
+
+  const actions = resolveActions(candidate);
+  const action = actions.find((a) => a.id === payload.actionId);
+  if (!action) {
     throw new Error(
-      `Candidate is not pending (current status=${candidate.status})`,
+      `Unknown action "${payload.actionId}" for candidate ${candidateId}. Available: ${actions.map((a) => a.id).join(', ')}`,
     );
   }
 
-  const op = parseOp(candidate);
   const ctx: CommitContext = {
     now: new Date().toISOString(),
     auto: !!opts.auto,
-    summary: opts.auto ? 'auto-approved' : payload.notes ?? 'approved by curator',
+    summary: opts.auto
+      ? `auto: ${action.id}`
+      : payload.notes ?? `${action.id} by curator`,
     metadataJson: payload.notes ? JSON.stringify({ notes: payload.notes }) : null,
   };
 
-  return db.transaction(async (tx) => {
-    if (op.op === 'update') return approveUpdate(tx, candidate, op, payload, actor, ctx);
-    if (op.op === 'archive') return approveArchive(tx, candidate, op, actor, ctx);
-    return approveCreate(tx, candidate, op, payload, actor, ctx);
+  switch (action.effect) {
+    case 'approve':
+      return executeApprove(trail, candidate, action, payload, actor, ctx);
+    case 'reject':
+      return executeReject(trail, candidate, action, payload, actor, ctx);
+    case 'retire-neuron':
+      return executeRetireNeuron(trail, candidate, action, actor, ctx);
+    case 'flag-source':
+      return executeFlagSource(trail, candidate, action, actor, ctx);
+    case 'mark-still-relevant':
+      return executeMarkStillRelevant(trail, candidate, action, actor, ctx);
+    case 'merge-into-new':
+    case 'refresh-from-source':
+      throw new Error(`Effect "${action.effect}" is planned for a later iteration.`);
+  }
+}
+
+// ── Effect: approve (existing create/update/archive dispatch) ───────
+
+async function executeApprove(
+  trail: TrailDatabase,
+  candidate: QueueCandidate,
+  action: CandidateAction,
+  payload: ResolveCandidatePayload,
+  actor: Actor,
+  ctx: CommitContext,
+): Promise<ResolutionResult> {
+  const op = parseOp(candidate);
+  return trail.db.transaction(async (tx) => {
+    if (op.op === 'update') return approveUpdate(tx, candidate, op, payload, action, actor, ctx);
+    if (op.op === 'archive') return approveArchive(tx, candidate, op, action, actor, ctx);
+    return approveCreate(tx, candidate, op, payload, action, actor, ctx);
   });
 }
 
@@ -242,15 +355,18 @@ async function approveCreate(
   tx: Db,
   candidate: QueueCandidate,
   op: CandidateOp,
-  payload: ApproveCandidatePayload,
+  payload: ResolveCandidatePayload,
+  action: CandidateAction,
   actor: Actor,
   ctx: CommitContext,
-): Promise<ApprovalResult> {
+): Promise<ResolutionResult> {
   const content = payload.editedContent ?? candidate.content;
   const rawName =
     payload.filename ?? op.filename ?? slugify(candidate.title) ?? 'untitled';
   const filename = rawName.endsWith('.md') ? rawName : `${rawName}.md`;
-  const pathIn = payload.filename ? payload.path : op.path ?? payload.path;
+  const pathIn = payload.filename
+    ? payload.path ?? '/neurons/queries/'
+    : op.path ?? payload.path ?? '/neurons/queries/';
   const path = pathIn.endsWith('/') ? pathIn : `${pathIn}/`;
 
   const docId = `doc_${crypto.randomUUID().slice(0, 12)}`;
@@ -287,18 +403,27 @@ async function approveCreate(
     ctx,
   });
 
-  await finaliseCandidate(tx, candidate.id, actor, docId, ctx);
-  return { candidateId: candidate.id, documentId: docId, wikiEventId: eventId, autoApproved: ctx.auto };
+  await finaliseApproved(tx, candidate.id, actor, docId, action.id, ctx);
+  return {
+    candidateId: candidate.id,
+    actionId: action.id,
+    effect: action.effect,
+    documentId: docId,
+    wikiEventId: eventId,
+    autoApproved: ctx.auto,
+    status: 'approved',
+  };
 }
 
 async function approveUpdate(
   tx: Db,
   candidate: QueueCandidate,
   op: CandidateOp,
-  payload: ApproveCandidatePayload,
+  payload: ResolveCandidatePayload,
+  action: CandidateAction,
   actor: Actor,
   ctx: CommitContext,
-): Promise<ApprovalResult> {
+): Promise<ResolutionResult> {
   if (!op.targetDocumentId) {
     throw new Error('update candidate missing metadata.targetDocumentId');
   }
@@ -345,17 +470,26 @@ async function approveUpdate(
     ctx,
   });
 
-  await finaliseCandidate(tx, candidate.id, actor, doc.id, ctx);
-  return { candidateId: candidate.id, documentId: doc.id, wikiEventId: eventId, autoApproved: ctx.auto };
+  await finaliseApproved(tx, candidate.id, actor, doc.id, action.id, ctx);
+  return {
+    candidateId: candidate.id,
+    actionId: action.id,
+    effect: action.effect,
+    documentId: doc.id,
+    wikiEventId: eventId,
+    autoApproved: ctx.auto,
+    status: 'approved',
+  };
 }
 
 async function approveArchive(
   tx: Db,
   candidate: QueueCandidate,
   op: CandidateOp,
+  action: CandidateAction,
   actor: Actor,
   ctx: CommitContext,
-): Promise<ApprovalResult> {
+): Promise<ResolutionResult> {
   if (!op.targetDocumentId) {
     throw new Error('archive candidate missing metadata.targetDocumentId');
   }
@@ -394,9 +528,242 @@ async function approveArchive(
     ctx,
   });
 
-  await finaliseCandidate(tx, candidate.id, actor, doc.id, ctx);
-  return { candidateId: candidate.id, documentId: doc.id, wikiEventId: eventId, autoApproved: ctx.auto };
+  await finaliseApproved(tx, candidate.id, actor, doc.id, action.id, ctx);
+  return {
+    candidateId: candidate.id,
+    actionId: action.id,
+    effect: action.effect,
+    documentId: doc.id,
+    wikiEventId: eventId,
+    autoApproved: ctx.auto,
+    status: 'approved',
+  };
 }
+
+// ── Effect: reject ─────────────────────────────────────────────────
+
+async function executeReject(
+  trail: TrailDatabase,
+  candidate: QueueCandidate,
+  action: CandidateAction,
+  payload: ResolveCandidatePayload,
+  actor: Actor,
+  ctx: CommitContext,
+): Promise<ResolutionResult> {
+  const reason = payload.reason ?? null;
+  await trail.db
+    .update(queueCandidates)
+    .set({
+      status: 'rejected',
+      reviewedBy: actor.id,
+      reviewedAt: ctx.now,
+      rejectionReason: reason,
+      resolvedAction: action.id,
+    })
+    .where(eq(queueCandidates.id, candidate.id))
+    .run();
+
+  return {
+    candidateId: candidate.id,
+    actionId: action.id,
+    effect: action.effect,
+    documentId: null,
+    wikiEventId: null,
+    autoApproved: ctx.auto,
+    status: 'rejected',
+  };
+}
+
+// ── Effect: retire-neuron ───────────────────────────────────────────
+// Archives a specific Neuron (args.documentId) in response to a
+// contradiction alert. The candidate resolves as "approved" — the curator
+// accepted the finding — but the downstream state is the target Neuron
+// becoming archived, not a new Neuron being created.
+
+async function executeRetireNeuron(
+  trail: TrailDatabase,
+  candidate: QueueCandidate,
+  action: CandidateAction,
+  actor: Actor,
+  ctx: CommitContext,
+): Promise<ResolutionResult> {
+  const targetId = asString(action.args?.documentId);
+  if (!targetId) {
+    throw new Error(`retire-neuron action missing args.documentId on ${candidate.id}`);
+  }
+
+  return trail.db.transaction(async (tx) => {
+    const doc = await tx
+      .select()
+      .from(documents)
+      .where(
+        and(
+          eq(documents.id, targetId),
+          eq(documents.tenantId, candidate.tenantId),
+          eq(documents.kind, 'wiki'),
+        ),
+      )
+      .get();
+    if (!doc) throw new Error(`retire-neuron: target Neuron not found: ${targetId}`);
+
+    const prevEventId = await lastEventIdFor(tx, candidate.tenantId, doc.id);
+    await tx
+      .update(documents)
+      .set({ archived: true, status: 'archived', updatedAt: ctx.now })
+      .where(eq(documents.id, doc.id))
+      .run();
+
+    const eventId = await emitEvent(tx, {
+      tenantId: candidate.tenantId,
+      documentId: doc.id,
+      eventType: 'archived',
+      previousVersion: doc.version,
+      newVersion: doc.version,
+      prevEventId,
+      contentSnapshot: doc.content ?? '',
+      candidateId: candidate.id,
+      actor,
+      ctx,
+    });
+
+    await finaliseApproved(tx, candidate.id, actor, doc.id, action.id, ctx);
+    return {
+      candidateId: candidate.id,
+      actionId: action.id,
+      effect: action.effect,
+      documentId: doc.id,
+      wikiEventId: eventId,
+      autoApproved: ctx.auto,
+      status: 'approved',
+    };
+  });
+}
+
+// ── Effect: flag-source ────────────────────────────────────────────
+// Marks a Source document as untrustworthy. Doesn't touch any Neuron;
+// the curator has simply told us "this source is the one in the wrong,
+// don't trust it for future compiles". Encoded as a metadata flag on the
+// Source document.
+
+async function executeFlagSource(
+  trail: TrailDatabase,
+  candidate: QueueCandidate,
+  action: CandidateAction,
+  actor: Actor,
+  ctx: CommitContext,
+): Promise<ResolutionResult> {
+  const sourceId = asString(action.args?.sourceDocumentId);
+  if (!sourceId) {
+    throw new Error(`flag-source action missing args.sourceDocumentId on ${candidate.id}`);
+  }
+  const note = asString(action.args?.note) ?? '';
+
+  const doc = await trail.db
+    .select()
+    .from(documents)
+    .where(
+      and(
+        eq(documents.id, sourceId),
+        eq(documents.tenantId, candidate.tenantId),
+        eq(documents.kind, 'source'),
+      ),
+    )
+    .get();
+  if (!doc) throw new Error(`flag-source: source not found: ${sourceId}`);
+
+  // Preserve existing metadata; merge the untrusted flag on top.
+  const prev = doc.metadata ? safeParseJson(doc.metadata) : {};
+  const merged = {
+    ...prev,
+    flagged: true,
+    flaggedNote: note,
+    flaggedBy: actor.id,
+    flaggedAt: ctx.now,
+  };
+  await trail.db
+    .update(documents)
+    .set({ metadata: JSON.stringify(merged), updatedAt: ctx.now })
+    .where(eq(documents.id, doc.id))
+    .run();
+
+  await trail.db
+    .update(queueCandidates)
+    .set({
+      status: 'approved',
+      reviewedBy: actor.id,
+      reviewedAt: ctx.now,
+      autoApprovedAt: ctx.auto ? ctx.now : null,
+      resolvedAction: action.id,
+    })
+    .where(eq(queueCandidates.id, candidate.id))
+    .run();
+
+  return {
+    candidateId: candidate.id,
+    actionId: action.id,
+    effect: action.effect,
+    documentId: null,
+    wikiEventId: null,
+    autoApproved: ctx.auto,
+    status: 'approved',
+  };
+}
+
+// ── Effect: mark-still-relevant ────────────────────────────────────
+// Silences a stale/contradiction warning. Bumps updatedAt on the target
+// doc so the stale detector sees it as fresh. The candidate resolves as
+// "approved" — the curator accepted the finding — but nothing else
+// changes about the Neuron's content.
+
+async function executeMarkStillRelevant(
+  trail: TrailDatabase,
+  candidate: QueueCandidate,
+  action: CandidateAction,
+  actor: Actor,
+  ctx: CommitContext,
+): Promise<ResolutionResult> {
+  const targetId = asString(action.args?.documentId);
+  if (!targetId) {
+    throw new Error(
+      `mark-still-relevant action missing args.documentId on ${candidate.id}`,
+    );
+  }
+
+  await trail.db
+    .update(documents)
+    .set({ updatedAt: ctx.now })
+    .where(
+      and(
+        eq(documents.id, targetId),
+        eq(documents.tenantId, candidate.tenantId),
+      ),
+    )
+    .run();
+
+  await trail.db
+    .update(queueCandidates)
+    .set({
+      status: 'approved',
+      reviewedBy: actor.id,
+      reviewedAt: ctx.now,
+      autoApprovedAt: ctx.auto ? ctx.now : null,
+      resolvedAction: action.id,
+    })
+    .where(eq(queueCandidates.id, candidate.id))
+    .run();
+
+  return {
+    candidateId: candidate.id,
+    actionId: action.id,
+    effect: action.effect,
+    documentId: targetId,
+    wikiEventId: null,
+    autoApproved: ctx.auto,
+    status: 'approved',
+  };
+}
+
+// ── Shared helpers ─────────────────────────────────────────────────
 
 async function emitEvent(
   tx: Db,
@@ -435,11 +802,12 @@ async function emitEvent(
   return eventId;
 }
 
-async function finaliseCandidate(
+async function finaliseApproved(
   tx: Db,
   candidateId: string,
   actor: Actor,
   resultingDocumentId: string,
+  actionId: string,
   ctx: CommitContext,
 ): Promise<void> {
   await tx
@@ -450,51 +818,29 @@ async function finaliseCandidate(
       reviewedAt: ctx.now,
       autoApprovedAt: ctx.auto ? ctx.now : null,
       resultingDocumentId,
+      resolvedAction: actionId,
     })
     .where(eq(queueCandidates.id, candidateId))
     .run();
 }
 
-export async function rejectCandidate(
-  trail: TrailDatabase,
-  tenantId: string,
-  candidateId: string,
-  actor: Actor,
-  payload: RejectCandidatePayload,
-): Promise<RejectionResult> {
-  const { db } = trail;
+function asString(v: unknown): string | null {
+  return typeof v === 'string' && v.length > 0 ? v : null;
+}
 
-  const candidate = await db
-    .select()
-    .from(queueCandidates)
-    .where(
-      and(
-        eq(queueCandidates.id, candidateId),
-        eq(queueCandidates.tenantId, tenantId),
-      ),
-    )
-    .get();
-  if (!candidate) throw new Error(`Candidate not found: ${candidateId}`);
-  if (candidate.status !== 'pending') {
-    throw new Error(
-      `Candidate is not pending (current status=${candidate.status})`,
-    );
+function safeParseJson(raw: string): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+  } catch {
+    // fall through
   }
-
-  const reason = payload.reason ?? null;
-  await db
-    .update(queueCandidates)
-    .set({
-      status: 'rejected',
-      reviewedBy: actor.id,
-      reviewedAt: new Date().toISOString(),
-      rejectionReason: reason,
-    })
-    .where(eq(queueCandidates.id, candidateId))
-    .run();
-
-  return { candidateId, reason };
+  return {};
 }
+
+// ── Read-side API ──────────────────────────────────────────────────
 
 export async function listCandidates(
   trail: TrailDatabase,
@@ -508,13 +854,14 @@ export async function listCandidates(
   if (query.kind) filters.push(eq(queueCandidates.kind, query.kind));
   if (query.status) filters.push(eq(queueCandidates.status, query.status));
 
-  return (await trail.db
+  const rows = await trail.db
     .select()
     .from(queueCandidates)
     .where(and(...filters))
     .orderBy(desc(queueCandidates.createdAt))
     .limit(query.limit)
-    .all()) as QueueCandidate[];
+    .all();
+  return rows.map(hydrate);
 }
 
 /**
@@ -548,16 +895,53 @@ export async function getCandidate(
   tenantId: string,
   candidateId: string,
 ): Promise<QueueCandidate | null> {
-  return (
-    ((await trail.db
-      .select()
-      .from(queueCandidates)
-      .where(
-        and(
-          eq(queueCandidates.id, candidateId),
-          eq(queueCandidates.tenantId, tenantId),
-        ),
-      )
-      .get()) as QueueCandidate | undefined) ?? null
-  );
+  const row = await trail.db
+    .select()
+    .from(queueCandidates)
+    .where(
+      and(
+        eq(queueCandidates.id, candidateId),
+        eq(queueCandidates.tenantId, tenantId),
+      ),
+    )
+    .get();
+  return row ? hydrate(row) : null;
+}
+
+/**
+ * Persist a translation of a single action's label/explanation back into
+ * the candidate's stored `actions` JSON. Used by the translation-service
+ * after the first DA (or other locale) view of an EN-native action.
+ * No-op if the candidate has no actions or the actionId doesn't match.
+ */
+export async function persistActionTranslation(
+  trail: TrailDatabase,
+  tenantId: string,
+  candidateId: string,
+  actionId: string,
+  locale: 'en' | 'da' | (string & {}),
+  translated: { label?: string; explanation?: string },
+): Promise<void> {
+  const candidate = await getCandidate(trail, tenantId, candidateId);
+  if (!candidate?.actions) return;
+  const next = candidate.actions.map((a) => {
+    if (a.id !== actionId) return a;
+    return {
+      ...a,
+      label: translated.label ? { ...a.label, [locale]: translated.label } : a.label,
+      explanation: translated.explanation
+        ? { ...a.explanation, [locale]: translated.explanation }
+        : a.explanation,
+    };
+  });
+  await trail.db
+    .update(queueCandidates)
+    .set({ actions: JSON.stringify(next) })
+    .where(
+      and(
+        eq(queueCandidates.id, candidateId),
+        eq(queueCandidates.tenantId, tenantId),
+      ),
+    )
+    .run();
 }

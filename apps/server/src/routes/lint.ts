@@ -76,15 +76,31 @@ lintRoutes.post('/knowledge-bases/:kbId/lint', async (c) => {
         confidence: candidate.confidence,
         createdBy: candidate.createdBy,
       });
-      if (autoApproved && documentId) {
+      if (autoApproved) {
+        // Lint candidates use the default action set, so an auto-approval
+        // here always fires actionId='approve' / effect='approve'. The
+        // narrow doc-producing event only emits when a document was
+        // actually created (some actions don't, see queue.ts emitResolution).
         broadcaster.emit({
-          type: 'candidate_approved',
+          type: 'candidate_resolved',
           tenantId: candidate.tenantId,
           kbId: candidate.knowledgeBaseId,
           candidateId: candidate.id,
+          actionId: 'approve',
+          effect: 'approve',
           documentId,
           autoApproved: true,
         });
+        if (documentId) {
+          broadcaster.emit({
+            type: 'candidate_approved',
+            tenantId: candidate.tenantId,
+            kbId: candidate.knowledgeBaseId,
+            candidateId: candidate.id,
+            documentId,
+            autoApproved: true,
+          });
+        }
       }
     },
   );

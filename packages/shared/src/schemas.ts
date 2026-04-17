@@ -99,6 +99,21 @@ export const UpdateContentSchema = z.object({
   content: z.string(),
 });
 
+// ── Localisation primitive ────────────────────────────────────────────────────
+// LLM-generated user-facing text lives bilingually. English is canonical
+// (LLM native tongue); other locales are lazy-filled on first view in that
+// language and persisted back into the same struct. Adding a third locale
+// = one new optional field, no migration.
+
+export const BilingualTextSchema = z
+  .object({
+    en: z.string(),
+    da: z.string().optional(),
+  })
+  .passthrough();
+
+export type BilingualText = z.infer<typeof BilingualTextSchema>;
+
 // ── Curation Queue ────────────────────────────────────────────────────────────
 
 export const QueueCandidateKindEnum = z.enum([
@@ -115,6 +130,35 @@ export const QueueCandidateKindEnum = z.enum([
   'source-retraction',
   'scheduled-recompile',
 ]);
+
+// Every curator decision maps to exactly one CandidateEffectKind. The engine
+// knows how to execute each kind against the DB; the producer decides which
+// ones it wants to offer per candidate.
+export const CandidateEffectKindEnum = z.enum([
+  // Legacy defaults — present on every candidate via `defaultActions`.
+  'approve',
+  'reject',
+  // Rich effects — used by contradiction/stale/orphan producers.
+  'retire-neuron',
+  'merge-into-new',
+  'flag-source',
+  'refresh-from-source',
+  'mark-still-relevant',
+]);
+
+export const CandidateActionSchema = z.object({
+  // Stable machine id. Callers reference this via POST /resolve {actionId}.
+  id: z.string().min(1),
+  effect: CandidateEffectKindEnum,
+  // Effect-specific args. Each effect defines its own shape; engine
+  // validates at execution time.
+  args: z.record(z.string(), z.unknown()).optional(),
+  label: BilingualTextSchema,
+  explanation: BilingualTextSchema,
+});
+
+export type CandidateAction = z.infer<typeof CandidateActionSchema>;
+export type CandidateEffectKind = z.infer<typeof CandidateEffectKindEnum>;
 
 export const QueueCandidateStatusEnum = z.enum([
   'pending',
@@ -141,6 +185,14 @@ export const QueueCandidateSchema = z.object({
   rejectionReason: z.string().nullable(),
   resultingDocumentId: z.string().nullable(),
   createdAt: z.string(),
+  // Resolution options offered to the curator. Null = legacy candidate
+  // (UI renders the default Approve/Reject pair). Non-null = producer-
+  // generated options, each already localised (at least en, da lazy-filled).
+  actions: z.array(CandidateActionSchema).nullable(),
+  // The actionId that was executed at resolution time. Null until resolved.
+  // Distinct from status so we can distinguish "approved via 'reconcile'"
+  // from "approved via default approve" in audit logs.
+  resolvedAction: z.string().nullable(),
 });
 
 // ── Document References (bidirectional wiki ↔ source) ─────────────────────────
@@ -166,6 +218,10 @@ export const CreateQueueCandidateSchema = z.object({
   // Optional target slug — when present, approve updates this wiki page;
   // otherwise approve creates a new page at `path/filename`.
   targetDocumentId: z.string().optional(),
+  // Producer-specified resolution options. Omit for legacy candidates —
+  // the engine stamps defaultActions (Approve/Reject) on those at read
+  // time so every candidate has actions from the API's POV.
+  actions: z.array(CandidateActionSchema).optional(),
 });
 
 export const ListQueueQuerySchema = z.object({
@@ -176,19 +232,24 @@ export const ListQueueQuerySchema = z.object({
   cursor: z.string().optional(),
 });
 
-export const ApproveCandidateSchema = z.object({
-  // For new-page candidates: filename + path. For page-update candidates:
-  // omitted (target page is resolved via resultingDocumentId or payload).
+// POST /queue/:id/resolve — the canonical curator-decision endpoint.
+// `actionId` references one of the candidate's actions (or 'approve'/
+// 'reject' on legacy candidates). Effect-specific fields live in args so
+// the engine can pass them to the right executor; top-level fields
+// (filename/path/editedContent/reason/notes) are the legacy approve/reject
+// fields kept as siblings so migrating is a straight rename.
+export const ResolveCandidateSchema = z.object({
+  actionId: z.string().min(1),
+  // Effect-specific overrides. Shape validated per-effect in core.
+  args: z.record(z.string(), z.unknown()).optional(),
+  // Legacy approve fields — still recognised when actionId === 'approve'.
   filename: z.string().optional(),
-  path: z.string().default('/neurons/queries/'),
-  // Allow the curator to patch the candidate's content before commit.
+  path: z.string().optional(),
   editedContent: z.string().optional(),
-  // Optional reviewer note, stored alongside the approval for the audit log.
-  notes: z.string().max(1000).optional(),
-});
-
-export const RejectCandidateSchema = z.object({
+  // Legacy reject field.
   reason: z.string().max(500).optional(),
+  // Reviewer note, stored for audit regardless of actionId.
+  notes: z.string().max(1000).optional(),
 });
 
 // ── Chat ──────────────────────────────────────────────────────────────────────

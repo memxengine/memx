@@ -150,6 +150,18 @@ async function runOrphansStale(trail: TrailDatabase, kb: ScannedKB): Promise<Lin
         confidence: candidate.confidence,
         createdBy: candidate.createdBy,
       });
+      if (autoApproved) {
+        broadcaster.emit({
+          type: 'candidate_resolved',
+          tenantId: candidate.tenantId,
+          kbId: candidate.knowledgeBaseId,
+          candidateId: candidate.id,
+          actionId: 'approve',
+          effect: 'approve',
+          documentId,
+          autoApproved: true,
+        });
+      }
       if (autoApproved && documentId) {
         broadcaster.emit({
           type: 'candidate_approved',

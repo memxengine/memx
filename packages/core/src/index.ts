@@ -1,16 +1,17 @@
 // Curation queue — the sole write path into wiki documents.
 export {
   createCandidate,
-  approveCandidate,
-  rejectCandidate,
+  resolveCandidate,
   listCandidates,
   countCandidates,
   getCandidate,
+  resolveActions,
+  persistActionTranslation,
+  DEFAULT_ACTIONS,
 } from './queue/candidates.js';
 export type {
   Actor,
-  ApprovalResult,
-  RejectionResult,
+  ResolutionResult,
   CandidateOp,
 } from './queue/candidates.js';
 export { shouldAutoApprove } from './queue/policy.js';

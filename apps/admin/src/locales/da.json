@@ -1,0 +1,127 @@
+{
+  "nav": {
+    "neurons": "Neuroner",
+    "chat": "Chat",
+    "search": "Søg",
+    "queue": "Kø",
+    "sources": "Kilder",
+    "trails": "Stier",
+    "signOut": "Log ud",
+    "theme": {
+      "toggle": "Skift tema",
+      "light": "Lys",
+      "dark": "Mørk"
+    },
+    "language": "Sprog"
+  },
+  "common": {
+    "loading": "Henter…",
+    "cancel": "Annullér",
+    "save": "Gem",
+    "close": "Luk",
+    "confirm": "Bekræft",
+    "delete": "Slet",
+    "retry": "Prøv igen",
+    "yes": "Ja",
+    "no": "Nej",
+    "approve": "Godkend",
+    "reject": "Afvis",
+    "search": "Søg",
+    "reason": "Begrundelse",
+    "optional": "valgfri",
+    "selectAll": "Vælg alle ({n})",
+    "selected": "{n} valgt",
+    "pending": "Afventer",
+    "approved": "Godkendt",
+    "rejected": "Afvist",
+    "all": "Alle",
+    "nothing": "Der er ikke noget at vise.",
+    "error": "Noget gik galt.",
+    "tryAgain": "Prøv igen"
+  },
+  "queue": {
+    "title": "Kø til godkendelse",
+    "summary": "{n} kandidat {status}",
+    "summaryPlural": "{n} kandidater {status}",
+    "empty": "Ingen {status} kandidater.",
+    "emptyAll": "Ingen kandidater.",
+    "tabs": {
+      "pending": "Afventer",
+      "approved": "Godkendt",
+      "rejected": "Afvist",
+      "all": "Alle"
+    },
+    "bulk": {
+      "approve": "Godkend valgte",
+      "reject": "Afvis valgte",
+      "rejectTitle": "Afvis {n} kandidater",
+      "rejectPrompt": "Begrundelse (fælles for alle valgte)",
+      "confirmReject": "Afvis {n}",
+      "approvedToast": "Godkendte {ok}/{total}",
+      "rejectedToast": "Afviste {ok}/{total}",
+      "failureSuffix": " — {n} fejlede"
+    },
+    "item": {
+      "approveAction": "Godkend",
+      "rejectAction": "Afvis",
+      "approveSuccess": "Godkendt — wiki-side {docId}… oprettet.",
+      "approveSuccessNoDoc": "Godkendt.",
+      "rejectSuccess": "Afvist.",
+      "byAuthor": "af {who}",
+      "showContent": "Vis indhold",
+      "hideContent": "Skjul indhold",
+      "rejectTitle": "Afvis denne kandidat?",
+      "rejectPrompt": "Begrundelse (valgfri)",
+      "whatDoesThisMean": "Hvad betyder det her?"
+    }
+  },
+  "sources": {
+    "title": "Kilder",
+    "summary": "{n} kilde",
+    "summaryPlural": "{n} kilder",
+    "empty": "Ingen kilder endnu. Træk en fil hvor som helst på siden for at uploade.",
+    "showContent": "Vis hele indholdet",
+    "hideContent": "Skjul indhold",
+    "retry": "Prøv igen",
+    "archive": "Arkivér",
+    "processing": "Behandler…",
+    "failed": "Fejlede",
+    "uploading": "Uploader {name}…",
+    "uploadHint": "Træk og slip filer for at uploade, eller klik for at vælge.",
+    "uploadBrowse": "Vælg en fil"
+  },
+  "wikiTree": {
+    "title": "Neuroner",
+    "summary": "{n} Neuron",
+    "summaryPlural": "{n} Neuroner",
+    "empty": "Ingen Neuroner endnu. Kandidater der bliver godkendt i køen dukker op her.",
+    "runLint": "Kør lint",
+    "lintRunning": "Kører lint…",
+    "lintDone": "Lint lavede {n} ny kandidat",
+    "lintDonePlural": "Lint lavede {n} nye kandidater",
+    "lintClean": "Intet at markere.",
+    "lintFailed": "Lint fejlede"
+  },
+  "chat": {
+    "title": "Chat",
+    "placeholder": "Spørg om hvad som helst i denne Sti…",
+    "ask": "Spørg",
+    "thinking": "Tænker…",
+    "saveAsNeuron": "Gem som Neuron",
+    "saveTitlePrompt": "Titel til Neuronen",
+    "citations": "Kilder"
+  },
+  "kbs": {
+    "title": "Stier",
+    "empty": "Ingen Stier endnu. Opret én for at komme i gang.",
+    "create": "Opret Sti",
+    "pendingBadge": "{n} afventer"
+  },
+  "errors": {
+    "network": "Netværksfejl. Tjek din forbindelse og prøv igen.",
+    "unauthorized": "Din session er udløbet. Log ind igen.",
+    "notFound": "Ikke fundet.",
+    "conflict": "Kan ikke udføres — elementet er ændret siden du åbnede det.",
+    "unknown": "Ukendt fejl: {message}"
+  }
+}

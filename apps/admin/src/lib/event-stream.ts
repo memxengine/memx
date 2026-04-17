@@ -55,7 +55,7 @@ function openConnection(): void {
   for (const t of [
     'candidate_created',
     'candidate_approved',
-    'candidate_rejected',
+    'candidate_resolved',
     'ingest_started',
     'ingest_completed',
     'ingest_failed',
@@ -201,12 +201,19 @@ export function usePendingCount(kbId: string | undefined): number | null {
     refetch();
     const offOpen = onStreamOpen(refetch);
     const offFocus = onFocusRefresh(refetch);
+    // `candidate_resolved` covers ANY resolution (approve, reject, retire,
+    // flag, merge) so the pending-count decrements regardless of which
+    // action the curator picked. `candidate_created` handles the increment.
+    // Older `candidate_approved` stays in the subscription set so any
+    // component reading this hook keeps its dependency on doc-creating
+    // events; treat it as harmless duplication — the 100ms debounce
+    // coalesces the pair into a single refetch.
     const offEvents = subscribe((e) => {
       if (e.kbId !== kbId) return;
       if (
         e.type === 'candidate_created' ||
         e.type === 'candidate_approved' ||
-        e.type === 'candidate_rejected'
+        e.type === 'candidate_resolved'
       ) {
         refetchDebounced();
       }

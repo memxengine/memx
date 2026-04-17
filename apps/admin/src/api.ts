@@ -2,8 +2,8 @@ import type {
   QueueCandidate,
   QueueCandidateKind,
   QueueCandidateStatus,
-  ApproveCandidatePayload,
-  RejectCandidatePayload,
+  ResolveCandidatePayload,
+  CandidateEffectKind,
   KnowledgeBase,
   Document,
 } from '@trail/shared';
@@ -78,45 +78,53 @@ export function getCandidate(id: string): Promise<QueueCandidate> {
   return api(`/api/v1/queue/${encodeURIComponent(id)}`);
 }
 
-export interface ApprovalResponse {
+export interface ResolutionResponse {
   candidateId: string;
-  documentId: string;
-  wikiEventId: string;
+  actionId: string;
+  effect: CandidateEffectKind;
+  documentId: string | null;
+  wikiEventId: string | null;
   autoApproved: boolean;
+  status: 'approved' | 'rejected';
 }
 
-export function approveCandidate(
+/**
+ * Execute a curator decision. `actionId` references one of the candidate's
+ * actions (or the default 'approve'/'reject' on legacy candidates). Effect-
+ * specific fields (filename/path for approve, reason for reject, args for
+ * retire-neuron/flag-source) ride as siblings and are validated server-side.
+ */
+export function resolveCandidate(
   id: string,
-  payload: ApproveCandidatePayload = { path: '/neurons/queries/' },
-): Promise<ApprovalResponse> {
-  return api(`/api/v1/queue/${encodeURIComponent(id)}/approve`, {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  });
-}
-
-export function rejectCandidate(
-  id: string,
-  payload: RejectCandidatePayload = {},
-): Promise<{ candidateId: string; reason: string | null }> {
-  return api(`/api/v1/queue/${encodeURIComponent(id)}/reject`, {
+  payload: ResolveCandidatePayload,
+): Promise<ResolutionResponse> {
+  return api(`/api/v1/queue/${encodeURIComponent(id)}/resolve`, {
     method: 'POST',
     body: JSON.stringify(payload),
   });
 }
 
 export interface BulkQueueResult {
-  action: 'approve' | 'reject';
+  actionId: string;
   requested: number;
   succeeded: Array<{ id: string }>;
   failed: Array<{ id: string; error: string }>;
 }
 
+/**
+ * Apply the SAME actionId to many candidates. Common cases: bulk-approve
+ * with actionId='approve' + path, bulk-reject with actionId='reject' + reason.
+ * Richer actions (retire-neuron, flag-source) are theoretically bulkable too
+ * but the caller must supply the right args for every candidate — rarely
+ * what you want.
+ */
 export function bulkQueue(args: {
-  action: 'approve' | 'reject';
+  actionId: string;
   ids: string[];
   reason?: string;
-  approvePath?: string;
+  filename?: string;
+  path?: string;
+  args?: Record<string, unknown>;
 }): Promise<BulkQueueResult> {
   return api(`/api/v1/queue/bulk`, {
     method: 'POST',

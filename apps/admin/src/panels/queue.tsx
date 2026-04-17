@@ -4,8 +4,7 @@ import { marked } from 'marked';
 import type { QueueCandidate, QueueCandidateStatus } from '@trail/shared';
 import {
   listQueue,
-  approveCandidate,
-  rejectCandidate,
+  resolveCandidate,
   bulkQueue,
   ApiError,
   type QueueListResponse,
@@ -83,7 +82,7 @@ export function QueuePanel() {
     if (
       e.type === 'candidate_created' ||
       e.type === 'candidate_approved' ||
-      e.type === 'candidate_rejected'
+      e.type === 'candidate_resolved'
     ) {
       reloadDebounced();
     }
@@ -131,7 +130,7 @@ export function QueuePanel() {
     if (ids.length === 0) return;
     setBulkBusy(true);
     try {
-      const r = await bulkQueue({ action: 'approve', ids });
+      const r = await bulkQueue({ actionId: 'approve', ids });
       setToast({
         kind: r.failed.length === 0 ? 'success' : 'error',
         text: `Approved ${r.succeeded.length}/${r.requested}${r.failed.length ? ` — ${r.failed.length} failed` : ''}`,
@@ -155,7 +154,7 @@ export function QueuePanel() {
     setBulkBusy(true);
     setBulkReject(null);
     try {
-      const r = await bulkQueue({ action: 'reject', ids, reason: reason.trim() || undefined });
+      const r = await bulkQueue({ actionId: 'reject', ids, reason: reason.trim() || undefined });
       setToast({
         kind: r.failed.length === 0 ? 'success' : 'error',
         text: `Rejected ${r.succeeded.length}/${r.requested}${r.failed.length ? ` — ${r.failed.length} failed` : ''}`,
@@ -172,10 +171,12 @@ export function QueuePanel() {
   async function onApprove(c: QueueCandidate) {
     setActingOn(c.id);
     try {
-      const result = await approveCandidate(c.id);
+      const result = await resolveCandidate(c.id, { actionId: 'approve' });
       setToast({
         kind: 'success',
-        text: `Approved — wiki page ${result.documentId.slice(0, 12)}… created.`,
+        text: result.documentId
+          ? `Approved — wiki page ${result.documentId.slice(0, 12)}… created.`
+          : 'Approved.',
       });
       reload();
     } catch (err) {
@@ -197,7 +198,7 @@ export function QueuePanel() {
     setActingOn(c.id);
     setRejectTarget(null);
     try {
-      await rejectCandidate(c.id, reason ? { reason } : {});
+      await resolveCandidate(c.id, { actionId: 'reject', reason: reason || undefined });
       setToast({ kind: 'success', text: 'Rejected.' });
       reload();
     } catch (err) {

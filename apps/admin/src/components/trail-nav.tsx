@@ -1,6 +1,7 @@
 import { useLocation } from 'preact-iso';
 import { useKb } from '../lib/kb-cache';
 import { usePendingCount } from '../lib/event-stream';
+import { t, useLocale } from '../lib/i18n';
 
 /**
  * Per-Trail header row — Trail name as breadcrumb + the Neurons/Queue/Sources
@@ -16,13 +17,15 @@ export function TrailNav({ kbId }: { kbId: string }) {
   const { path } = useLocation();
   const kb = useKb(kbId);
   const pending = usePendingCount(kbId);
+  // Re-render on locale change so tab labels follow the active language.
+  useLocale();
 
   const tabs = [
-    { href: `/kb/${kbId}/neurons`, label: 'Neurons', match: '/neurons' },
-    { href: `/kb/${kbId}/chat`, label: 'Chat', match: '/chat' },
-    { href: `/kb/${kbId}/search`, label: 'Search', match: '/search' },
-    { href: `/kb/${kbId}/queue`, label: 'Queue', match: '/queue', badge: pending },
-    { href: `/kb/${kbId}/sources`, label: 'Sources', match: '/sources' },
+    { href: `/kb/${kbId}/neurons`, label: t('nav.neurons'), match: '/neurons' },
+    { href: `/kb/${kbId}/chat`, label: t('nav.chat'), match: '/chat' },
+    { href: `/kb/${kbId}/search`, label: t('nav.search'), match: '/search' },
+    { href: `/kb/${kbId}/queue`, label: t('nav.queue'), match: '/queue', badge: pending },
+    { href: `/kb/${kbId}/sources`, label: t('nav.sources'), match: '/sources' },
   ] as const;
 
   return (
@@ -32,7 +35,7 @@ export function TrailNav({ kbId }: { kbId: string }) {
           href="/"
           class="text-[color:var(--color-fg-muted)] hover:text-[color:var(--color-fg)] transition"
         >
-          Trails
+          {t('nav.trails')}
         </a>
         <span class="text-[color:var(--color-fg-subtle)]">/</span>
         <span class="font-medium text-[color:var(--color-fg)]">

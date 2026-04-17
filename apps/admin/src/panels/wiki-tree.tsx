@@ -57,9 +57,11 @@ export function WikiTreePanel() {
     reload();
   }, [reload]);
 
-  // A candidate_approved event means a Neuron was created or updated. A
-  // candidate_rejected means nothing changed in the Neurons set. Debounced
-  // so a bulk-approve of many candidates coalesces into a single reload.
+  // candidate_approved is the narrow "a Neuron was just created/updated"
+  // signal — perfect for a tree that only cares about existing pages.
+  // candidate_resolved fires on every decision but the tree doesn't need
+  // to redraw for rejects or for non-document actions. Debounced so bulk
+  // approves coalesce into one reload.
   useEvents((e) => {
     if (e.kbId !== kbId) return;
     if (e.type === 'candidate_approved') reloadDebounced();

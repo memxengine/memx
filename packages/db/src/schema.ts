@@ -164,6 +164,16 @@ export const queueCandidates = sqliteTable(
     rejectionReason: text('rejection_reason'),
     resultingDocumentId: text('resulting_document_id').references(() => documents.id),
     createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+    // Producer-generated resolution options as JSON (CandidateAction[]). Null
+    // means the candidate was created before the actions primitive existed;
+    // readers stamp defaultActions (Approve/Reject) so every candidate looks
+    // uniform at the API boundary. Set at creation, never mutated afterwards
+    // except for lazy-filled translations per locale on view.
+    actions: text('actions'),
+    // Which action id the curator (or auto-policy) executed. Null until
+    // resolved. Distinct from status: 'approved' is the final state, but a
+    // candidate could have reached it via many different actions.
+    resolvedAction: text('resolved_action'),
   },
   (table) => [
     index('idx_queue_kb_status').on(table.knowledgeBaseId, table.status),

@@ -19,6 +19,7 @@
  *      discriminant so a consumer's union narrowing stays clean.
  */
 import type { QueueCandidateKind, QueueCandidateStatus } from './types.js';
+import type { CandidateEffectKind } from './schemas.js';
 
 // ── Domain events ─────────────────────────────────────────────────
 
@@ -37,6 +38,18 @@ export interface CandidateCreatedEvent {
   createdBy: string | null;
 }
 
+/**
+ * Narrow event for the common case: a curator accepted a candidate via
+ * the default `approve` action AND a document was created/updated as a
+ * result. Doc-indexing subscribers (reference-extractor, contradiction-
+ * lint, backlink-extractor) listen to this one because they only care
+ * about new Neuron content.
+ *
+ * Richer effects (`retire-neuron`, `flag-source`, etc.) do NOT emit
+ * candidate_approved — they only emit `candidate_resolved`. Consumers that
+ * want to react to any resolution (e.g. the pending-count badge) listen
+ * to the universal event instead.
+ */
 export interface CandidateApprovedEvent {
   type: 'candidate_approved';
   tenantId: string;
@@ -47,12 +60,32 @@ export interface CandidateApprovedEvent {
   autoApproved: boolean;
 }
 
-export interface CandidateRejectedEvent {
-  type: 'candidate_rejected';
+/**
+ * Universal resolution event — fires on EVERY curator decision regardless
+ * of which action was taken. Carries the effect + resolvedActionId so
+ * consumers that want to react action-by-action can.
+ *
+ * The pending-count badge subscribes to this one. Emitted in addition to
+ * `candidate_approved` for approve-effect resolutions; emitted alone for
+ * richer effects (retire-neuron, flag-source, merge-into-new, etc.).
+ */
+export interface CandidateResolvedEvent {
+  type: 'candidate_resolved';
   tenantId: string;
   kbId: string;
   candidateId: string;
-  reason: string | null;
+  actionId: string;
+  effect: CandidateEffectKind;
+  /**
+   * Document affected by the resolution — non-null when the effect
+   * commits or modifies a Neuron (approve, retire-neuron,
+   * refresh-from-source). Null for effects that mutate non-document
+   * state (flag-source on a Source, mark-still-relevant just bumps
+   * updated_at).
+   */
+  documentId: string | null;
+  /** True iff the F19 policy resolved this, not a human. */
+  autoApproved: boolean;
 }
 
 export interface IngestStartedEvent {
@@ -91,7 +124,7 @@ export interface KbCreatedEvent {
 export type DomainEvent =
   | CandidateCreatedEvent
   | CandidateApprovedEvent
-  | CandidateRejectedEvent
+  | CandidateResolvedEvent
   | IngestStartedEvent
   | IngestCompletedEvent
   | IngestFailedEvent
@@ -120,7 +153,7 @@ export function isDomainEvent(frame: StreamFrame): frame is DomainEvent {
   return (
     frame.type === 'candidate_created' ||
     frame.type === 'candidate_approved' ||
-    frame.type === 'candidate_rejected' ||
+    frame.type === 'candidate_resolved' ||
     frame.type === 'ingest_started' ||
     frame.type === 'ingest_completed' ||
     frame.type === 'ingest_failed' ||

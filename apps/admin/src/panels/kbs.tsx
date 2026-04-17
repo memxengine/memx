@@ -37,7 +37,7 @@ export function KnowledgeBasesPanel() {
     } else if (
       e.type === 'candidate_created' ||
       e.type === 'candidate_approved' ||
-      e.type === 'candidate_rejected'
+      e.type === 'candidate_resolved'
     ) {
       reloadDebounced();
     }

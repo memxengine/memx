@@ -6,6 +6,7 @@ import { getTheme, onThemeChange, toggleTheme, type Theme } from './theme';
 import { mountConstellation } from './lib/constellation';
 import { TrailNav } from './components/trail-nav';
 import { useKb } from './lib/kb-cache';
+import { t, useLocale, setLocale, SUPPORTED_LOCALES, type Locale } from './lib/i18n';
 
 interface Me {
   id: string;
@@ -75,6 +76,7 @@ export function App({ children }: { children: ComponentChildren }) {
               {me ? (
                 <span class="text-[color:var(--color-fg-muted)]">{displayName(me)}</span>
               ) : null}
+              <LanguageSwitcher />
               <ThemeToggle theme={theme} />
             </div>
           </div>
@@ -109,6 +111,42 @@ function TrailLogo() {
       />
       <circle cx="16" cy="16" r="3.5" fill="var(--color-accent)" />
     </svg>
+  );
+}
+
+/**
+ * Language switcher. Tiny pill of buttons — no dropdown or modal because
+ * we ship two locales and adding a third doesn't warrant the extra chrome
+ * until it happens.
+ */
+function LanguageSwitcher() {
+  const locale = useLocale();
+  return (
+    <div
+      class="inline-flex items-center rounded-md border border-[color:var(--color-border)] overflow-hidden"
+      role="group"
+      aria-label={t('nav.language')}
+    >
+      {SUPPORTED_LOCALES.map((l) => {
+        const active = l.code === locale;
+        return (
+          <button
+            key={l.code}
+            type="button"
+            onClick={() => setLocale(l.code as Locale)}
+            class={
+              'px-2 py-1 text-xs font-mono uppercase tracking-wide transition ' +
+              (active
+                ? 'bg-[color:var(--color-accent)] text-[color:var(--color-accent-fg)]'
+                : 'text-[color:var(--color-fg-muted)] hover:text-[color:var(--color-fg)] hover:bg-[color:var(--color-bg-card)]')
+            }
+            aria-pressed={active}
+          >
+            {l.code}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 

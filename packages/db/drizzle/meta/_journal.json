@@ -15,6 +15,13 @@
       "when": 1776395032677,
       "tag": "0001_sour_sunset_bain",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1776416150620,
+      "tag": "0002_regular_wallow",
+      "breakpoints": true
     }
   ]
 }

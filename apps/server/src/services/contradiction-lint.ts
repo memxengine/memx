@@ -220,14 +220,31 @@ async function runForEvent(
         createdBy: candidate.createdBy,
       });
       if (approval) {
+        // Universal "candidate just resolved" signal — badge + panels listen
+        // to this regardless of which action ran.
         broadcaster.emit({
-          type: 'candidate_approved',
+          type: 'candidate_resolved',
           tenantId: candidate.tenantId,
           kbId: candidate.knowledgeBaseId,
           candidateId: candidate.id,
+          actionId: approval.actionId,
+          effect: approval.effect,
           documentId: approval.documentId,
           autoApproved: true,
         });
+        // Narrow doc-producing signal — reference-extractor, backlink-
+        // extractor and this same contradiction-lint listen here. Only fires
+        // for approve-effect resolutions that actually produced a document.
+        if (approval.effect === 'approve' && approval.documentId) {
+          broadcaster.emit({
+            type: 'candidate_approved',
+            tenantId: candidate.tenantId,
+            kbId: candidate.knowledgeBaseId,
+            candidateId: candidate.id,
+            documentId: approval.documentId,
+            autoApproved: true,
+          });
+        }
       }
     } catch (err) {
       console.error('[contradiction-lint] failed to emit candidate:', err);

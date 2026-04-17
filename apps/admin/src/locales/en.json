@@ -1,0 +1,127 @@
+{
+  "nav": {
+    "neurons": "Neurons",
+    "chat": "Chat",
+    "search": "Search",
+    "queue": "Queue",
+    "sources": "Sources",
+    "trails": "Trails",
+    "signOut": "Sign out",
+    "theme": {
+      "toggle": "Toggle theme",
+      "light": "Light",
+      "dark": "Dark"
+    },
+    "language": "Language"
+  },
+  "common": {
+    "loading": "Loading…",
+    "cancel": "Cancel",
+    "save": "Save",
+    "close": "Close",
+    "confirm": "Confirm",
+    "delete": "Delete",
+    "retry": "Retry",
+    "yes": "Yes",
+    "no": "No",
+    "approve": "Approve",
+    "reject": "Reject",
+    "search": "Search",
+    "reason": "Reason",
+    "optional": "optional",
+    "selectAll": "Select all ({n})",
+    "selected": "{n} selected",
+    "pending": "Pending",
+    "approved": "Approved",
+    "rejected": "Rejected",
+    "all": "All",
+    "nothing": "Nothing to show.",
+    "error": "Something went wrong.",
+    "tryAgain": "Try again"
+  },
+  "queue": {
+    "title": "Curator queue",
+    "summary": "{n} {status} candidate",
+    "summaryPlural": "{n} {status} candidates",
+    "empty": "No {status} candidates.",
+    "emptyAll": "No candidates.",
+    "tabs": {
+      "pending": "Pending",
+      "approved": "Approved",
+      "rejected": "Rejected",
+      "all": "All"
+    },
+    "bulk": {
+      "approve": "Approve selected",
+      "reject": "Reject selected",
+      "rejectTitle": "Reject {n} candidates",
+      "rejectPrompt": "Reason (shared across all selected)",
+      "confirmReject": "Reject {n}",
+      "approvedToast": "Approved {ok}/{total}",
+      "rejectedToast": "Rejected {ok}/{total}",
+      "failureSuffix": " — {n} failed"
+    },
+    "item": {
+      "approveAction": "Approve",
+      "rejectAction": "Reject",
+      "approveSuccess": "Approved — wiki page {docId}… created.",
+      "approveSuccessNoDoc": "Approved.",
+      "rejectSuccess": "Rejected.",
+      "byAuthor": "by {who}",
+      "showContent": "Show content",
+      "hideContent": "Hide content",
+      "rejectTitle": "Reject this candidate?",
+      "rejectPrompt": "Optional reason",
+      "whatDoesThisMean": "What does this mean?"
+    }
+  },
+  "sources": {
+    "title": "Sources",
+    "summary": "{n} source",
+    "summaryPlural": "{n} sources",
+    "empty": "No sources yet. Drop a file anywhere on this page to upload.",
+    "showContent": "Show full content",
+    "hideContent": "Hide content",
+    "retry": "Retry",
+    "archive": "Archive",
+    "processing": "Processing…",
+    "failed": "Failed",
+    "uploading": "Uploading {name}…",
+    "uploadHint": "Drag & drop files to upload, or click to browse.",
+    "uploadBrowse": "Choose a file"
+  },
+  "wikiTree": {
+    "title": "Neurons",
+    "summary": "{n} Neuron",
+    "summaryPlural": "{n} Neurons",
+    "empty": "No Neurons yet. Candidates that pass the queue appear here.",
+    "runLint": "Run lint",
+    "lintRunning": "Running lint…",
+    "lintDone": "Lint emitted {n} new candidate",
+    "lintDonePlural": "Lint emitted {n} new candidates",
+    "lintClean": "Nothing to flag.",
+    "lintFailed": "Lint failed"
+  },
+  "chat": {
+    "title": "Chat",
+    "placeholder": "Ask anything about this Trail…",
+    "ask": "Ask",
+    "thinking": "Thinking…",
+    "saveAsNeuron": "Save as Neuron",
+    "saveTitlePrompt": "Title for the Neuron",
+    "citations": "Sources"
+  },
+  "kbs": {
+    "title": "Trails",
+    "empty": "No Trails yet. Create one to get started.",
+    "create": "Create Trail",
+    "pendingBadge": "{n} pending"
+  },
+  "errors": {
+    "network": "Network error. Check your connection and try again.",
+    "unauthorized": "Your session has expired. Please sign in again.",
+    "notFound": "Not found.",
+    "conflict": "Can't do that — the item changed under your feet.",
+    "unknown": "Unknown error: {message}"
+  }
+}
