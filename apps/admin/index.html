@@ -8,10 +8,10 @@
     <meta name="theme-color" content="#17140F" media="(prefers-color-scheme: dark)" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <script>
-      // Blocking inline script — runs BEFORE stylesheets parse so the first
-      // paint uses the curator's persisted theme instead of the light default.
-      // Matches the `trail.admin.theme` key the client-side theme store reads.
-      // Guards against quota exceptions and non-browser environments.
+      // Blocking inline script — runs BEFORE anything paints so the first
+      // frame uses the curator's persisted theme instead of the light
+      // default. Matches the `trail.admin.theme` key the client-side theme
+      // store reads. Guards against quota exceptions and non-browser envs.
       (function () {
         try {
           var t = localStorage.getItem('trail.admin.theme');
@@ -21,6 +21,17 @@
         } catch (_) {}
       })();
     </script>
+    <style>
+      /* The main app CSS loads via Vite as a module import inside main.tsx,
+       * which means it arrives AFTER the first paint. Set the base palette
+       * here directly so the attribute the inline script writes above has
+       * something to paint against immediately. Values mirror index.css
+       * tokens. Tailwind + full var palette takes over once main CSS lands
+       * — these styles agree with that end state, so there's no flip. */
+      html { background: #FAF9F5; color: #1A1715; }
+      html[data-theme="dark"] { background: #17140F; color: #F5F1EA; }
+      body { background: transparent; }
+    </style>
   </head>
   <body>
     <div id="app"></div>
