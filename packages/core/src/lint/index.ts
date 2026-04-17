@@ -137,11 +137,25 @@ async function emitFinding(
 }
 
 /**
- * Pre-load every fingerprint that already has a pending candidate in this
- * KB. Done once per lint run so we don't round-trip per finding. We scan
- * pending + approved statuses only — rejected fingerprints can re-emit
- * (the curator explicitly said no once, but the underlying issue may
- * have recurred).
+ * Pre-load every fingerprint that already has a pending, approved, OR
+ * rejected candidate in this KB. Done once per lint run so we don't
+ * round-trip per finding.
+ *
+ * Rejected candidates were previously allowed to re-emit on the theory
+ * that "the underlying issue may have come back". In practice that
+ * produced a nag-loop: a curator dismisses a contradiction as a false
+ * positive → next nightly lint re-emits the exact same finding →
+ * curator dismisses again → loop until the curator loses trust in the
+ * queue and cancels their subscription.
+ *
+ * With the F90 action primitive a rejection is a specific, deliberate
+ * signal ("dismiss as false positive", "still relevant") meaning
+ * "stop flagging this fingerprint". Honour it.
+ *
+ * `ingested` status is excluded because that's a terminal state where
+ * the candidate's fingerprint no longer corresponds to anything live —
+ * the underlying Neuron may have been rewritten and a new finding on
+ * the same file is now legitimate.
  */
 async function loadExistingFingerprints(
   trail: TrailDatabase,
@@ -155,12 +169,7 @@ async function loadExistingFingerprints(
       and(
         eq(queueCandidates.knowledgeBaseId, kbId),
         eq(queueCandidates.tenantId, tenantId),
-        // Only pending + approved block re-emission. Rejected or ingested
-        // fingerprints can re-fire — rejected means the curator said "no
-        // this time" but the underlying issue may have come back, and
-        // ingested means the lint candidate has already been consumed and
-        // its fingerprint is no longer load-bearing.
-        inArray(queueCandidates.status, ['pending', 'approved']),
+        inArray(queueCandidates.status, ['pending', 'approved', 'rejected']),
         like(queueCandidates.metadata, '%"lintFingerprint":%'),
       ),
     )
