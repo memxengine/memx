@@ -3,7 +3,7 @@ import { useRoute } from 'preact-iso';
 import type { Document } from '@trail/shared';
 import { listWikiPages, runLint, ApiError } from '../api';
 import { displayPath } from '../lib/display-path';
-import { useEvents, onStreamOpen, debounce } from '../lib/event-stream';
+import { useEvents, onStreamOpen, onFocusRefresh, debounce } from '../lib/event-stream';
 
 /**
  * Neurons tree — groups all compiled wiki pages in a KB by their
@@ -65,6 +65,7 @@ export function WikiTreePanel() {
     if (e.type === 'candidate_approved') reloadDebounced();
   });
   useEffect(() => onStreamOpen(reload), [reload]);
+  useEffect(() => onFocusRefresh(reload), [reload]);
 
   const grouped = useMemo(() => {
     if (!pages) return null;

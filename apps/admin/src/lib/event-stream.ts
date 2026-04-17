@@ -107,6 +107,26 @@ export function onStreamOpen(handler: OpenHandler): () => void {
 }
 
 /**
+ * Also fire when the window regains focus. A tab that was backgrounded
+ * while the engine restarted can easily miss SSE events during the gap —
+ * EventSource auto-reconnects but events fired before the reconnect are
+ * gone forever. Listening for `focus` catches the "I came back to the
+ * tab, show me the truth" moment with one extra refetch.
+ */
+export function onFocusRefresh(handler: () => void): () => void {
+  const onFocus = (): void => handler();
+  const onVis = (): void => {
+    if (document.visibilityState === 'visible') handler();
+  };
+  window.addEventListener('focus', onFocus);
+  document.addEventListener('visibilitychange', onVis);
+  return () => {
+    window.removeEventListener('focus', onFocus);
+    document.removeEventListener('visibilitychange', onVis);
+  };
+}
+
+/**
  * Debounce wrapper — coalesces rapid-fire invocations into a single call
  * after `delayMs` of silence. Use for event-driven refetches where a bulk
  * action (reject 22, approve all) emits many events in milliseconds and
@@ -177,6 +197,7 @@ export function usePendingCount(kbId: string | undefined): number | null {
     };
     refetch();
     const offOpen = onStreamOpen(refetch);
+    const offFocus = onFocusRefresh(refetch);
     const offEvents = subscribe((e) => {
       if (e.kbId !== kbId) return;
       if (
@@ -190,6 +211,7 @@ export function usePendingCount(kbId: string | undefined): number | null {
     return () => {
       cancelled = true;
       offOpen();
+      offFocus();
       offEvents();
     };
   }, [kbId]);

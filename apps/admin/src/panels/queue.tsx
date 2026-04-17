@@ -13,7 +13,7 @@ import {
 import { rewriteWikiLinks } from '../lib/wiki-links';
 import { displayPath } from '../lib/display-path';
 import { Modal, ModalButton } from '../components/modal';
-import { useEvents, onStreamOpen, debounce } from '../lib/event-stream';
+import { useEvents, onStreamOpen, onFocusRefresh, debounce } from '../lib/event-stream';
 
 type FilterStatus = QueueCandidateStatus | 'all';
 
@@ -89,6 +89,7 @@ export function QueuePanel() {
     }
   });
   useEffect(() => onStreamOpen(reload), [reload]);
+  useEffect(() => onFocusRefresh(reload), [reload]);
 
   useEffect(() => {
     if (!toast) return;

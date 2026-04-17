@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'preact/hooks';
 import type { KnowledgeBase } from '@trail/shared';
 import { listKnowledgeBases, ApiError } from '../api';
-import { useEvents, onStreamOpen, debounce } from '../lib/event-stream';
+import { useEvents, onStreamOpen, onFocusRefresh, debounce } from '../lib/event-stream';
 import { invalidateKbs } from '../lib/kb-cache';
 
 export function KnowledgeBasesPanel() {
@@ -43,6 +43,7 @@ export function KnowledgeBasesPanel() {
     }
   });
   useEffect(() => onStreamOpen(reload), [reload]);
+  useEffect(() => onFocusRefresh(reload), [reload]);
 
   if (error) {
     return (

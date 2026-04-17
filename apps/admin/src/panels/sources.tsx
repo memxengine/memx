@@ -12,7 +12,7 @@ import {
 import { displayPath } from '../lib/display-path';
 import { UploadDropzone } from '../components/upload-dropzone';
 import { ProcessingIndicator } from '../components/processing-indicator';
-import { useEvents, onStreamOpen, debounce } from '../lib/event-stream';
+import { useEvents, onStreamOpen, onFocusRefresh, debounce } from '../lib/event-stream';
 
 /**
  * Sources panel — the original documents uploaded into a Trail. Sources
@@ -55,6 +55,7 @@ export function SourcesPanel() {
     }
   });
   useEffect(() => onStreamOpen(reload), [reload]);
+  useEffect(() => onFocusRefresh(reload), [reload]);
 
   const onUploaded = useCallback(
     (doc: Document) => {

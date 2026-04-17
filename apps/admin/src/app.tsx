@@ -61,7 +61,7 @@ export function App({ children }: { children: ComponentChildren }) {
   return (
     <div class="min-h-screen flex flex-col">
       <canvas ref={canvasRef} id="trail-graph" aria-hidden="true" />
-      <header class="relative z-10 border-b border-[color:var(--color-border)] bg-[color:var(--color-bg)]/80 backdrop-blur-md">
+      <header class="relative z-10 bg-[color:var(--color-bg)]/80 backdrop-blur-md">
         <div class="page-shell !py-0">
           <div class="flex items-center gap-4 py-3">
             <a href="/" class="flex items-center gap-2.5">
