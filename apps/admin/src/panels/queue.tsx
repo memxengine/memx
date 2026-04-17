@@ -6,6 +6,7 @@ import {
   listQueue,
   approveCandidate,
   rejectCandidate,
+  bulkQueue,
   ApiError,
   type QueueListResponse,
 } from '../api';
@@ -55,6 +56,9 @@ export function QueuePanel() {
   const [toast, setToast] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
   const [rejectTarget, setRejectTarget] = useState<QueueCandidate | null>(null);
   const [rejectReason, setRejectReason] = useState('');
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkReject, setBulkReject] = useState<{ ids: string[]; reason: string } | null>(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   const reload = useCallback(() => {
     setError(null);
@@ -99,6 +103,69 @@ export function QueuePanel() {
       return next;
     });
   }, []);
+
+  const toggleSelected = useCallback((id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const selectAll = useCallback(() => {
+    setSelected(new Set((data?.items ?? []).map((c) => c.id)));
+  }, [data]);
+  const clearSelection = useCallback(() => setSelected(new Set()), []);
+
+  // Any filter change wipes the selection — otherwise we'd silently carry
+  // IDs that aren't on screen into the next bulk action.
+  useEffect(() => {
+    setSelected(new Set());
+  }, [status]);
+
+  async function onBulkApprove() {
+    const ids = Array.from(selected);
+    if (ids.length === 0) return;
+    setBulkBusy(true);
+    try {
+      const r = await bulkQueue({ action: 'approve', ids });
+      setToast({
+        kind: r.failed.length === 0 ? 'success' : 'error',
+        text: `Approved ${r.succeeded.length}/${r.requested}${r.failed.length ? ` — ${r.failed.length} failed` : ''}`,
+      });
+      clearSelection();
+      reload();
+    } catch (err) {
+      setToast({ kind: 'error', text: err instanceof Error ? err.message : 'Bulk approve failed' });
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  function openBulkReject() {
+    setBulkReject({ ids: Array.from(selected), reason: '' });
+  }
+
+  async function confirmBulkReject() {
+    if (!bulkReject) return;
+    const { ids, reason } = bulkReject;
+    setBulkBusy(true);
+    setBulkReject(null);
+    try {
+      const r = await bulkQueue({ action: 'reject', ids, reason: reason.trim() || undefined });
+      setToast({
+        kind: r.failed.length === 0 ? 'success' : 'error',
+        text: `Rejected ${r.succeeded.length}/${r.requested}${r.failed.length ? ` — ${r.failed.length} failed` : ''}`,
+      });
+      clearSelection();
+      reload();
+    } catch (err) {
+      setToast({ kind: 'error', text: err instanceof Error ? err.message : 'Bulk reject failed' });
+    } finally {
+      setBulkBusy(false);
+    }
+  }
 
   async function onApprove(c: QueueCandidate) {
     setActingOn(c.id);
@@ -180,6 +247,59 @@ export function QueuePanel() {
         </div>
       ) : null}
 
+      {data && data.items.length > 0 ? (
+        <div class="flex items-center justify-between gap-3 mb-3 text-[11px] font-mono">
+          <div class="flex items-center gap-3">
+            <label class="inline-flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                class="accent-[color:var(--color-accent)]"
+                checked={selected.size > 0 && selected.size === data.items.length}
+                onChange={(e) => {
+                  if ((e.currentTarget as HTMLInputElement).checked) selectAll();
+                  else clearSelection();
+                }}
+              />
+              <span class="text-[color:var(--color-fg-muted)]">
+                {selected.size === 0
+                  ? `Select all (${data.items.length})`
+                  : `${selected.size} selected`}
+              </span>
+            </label>
+            {selected.size > 0 ? (
+              <button
+                onClick={clearSelection}
+                class="text-[color:var(--color-fg-subtle)] hover:text-[color:var(--color-fg)] transition"
+              >
+                clear
+              </button>
+            ) : null}
+          </div>
+          {selected.size > 0 ? (
+            <div class="flex items-center gap-2">
+              {status === 'pending' ? (
+                <button
+                  disabled={bulkBusy}
+                  onClick={onBulkApprove}
+                  class="px-3 py-1.5 text-[11px] rounded-md bg-[color:var(--color-fg)] text-[color:var(--color-bg)] font-medium hover:bg-[color:var(--color-fg)]/90 disabled:opacity-50 transition"
+                >
+                  Approve {selected.size}
+                </button>
+              ) : null}
+              {status === 'pending' ? (
+                <button
+                  disabled={bulkBusy}
+                  onClick={openBulkReject}
+                  class="px-3 py-1.5 text-[11px] rounded-md border border-[color:var(--color-border-strong)] hover:bg-[color:var(--color-bg)] disabled:opacity-50 transition"
+                >
+                  Reject {selected.size}…
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
       <ul class="space-y-2">
         {data?.items.map((c) => (
           <CandidateRow
@@ -191,6 +311,9 @@ export function QueuePanel() {
             busy={actingOn === c.id}
             onApprove={onApprove}
             onReject={openRejectDialog}
+            selected={selected.has(c.id)}
+            onToggleSelected={() => toggleSelected(c.id)}
+            showCheckbox={status === 'pending'}
           />
         ))}
       </ul>
@@ -269,6 +392,62 @@ export function QueuePanel() {
           </div>
         ) : null}
       </Modal>
+
+      <Modal
+        open={bulkReject !== null}
+        title={`Reject ${bulkReject?.ids.length ?? 0} candidates`}
+        onClose={() => setBulkReject(null)}
+        maxWidth="md"
+        footer={
+          <>
+            <ModalButton onClick={() => setBulkReject(null)} disabled={bulkBusy}>
+              Cancel
+            </ModalButton>
+            <ModalButton variant="danger" onClick={confirmBulkReject} disabled={bulkBusy}>
+              {bulkBusy ? '…' : `Reject ${bulkReject?.ids.length ?? 0}`}
+            </ModalButton>
+          </>
+        }
+      >
+        {bulkReject ? (
+          <div class="space-y-3">
+            <div class="text-sm text-[color:var(--color-fg-muted)]">
+              About to reject <strong class="text-[color:var(--color-fg)]">{bulkReject.ids.length}</strong>{' '}
+              candidates. Reason is stored on every one so you can trace why they were dropped
+              later.
+            </div>
+            <div>
+              <label
+                for="bulk-reject-reason"
+                class="text-[11px] font-mono uppercase tracking-wider text-[color:var(--color-fg-subtle)]"
+              >
+                Reason <span class="normal-case">(optional, applied to all)</span>
+              </label>
+              <textarea
+                id="bulk-reject-reason"
+                rows={3}
+                placeholder="e.g. Resolved by F15 reference extraction — underlying condition no longer present."
+                value={bulkReject.reason}
+                onInput={(e) =>
+                  setBulkReject((prev) =>
+                    prev ? { ...prev, reason: (e.currentTarget as HTMLTextAreaElement).value } : prev,
+                  )
+                }
+                onKeyDown={(e) => {
+                  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                    e.preventDefault();
+                    confirmBulkReject();
+                  }
+                }}
+                class="mt-1 w-full rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)]/60 px-3 py-2 text-sm focus:outline-none focus:border-[color:var(--color-accent)] transition resize-none"
+              />
+              <div class="text-[11px] font-mono text-[color:var(--color-fg-subtle)] mt-1">
+                ⌘+Enter to reject all · Esc to cancel
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </Modal>
     </div>
   );
 }
@@ -281,16 +460,48 @@ interface RowProps {
   busy: boolean;
   onApprove: (c: QueueCandidate) => void;
   onReject: (c: QueueCandidate) => void;
+  selected: boolean;
+  onToggleSelected: () => void;
+  showCheckbox: boolean;
 }
 
-function CandidateRow({ candidate: c, kbId, isExpanded, onToggle, busy, onApprove, onReject }: RowProps) {
+function CandidateRow({
+  candidate: c,
+  kbId,
+  isExpanded,
+  onToggle,
+  busy,
+  onApprove,
+  onReject,
+  selected,
+  onToggleSelected,
+  showCheckbox,
+}: RowProps) {
   const meta = parseMetadata(c.metadata);
   const preview =
     c.content.length > 200 ? c.content.slice(0, 200).replace(/\s+/g, ' ').trim() + '…' : c.content;
 
   return (
-    <li class="border border-[color:var(--color-border)] rounded-md bg-[color:var(--color-bg-card)] hover:border-[color:var(--color-border-strong)] transition">
+    <li
+      class={
+        'border rounded-md bg-[color:var(--color-bg-card)] transition ' +
+        (selected
+          ? 'border-[color:var(--color-accent)] bg-[color:var(--color-accent)]/5'
+          : 'border-[color:var(--color-border)] hover:border-[color:var(--color-border-strong)]')
+      }
+    >
       <div class="p-4 flex items-start gap-4">
+        {showCheckbox ? (
+          <label class="pt-1 cursor-pointer select-none" onClick={(e) => e.stopPropagation()}>
+            <input
+              type="checkbox"
+              class="accent-[color:var(--color-accent)]"
+              checked={selected}
+              onChange={onToggleSelected}
+              aria-label={`Select "${c.title}"`}
+            />
+          </label>
+        ) : null}
         <div class="flex-1 min-w-0">
           <div class="flex items-center gap-2 mb-1">
             <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono uppercase tracking-wider bg-[color:var(--color-bg)] border border-[color:var(--color-border)] text-[color:var(--color-fg-muted)]">

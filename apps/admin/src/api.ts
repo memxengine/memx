@@ -105,6 +105,25 @@ export function rejectCandidate(
   });
 }
 
+export interface BulkQueueResult {
+  action: 'approve' | 'reject';
+  requested: number;
+  succeeded: Array<{ id: string }>;
+  failed: Array<{ id: string; error: string }>;
+}
+
+export function bulkQueue(args: {
+  action: 'approve' | 'reject';
+  ids: string[];
+  reason?: string;
+  approvePath?: string;
+}): Promise<BulkQueueResult> {
+  return api(`/api/v1/queue/bulk`, {
+    method: 'POST',
+    body: JSON.stringify(args),
+  });
+}
+
 // ── Documents (wiki + source) ────────────────────────────────────
 
 /** List wiki pages in a KB (kind='wiki', non-archived). */

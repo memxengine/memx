@@ -140,6 +140,87 @@ queueRoutes.post('/queue/:id/approve', async (c) => {
   }
 });
 
+/**
+ * Bulk approve/reject. Takes a list of candidate ids and applies the same
+ * action to each one. Per-candidate errors don't abort the batch — we
+ * return a summary telling the caller exactly which ones succeeded,
+ * which failed, and why, so the admin can show a useful result toast
+ * without trying to rollback partial work.
+ *
+ * Intentionally runs serially. Parallel approve of 100 candidates would
+ * stampede the write path; at curator-click pace sequential is plenty.
+ *
+ * Events fire per-candidate, same as individual approve/reject — the
+ * event-driven admin panels stay in sync automatically.
+ */
+queueRoutes.post('/queue/bulk', async (c) => {
+  const body = (await c.req.json().catch(() => null)) as
+    | { action?: string; ids?: unknown; reason?: unknown; approvePath?: unknown }
+    | null;
+  const action = body?.action;
+  const ids = Array.isArray(body?.ids) ? body!.ids.filter((id): id is string => typeof id === 'string') : [];
+  const reason = typeof body?.reason === 'string' ? body.reason : undefined;
+  const approvePath = typeof body?.approvePath === 'string' ? body.approvePath : undefined;
+
+  if (action !== 'approve' && action !== 'reject') {
+    return c.json({ error: 'action must be "approve" or "reject"' }, 400);
+  }
+  if (ids.length === 0) return c.json({ error: 'ids array required' }, 400);
+  if (ids.length > 500) return c.json({ error: 'max 500 ids per batch' }, 400);
+
+  const tenant = getTenant(c);
+  const trail = getTrail(c);
+  const actor = userActor(c);
+
+  const results = {
+    action,
+    requested: ids.length,
+    succeeded: [] as Array<{ id: string }>,
+    failed: [] as Array<{ id: string; error: string }>,
+  };
+
+  for (const id of ids) {
+    const existing = await getCandidate(trail, tenant.id, id);
+    if (!existing) {
+      results.failed.push({ id, error: 'not found' });
+      continue;
+    }
+    try {
+      if (action === 'approve') {
+        const payload = approvePath ? { path: approvePath } : {};
+        const parsed = ApproveCandidateSchema.safeParse(payload);
+        if (!parsed.success) {
+          results.failed.push({ id, error: 'invalid approve payload' });
+          continue;
+        }
+        const r = await approveCandidate(trail, tenant.id, id, actor, parsed.data);
+        broadcaster.emit({
+          type: 'candidate_approved',
+          tenantId: tenant.id,
+          kbId: existing.knowledgeBaseId,
+          candidateId: r.candidateId,
+          documentId: r.documentId,
+          autoApproved: r.autoApproved,
+        });
+      } else {
+        const r = await rejectCandidate(trail, tenant.id, id, actor, { reason });
+        broadcaster.emit({
+          type: 'candidate_rejected',
+          tenantId: tenant.id,
+          kbId: existing.knowledgeBaseId,
+          candidateId: r.candidateId,
+          reason: r.reason,
+        });
+      }
+      results.succeeded.push({ id });
+    } catch (err) {
+      results.failed.push({ id, error: err instanceof Error ? err.message : String(err) });
+    }
+  }
+
+  return c.json(results);
+});
+
 queueRoutes.post('/queue/:id/reject', async (c) => {
   const body = await c.req.json().catch(() => ({}));
   const parsed = RejectCandidateSchema.safeParse(body);

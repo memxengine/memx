@@ -111,7 +111,7 @@ async function findSourceByName(
   if (!normalised) return null;
 
   // Strategy 1: exact filename match (case-sensitive).
-  let hit = await trail.db
+  const exact = await trail.db
     .select({ id: documents.id, filename: documents.filename })
     .from(documents)
     .where(
@@ -123,7 +123,7 @@ async function findSourceByName(
       ),
     )
     .get();
-  if (hit) return hit;
+  if (exact) return exact;
 
   // Strategy 2: case-insensitive match. SQLite LIKE is case-insensitive by
   // default for ASCII — load the source list once and match in JS so
@@ -141,13 +141,12 @@ async function findSourceByName(
     .all();
 
   const needle = normalised.toLowerCase();
-  hit = allSources.find((s) => s.filename.toLowerCase() === needle) ?? null;
-  if (hit) return hit;
+  const caseHit = allSources.find((s) => s.filename.toLowerCase() === needle);
+  if (caseHit) return caseHit;
 
   // Strategy 3: stem match ignoring extension.
   const stem = stripExt(needle);
-  hit = allSources.find((s) => stripExt(s.filename.toLowerCase()) === stem) ?? null;
-  return hit;
+  return allSources.find((s) => stripExt(s.filename.toLowerCase()) === stem) ?? null;
 }
 
 function stripExt(filename: string): string {
