@@ -30,6 +30,13 @@ const app = createApp(trail);
 
 const server = Bun.serve({
   port: PORT,
+  // Disable the 10-second default idle timeout: it killed SSE streams mid-
+  // flight (pings are 30s apart) and EventSource reconnected every ~10s,
+  // dropping any candidate_* event that fired inside the gap. That silent
+  // drop was the root cause of the "badge is stuck on N" symptom — the
+  // client never saw the decrement. SSE connections live as long as the
+  // client keeps them; stream.onAbort handles real disconnects.
+  idleTimeout: 0,
   fetch: app.fetch,
 });
 
