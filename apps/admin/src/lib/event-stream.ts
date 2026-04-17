@@ -149,23 +149,30 @@ export function usePendingCount(kbId: string | undefined): number | null {
       setCount(null);
       return;
     }
-    // One authoritative source of truth: the server's count. Every relevant
-    // event triggers a refetch. Previously we did optimistic increments on
-    // the client, which sounded faster but drifted under any race (double
-    // events, events missed during disconnection, a reject coming in while
-    // a fetch was already in flight) and needed a separate reconcile path.
-    // With server-computed totals plus a refetch-on-event policy, the
-    // badge is always the same number the Queue tab would show if reloaded.
+
+    // Server is the single source of truth; every relevant event triggers a
+    // fresh fetch and the latest response wins — via a sequence counter so
+    // out-of-order HTTP responses can't overwrite the correct final state
+    // with stale data. The subtle bug this prevents: approve fires → event
+    // arrives → event-triggered fetch kicks off → meanwhile the initial
+    // mount-fetch (started earlier) is still in flight. If the later
+    // approve-fetch returns FIRST with count=0, then the earlier stale
+    // count=1 returns second and overwrites it.
+    let latestSeq = 0;
     let cancelled = false;
     const refetch = (): void => {
+      const seq = ++latestSeq;
       const qs = new URLSearchParams({ knowledgeBaseId: kbId, status: 'pending' });
       fetch(`/api/v1/queue?${qs.toString()}`, { credentials: 'include' })
         .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
         .then((data: { count: number }) => {
-          if (!cancelled) setCount(data.count);
+          // Drop this response if a newer fetch has started since we fired.
+          if (cancelled || seq !== latestSeq) return;
+          setCount(data.count);
         })
         .catch(() => {
-          if (!cancelled) setCount(null);
+          if (cancelled || seq !== latestSeq) return;
+          setCount(null);
         });
     };
     refetch();
