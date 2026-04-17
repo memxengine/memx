@@ -50,9 +50,16 @@ Rules:
 - If contradicts is false, return {"contradicts": false}. No other fields needed.
 - Do not explain your reasoning. Just the JSON.`;
 
+/**
+ * Resolve the checker backend once. Exposed so the scheduler (F32.2 full
+ * pass) can reuse the same configuration as the reactive subscriber.
+ */
+export function makeContradictionChecker(): ContradictionChecker {
+  return BACKEND === 'api' ? makeAnthropicChecker() : makeCliChecker();
+}
+
 export function startContradictionLint(trail: TrailDatabase): () => void {
-  const checker =
-    BACKEND === 'api' ? makeAnthropicChecker() : makeCliChecker();
+  const checker = makeContradictionChecker();
 
   // Rate-limit: only one event being processed at any time. If a second
   // candidate_approved fires while we're busy, queue it; if more than N
@@ -71,6 +78,33 @@ export function startContradictionLint(trail: TrailDatabase): () => void {
 
   console.log(`  contradiction-lint: listening (backend=${BACKEND}, model=${MODEL}, top_k=${TOP_K})`);
   return unsubscribe;
+}
+
+/**
+ * Scan a single Neuron for contradictions against its top-K similar peers.
+ * Re-used by the scheduled full pass (F32.2). Idempotent via lintFingerprint;
+ * re-scanning the same Neuron produces no duplicate candidates.
+ */
+export async function scanDocForContradictions(
+  trail: TrailDatabase,
+  documentId: string,
+  checker: ContradictionChecker,
+): Promise<void> {
+  // Fabricate a CandidateApprovedEvent shape so we can reuse runForEvent as
+  // the single code path — every field the runner actually reads (documentId)
+  // is populated; the rest are scaffolding for the event union.
+  await runForEvent(
+    trail,
+    {
+      type: 'candidate_approved',
+      tenantId: '',
+      kbId: '',
+      candidateId: '',
+      documentId,
+      autoApproved: false,
+    },
+    checker,
+  );
 }
 
 class SerialRunner {

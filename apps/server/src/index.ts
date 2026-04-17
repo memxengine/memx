@@ -5,6 +5,7 @@ import { recoverZombieIngests } from './bootstrap/zombie-ingest.js';
 import { rewriteWikiToNeurons } from './bootstrap/rewrite-wiki-paths.js';
 import { startContradictionLint } from './services/contradiction-lint.js';
 import { backfillReferences, startReferenceExtractor } from './services/reference-extractor.js';
+import { startLintScheduler } from './services/lint-scheduler.js';
 
 const PORT = Number(process.env.PORT ?? 3031);
 
@@ -25,6 +26,12 @@ const stopReferenceExtractor = startReferenceExtractor(trail);
 
 // F19 axis 3 — contradiction detection subscribes to candidate_approved.
 const stopContradictionLint = startContradictionLint(trail);
+
+// F32.2 — scheduled dreaming pass (orphans+stale + contradictions over
+// every KB, default every 24h). Complements the reactive subscribers above
+// by catching Neurons that changed OUT of scope (e.g. a source archival
+// made an existing Neuron orphaned), which no event flow would notice.
+const stopLintScheduler = startLintScheduler(trail);
 
 const app = createApp(trail);
 
@@ -50,6 +57,7 @@ const shutdown = async () => {
   console.log('\nshutting down…');
   stopReferenceExtractor();
   stopContradictionLint();
+  stopLintScheduler();
   server.stop();
   await trail.close();
   process.exit(0);
