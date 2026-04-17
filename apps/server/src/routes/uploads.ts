@@ -137,7 +137,7 @@ uploadRoutes.post('/knowledge-bases/:kbId/documents/upload', async (c) => {
   return c.json(doc, 201);
 });
 
-async function processPdfAsync(
+export async function processPdfAsync(
   trail: TrailDatabase,
   docId: string,
   tenantId: string,
@@ -188,7 +188,7 @@ async function processPdfAsync(
   triggerIngest({ trail, docId, kbId, tenantId, userId });
 }
 
-async function processDocxAsync(
+export async function processDocxAsync(
   trail: TrailDatabase,
   docId: string,
   tenantId: string,

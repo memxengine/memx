@@ -10,6 +10,8 @@ import {
 import { eq, and, inArray } from 'drizzle-orm';
 import { requireAuth, getUser, getTenant, getTrail } from '../middleware/auth.js';
 import { chunkText, storeChunks } from '../services/chunker.js';
+import { processPdfAsync, processDocxAsync } from './uploads.js';
+import { storage, sourcePath } from '../lib/storage.js';
 
 export const documentRoutes = new Hono();
 
@@ -220,6 +222,71 @@ documentRoutes.delete('/documents/:docId', async (c) => {
     .run();
 
   return c.body(null, 204);
+});
+
+/**
+ * Reprocess a source document — re-runs the appropriate ingest pipeline
+ * against the already-uploaded bytes in storage. Useful when the original
+ * ingest failed (engine died mid-compile, LLM error, etc.) and the curator
+ * wants to retry without re-uploading.
+ *
+ * Text-only types (md/txt/html/csv) land status='ready' straight from the
+ * first upload, so they never fail — they're not accepted here.
+ */
+documentRoutes.post('/documents/:docId/reprocess', async (c) => {
+  const trail = getTrail(c);
+  const tenant = getTenant(c);
+  const user = getUser(c);
+  const docId = c.req.param('docId');
+
+  const doc = await trail.db
+    .select()
+    .from(documents)
+    .where(and(eq(documents.id, docId), eq(documents.tenantId, tenant.id)))
+    .get();
+
+  if (!doc) return c.json({ error: 'Document not found' }, 404);
+  if (doc.kind !== 'source') {
+    return c.json({ error: 'Only source documents can be reprocessed' }, 400);
+  }
+
+  const bytes = await storage.get(sourcePath(doc.tenantId, doc.knowledgeBaseId, doc.id, doc.fileType));
+  if (!bytes) {
+    return c.json({ error: 'Source bytes not found in storage — re-upload instead' }, 404);
+  }
+  const buffer = Buffer.from(bytes);
+
+  // Reset status so the admin badge and Sources UI reflect "in progress"
+  // before the async pipeline kicks off.
+  await trail.db
+    .update(documents)
+    .set({ status: 'processing', errorMessage: null, updatedAt: new Date().toISOString() })
+    .where(eq(documents.id, doc.id))
+    .run();
+
+  // Fire and forget — don't hold the HTTP connection for the LLM compile.
+  const onFail = async (err: unknown) => {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[reprocess] pipeline failed for ${doc.filename}:`, msg);
+    await trail.db
+      .update(documents)
+      .set({ status: 'failed', errorMessage: msg.slice(0, 1000), updatedAt: new Date().toISOString() })
+      .where(eq(documents.id, doc.id))
+      .run();
+  };
+
+  if (doc.fileType === 'pdf') {
+    processPdfAsync(trail, doc.id, doc.tenantId, doc.knowledgeBaseId, user.id, doc.filename, buffer).catch(onFail);
+  } else if (doc.fileType === 'docx') {
+    processDocxAsync(trail, doc.id, doc.tenantId, doc.knowledgeBaseId, user.id, doc.filename, buffer).catch(onFail);
+  } else {
+    return c.json(
+      { error: `No reprocess pipeline for .${doc.fileType}. Supported: pdf, docx.` },
+      400,
+    );
+  }
+
+  return c.json({ id: doc.id, status: 'processing' }, 202);
 });
 
 documentRoutes.post('/documents/bulk-delete', async (c) => {

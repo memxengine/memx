@@ -148,6 +148,11 @@ export function archiveDocument(docId: string): Promise<void> {
   return api(`/api/v1/documents/${encodeURIComponent(docId)}`, { method: 'DELETE' });
 }
 
+/** Retry a failed source's ingest pipeline against the bytes already in storage. */
+export function retryDocument(docId: string): Promise<{ id: string; status: string }> {
+  return api(`/api/v1/documents/${encodeURIComponent(docId)}/reprocess`, { method: 'POST' });
+}
+
 // ── Search ───────────────────────────────────────────────────────
 
 export interface DocumentSearchHit {

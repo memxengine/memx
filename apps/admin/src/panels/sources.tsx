@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'preact/hooks';
 import { useRoute } from 'preact-iso';
 import type { Document } from '@trail/shared';
-import { listSources, archiveDocument, ApiError } from '../api';
+import { listSources, archiveDocument, retryDocument, ApiError } from '../api';
 import { displayPath } from '../lib/display-path';
 import { UploadDropzone } from '../components/upload-dropzone';
 import { useEvents, onStreamOpen, debounce } from '../lib/event-stream';
@@ -63,6 +63,25 @@ export function SourcesPanel() {
       try {
         await archiveDocument(doc.id);
         setDocs((prev) => (prev ? prev.filter((d) => d.id !== doc.id) : prev));
+      } catch (err) {
+        setError(err instanceof ApiError ? err.message : String(err));
+      }
+    },
+    [],
+  );
+
+  const onRetry = useCallback(
+    async (doc: Document) => {
+      try {
+        await retryDocument(doc.id);
+        // Optimistic status flip — the engine already persisted 'processing'
+        // synchronously and will emit ingest events from there. Reload picks
+        // up the authoritative state.
+        setDocs((prev) =>
+          prev
+            ? prev.map((d) => (d.id === doc.id ? { ...d, status: 'processing', errorMessage: null } : d))
+            : prev,
+        );
       } catch (err) {
         setError(err instanceof ApiError ? err.message : String(err));
       }
@@ -136,18 +155,31 @@ export function SourcesPanel() {
               </div>
               <div class="flex items-center gap-3 shrink-0">
                 {doc.status === 'failed' ? (
-                  <button
-                    onClick={() => onArchive(doc)}
-                    class="text-[11px] font-mono text-[color:var(--color-danger)] hover:text-[color:var(--color-fg)] transition"
-                    title="Archive this source — soft-deletes, audit trail intact"
-                  >
-                    archive
-                  </button>
+                  <>
+                    {doc.fileType === 'pdf' || doc.fileType === 'docx' ? (
+                      <button
+                        onClick={() => onRetry(doc)}
+                        class="text-[11px] font-mono text-[color:var(--color-accent)] hover:text-[color:var(--color-fg)] transition"
+                        title="Re-run the ingest pipeline against the uploaded bytes"
+                      >
+                        retry
+                      </button>
+                    ) : null}
+                    <button
+                      onClick={() => onArchive(doc)}
+                      class="text-[11px] font-mono text-[color:var(--color-danger)] hover:text-[color:var(--color-fg)] transition"
+                      title="Archive this source — soft-deletes, audit trail intact"
+                    >
+                      archive
+                    </button>
+                  </>
                 ) : null}
               <a
                 href={`/api/v1/documents/${encodeURIComponent(doc.id)}/content`}
+                target="_blank"
+                rel="noopener noreferrer"
                 class="text-[11px] font-mono text-[color:var(--color-fg-subtle)] hover:text-[color:var(--color-accent)] transition"
-                title="Open raw content"
+                title="Open raw content in a new tab"
               >
                 open →
               </a>
