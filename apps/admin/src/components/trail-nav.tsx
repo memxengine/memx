@@ -26,7 +26,7 @@ export function TrailNav({ kbId }: { kbId: string }) {
   ] as const;
 
   return (
-    <div class="mb-6">
+    <div class="mb-2">
       <div class="flex items-baseline gap-3 mb-3 text-sm">
         <a
           href="/"
