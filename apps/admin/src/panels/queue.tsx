@@ -618,14 +618,6 @@ function ExpandedContent({
         // eslint-disable-next-line react/no-danger
         dangerouslySetInnerHTML={{ __html: html }}
       />
-      <details class="mt-4 text-[11px] font-mono text-[color:var(--color-fg-subtle)]">
-        <summary class="cursor-pointer hover:text-[color:var(--color-fg-muted)]">
-          Raw markdown ({c.content.length} chars)
-        </summary>
-        <pre class="mt-2 whitespace-pre-wrap bg-[color:var(--color-bg-card)] border border-[color:var(--color-border)] rounded p-3 overflow-x-auto">
-          {c.content}
-        </pre>
-      </details>
     </div>
   );
 }

@@ -9,6 +9,33 @@ import { triggerIngest } from '../services/ingest.js';
 import { createVisionBackend } from '../services/vision.js';
 
 const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
+// Silent hangs in pdfjs-dist on malformed PDFs are the single worst failure
+// mode — status='processing' forever, no error, no log, no exit. Cap the
+// extraction step so a wedged PDF produces a normal 'failed' row the
+// curator can retry or archive. Env overridable if someone legit has a
+// 500-page PDF.
+const PDF_TIMEOUT_MS = Number(process.env.TRAIL_PDF_TIMEOUT_MS ?? 120_000);
+const DOCX_TIMEOUT_MS = Number(process.env.TRAIL_DOCX_TIMEOUT_MS ?? 60_000);
+
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error(`${label} timed out after ${ms / 1000}s — file may be malformed or too complex`)),
+      ms,
+    );
+    promise.then(
+      (v) => {
+        clearTimeout(timer);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(timer);
+        reject(e);
+      },
+    );
+  });
+}
+
 const ALLOWED_EXTENSIONS = new Set([
   'pdf', 'docx', 'pptx', 'doc', 'ppt',
   'png', 'jpg', 'jpeg', 'webp', 'gif',
@@ -153,13 +180,17 @@ export async function processPdfAsync(
     .run();
 
   console.log(`[pdf] processing ${filename}...`);
-  const result = await processPdf({
-    pdfBytes: buffer,
-    storage,
-    imagePrefix: `${tenantId}/${kbId}/${docId}/images`,
-    imageUrlPrefix: `/api/v1/documents/${docId}/images`,
-    describe: createVisionBackend() ?? undefined,
-  });
+  const result = await withTimeout(
+    processPdf({
+      pdfBytes: buffer,
+      storage,
+      imagePrefix: `${tenantId}/${kbId}/${docId}/images`,
+      imageUrlPrefix: `/api/v1/documents/${docId}/images`,
+      describe: createVisionBackend() ?? undefined,
+    }),
+    PDF_TIMEOUT_MS,
+    `pdf extract "${filename}"`,
+  );
   const describedCount = result.images.filter((i) => i.description).length;
   console.log(
     `[pdf] ${filename}: ${result.pageCount} pages, ${result.images.length} images ` +
@@ -204,7 +235,11 @@ export async function processDocxAsync(
     .run();
 
   console.log(`[docx] processing ${filename}...`);
-  const result = await processDocx({ docxBytes: buffer });
+  const result = await withTimeout(
+    processDocx({ docxBytes: buffer }),
+    DOCX_TIMEOUT_MS,
+    `docx extract "${filename}"`,
+  );
   if (result.warnings.length) {
     console.log(`[docx] ${filename}: ${result.warnings.length} conversion warnings`);
   }
