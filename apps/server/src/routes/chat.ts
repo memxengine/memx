@@ -1,13 +1,42 @@
 import { Hono } from 'hono';
 import { knowledgeBases, type TrailDatabase } from '@trail/db';
 import { and, eq } from 'drizzle-orm';
-import { requireAuth, getTenant, getTrail } from '../middleware/auth.js';
+import { requireAuth, getTenant, getUser, getTrail } from '../middleware/auth.js';
 import { spawnClaude, extractAssistantText } from '../services/claude.js';
 import { ChatRequestSchema } from '@trail/shared';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY ?? '';
 const CHAT_MODEL = process.env.CHAT_MODEL ?? 'claude-haiku-4-5-20251001';
-const CHAT_TIMEOUT_MS = Number(process.env.CHAT_TIMEOUT_MS ?? 30_000);
+// Chat with tool use needs headroom. A typical turn does 0-2 tool calls +
+// the final composition; bump to 60s default timeout, 5 max turns.
+const CHAT_TIMEOUT_MS = Number(process.env.CHAT_TIMEOUT_MS ?? 60_000);
+const CHAT_MAX_TURNS = Number(process.env.CHAT_MAX_TURNS ?? 5);
+
+// Resolve the trail MCP entrypoint from this file's location, not from
+// `process.cwd()`. Early version did the latter and broke when the engine
+// was launched via `bun run --cwd apps/server` (scripts/trail), because
+// cwd then was apps/server — which doesn't contain apps/mcp. Claude spawned
+// a nonexistent MCP, silently got no tools, and answered "sorry, tools
+// unavailable". Resolving from __dirname makes the path correct regardless
+// of how the engine was started.
+const THIS_DIR = dirname(fileURLToPath(import.meta.url));
+const MCP_SERVER_PATH = resolve(THIS_DIR, '../../../../apps/mcp/src/index.ts');
+
+// Whitelist of trail MCP tools the chat LLM is allowed to call. All
+// read-only — write/delete stay out so chat never mutates state without
+// going through the Queue.
+const CHAT_ALLOWED_TOOLS = [
+  'mcp__trail__guide',
+  'mcp__trail__search',
+  'mcp__trail__read',
+  'mcp__trail__count_neurons',
+  'mcp__trail__count_sources',
+  'mcp__trail__queue_summary',
+  'mcp__trail__recent_activity',
+  'mcp__trail__trail_stats',
+].join(',');
 
 export const chatRoutes = new Hono();
 
@@ -16,6 +45,7 @@ chatRoutes.use('*', requireAuth);
 chatRoutes.post('/chat', async (c) => {
   const trail = getTrail(c);
   const tenant = getTenant(c);
+  const user = getUser(c);
   const body = ChatRequestSchema.parse(await c.req.json());
 
   // Scope to either a specific KB (validating it belongs to this tenant) or all
@@ -51,25 +81,40 @@ chatRoutes.post('/chat', async (c) => {
     tenant.id,
   );
 
-  if (!context.trim()) {
-    return c.json({
-      answer:
-        'Jeg fandt ingen relevante wiki-sider for dit spørgsmål. Prøv at omformulere eller tilføj flere kilder.',
-      citations: [],
-    });
-  }
+  // F89 shift: tool-equipped chat doesn't need to refuse on empty context —
+  // the LLM can now call search/count/queue_summary to answer metadata
+  // questions even when FTS returns nothing. Context-less runs just get a
+  // smaller system prompt.
+  const hasContext = context.trim().length > 0;
 
-  const systemPrompt = `You are a knowledgeable assistant. Answer the user's question based ONLY on the wiki context provided below. Do not make up information.
+  // Name the Trail the user is currently in so Claude doesn't pass a
+  // guessed slug to tools. All structural tools accept an optional
+  // knowledge_base arg, but when omitted they default to the Trail scoped
+  // via env (TRAIL_KNOWLEDGE_BASE_ID) — which is always the *current* KB.
+  const currentTrailName = kbs.length === 1 ? kbs[0]!.name : null;
 
-## Wiki Context
-${context}
+  const systemPrompt = `You are a knowledgeable assistant with access to tools that query the user's Trail (knowledge base). Answer their question accurately.
+
+${currentTrailName ? `## Current Trail\nThe user is currently viewing the Trail called **"${currentTrailName}"**. Always call tools WITHOUT a \`knowledge_base\` argument so they default to this Trail automatically.\n\n` : ''}${
+  hasContext
+    ? `## Wiki Context (from content search)\n${context}\n\n`
+    : ''
+}## Tools available
+- **count_neurons / count_sources** — exact counts with optional filters
+- **queue_summary** — curation queue state
+- **trail_stats** — one-shot overview (Neurons, Sources, pending, oldest/newest)
+- **recent_activity** — last N wiki events
+- **search** — browse or FTS5 search wiki + sources
+- **read** — fetch a specific document's full content
 
 ## Instructions
 - Answer in the same language as the question
+- For *structural* questions (counts, lists, queue state) call a tool — don't guess from context
+- For *content* questions prefer the wiki context above; only call tools if the context doesn't cover it
 - Be concise (max 300 words)
 - Use **bold** for key terms
 - Reference wiki pages with [[page-name]] links where relevant
-- If the context doesn't contain enough information, say so honestly`;
+- If tools and context both come up empty, say so honestly`;
 
   // Dev default: claude -p subprocess. Prod will flip to direct API once stable.
   if (ANTHROPIC_API_KEY && process.env.TRAIL_CHAT_BACKEND === 'api') {
@@ -81,19 +126,44 @@ ${context}
     }
   }
 
+  // The MCP config passed via --mcp-config bootstraps a `trail` MCP server
+  // the CLI can use inside this turn. Spawning it cold adds ~500ms — worth it
+  // for tool-equipped answers that previously fell back to "I don't know".
+  const mcpConfig = {
+    mcpServers: {
+      trail: {
+        command: 'bun',
+        args: ['run', MCP_SERVER_PATH],
+      },
+    },
+  };
+
   const args = [
     '-p',
     `${systemPrompt}\n\n## User Question\n${body.message}`,
     '--dangerously-skip-permissions',
     '--max-turns',
-    '1',
+    String(CHAT_MAX_TURNS),
     '--output-format',
     'json',
+    '--mcp-config',
+    JSON.stringify(mcpConfig),
+    '--allowedTools',
+    CHAT_ALLOWED_TOOLS,
     ...(CHAT_MODEL ? ['--model', CHAT_MODEL] : []),
   ];
 
+  // The MCP subprocess reads tenant/KB/user from env to scope every query to
+  // the right rows. Without these it refuses to run (see requireContext in
+  // apps/mcp).
+  const spawnEnv = {
+    TRAIL_TENANT_ID: tenant.id,
+    TRAIL_KNOWLEDGE_BASE_ID: body.knowledgeBaseId ?? kbs[0]!.id,
+    TRAIL_USER_ID: user.id,
+  };
+
   try {
-    const raw = await spawnClaude(args, { timeoutMs: CHAT_TIMEOUT_MS });
+    const raw = await spawnClaude(args, { timeoutMs: CHAT_TIMEOUT_MS, env: spawnEnv });
     const answer = extractAssistantText(raw);
     return c.json({ answer, citations });
   } catch (err) {

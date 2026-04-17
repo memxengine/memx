@@ -6,11 +6,13 @@ import {
   DEFAULT_DB_PATH,
   knowledgeBases,
   documents,
+  queueCandidates,
+  wikiEvents,
   tenants,
   users,
   type TrailDatabase,
 } from '@trail/db';
-import { eq, and, like } from 'drizzle-orm';
+import { eq, and, like, sql, desc } from 'drizzle-orm';
 import { createCandidate, slugify } from '@trail/core';
 
 // MCP-initiated wiki mutations flow through the Curation Queue. The server's
@@ -641,6 +643,258 @@ server.tool(
       };
     }
     return { content: [{ type: 'text' as const, text: `Archived \`${docPath}\`` }] };
+  },
+);
+
+// ── F89 read-only introspection tools ─────────────────────────────────────────
+// These answer structural questions Claude can't resolve from content alone:
+// "hvor mange Neurons?", "hvad er der i køen?", "hvad er lavet for nyligt?".
+// All five take an optional knowledge_base arg, fall back to TRAIL_KNOWLEDGE_BASE_ID.
+// Every handler returns compact text so the chat LLM can read it in a single turn.
+
+server.tool(
+  'count_neurons',
+  'Count wiki pages (Neurons) in a knowledge base, optionally filtered by path prefix or tag',
+  {
+    knowledge_base: z.string().optional().describe('Name, slug or id of the KB'),
+    path_prefix: z
+      .string()
+      .optional()
+      .describe('Only count Neurons whose path starts with this (e.g. "/neurons/concepts/")'),
+    tag: z.string().optional().describe('Only count Neurons tagged with this'),
+  },
+  async ({ knowledge_base, path_prefix, tag }) => {
+    const ctx = await requireContext(trail);
+    const kb = await resolveKB(trail, knowledge_base, ctx.tenantId);
+    if (!kb) {
+      return {
+        content: [{ type: 'text' as const, text: `KB "${knowledge_base ?? '(default)'}" not found.` }],
+      };
+    }
+    const conds = [
+      eq(documents.tenantId, ctx.tenantId),
+      eq(documents.knowledgeBaseId, kb.id),
+      eq(documents.kind, 'wiki'),
+      eq(documents.archived, false),
+    ];
+    if (path_prefix) conds.push(like(documents.path, `${path_prefix}%`));
+    if (tag) conds.push(like(documents.tags, `%${tag}%`));
+    const row = await trail.db
+      .select({ c: sql<number>`count(*)` })
+      .from(documents)
+      .where(and(...conds))
+      .get();
+    const count = row?.c ?? 0;
+    const filters = [
+      path_prefix ? `path_prefix="${path_prefix}"` : null,
+      tag ? `tag="${tag}"` : null,
+    ]
+      .filter(Boolean)
+      .join(', ');
+    const text = `${kb.name}: ${count} Neuron${count === 1 ? '' : 's'}${filters ? ` (${filters})` : ''}.`;
+    return { content: [{ type: 'text' as const, text }] };
+  },
+);
+
+server.tool(
+  'count_sources',
+  'Count Source documents in a knowledge base, optionally filtered by file type',
+  {
+    knowledge_base: z.string().optional().describe('Name, slug or id of the KB'),
+    file_type: z.string().optional().describe('Filter by extension (e.g. "pdf", "docx", "md")'),
+  },
+  async ({ knowledge_base, file_type }) => {
+    const ctx = await requireContext(trail);
+    const kb = await resolveKB(trail, knowledge_base, ctx.tenantId);
+    if (!kb) {
+      return {
+        content: [{ type: 'text' as const, text: `KB "${knowledge_base ?? '(default)'}" not found.` }],
+      };
+    }
+    const conds = [
+      eq(documents.tenantId, ctx.tenantId),
+      eq(documents.knowledgeBaseId, kb.id),
+      eq(documents.kind, 'source'),
+      eq(documents.archived, false),
+    ];
+    if (file_type) conds.push(eq(documents.fileType, file_type.toLowerCase()));
+    const row = await trail.db
+      .select({ c: sql<number>`count(*)` })
+      .from(documents)
+      .where(and(...conds))
+      .get();
+    const count = row?.c ?? 0;
+    const filters = file_type ? ` (file_type="${file_type}")` : '';
+    const text = `${kb.name}: ${count} source${count === 1 ? '' : 's'}${filters}.`;
+    return { content: [{ type: 'text' as const, text }] };
+  },
+);
+
+server.tool(
+  'queue_summary',
+  'Summarize the Curation Queue for a knowledge base: pending/approved/rejected counts, plus breakdown by kind',
+  {
+    knowledge_base: z.string().optional().describe('Name, slug or id of the KB'),
+  },
+  async ({ knowledge_base }) => {
+    const ctx = await requireContext(trail);
+    const kb = await resolveKB(trail, knowledge_base, ctx.tenantId);
+    if (!kb) {
+      return {
+        content: [{ type: 'text' as const, text: `KB "${knowledge_base ?? '(default)'}" not found.` }],
+      };
+    }
+    const rows = await trail.db
+      .select({
+        status: queueCandidates.status,
+        kind: queueCandidates.kind,
+        c: sql<number>`count(*)`,
+      })
+      .from(queueCandidates)
+      .where(
+        and(
+          eq(queueCandidates.tenantId, ctx.tenantId),
+          eq(queueCandidates.knowledgeBaseId, kb.id),
+        ),
+      )
+      .groupBy(queueCandidates.status, queueCandidates.kind)
+      .all();
+
+    const byStatus = { pending: 0, approved: 0, rejected: 0, ingested: 0 } as Record<string, number>;
+    const byKind = new Map<string, number>();
+    for (const r of rows) {
+      byStatus[r.status] = (byStatus[r.status] ?? 0) + r.c;
+      byKind.set(r.kind, (byKind.get(r.kind) ?? 0) + r.c);
+    }
+
+    let text = `## Queue for ${kb.name}\n\n`;
+    text += `- pending: **${byStatus.pending}**\n`;
+    text += `- approved: ${byStatus.approved}\n`;
+    text += `- rejected: ${byStatus.rejected}\n`;
+    text += `- ingested: ${byStatus.ingested}\n`;
+    if (byKind.size > 0) {
+      text += `\n### By kind\n`;
+      for (const [k, n] of [...byKind.entries()].sort((a, b) => b[1] - a[1])) {
+        text += `- ${k}: ${n}\n`;
+      }
+    }
+    return { content: [{ type: 'text' as const, text }] };
+  },
+);
+
+server.tool(
+  'recent_activity',
+  'Show the last N wiki events (create/edit/archive/rename) with timestamps',
+  {
+    knowledge_base: z.string().optional().describe('Name, slug or id of the KB'),
+    limit: z.number().int().min(1).max(50).default(10).describe('Max events to return (1-50)'),
+  },
+  async ({ knowledge_base, limit }) => {
+    const ctx = await requireContext(trail);
+    const kb = await resolveKB(trail, knowledge_base, ctx.tenantId);
+    if (!kb) {
+      return {
+        content: [{ type: 'text' as const, text: `KB "${knowledge_base ?? '(default)'}" not found.` }],
+      };
+    }
+    const rows = await trail.db
+      .select({
+        type: wikiEvents.eventType,
+        actorKind: wikiEvents.actorKind,
+        summary: wikiEvents.summary,
+        createdAt: wikiEvents.createdAt,
+        path: documents.path,
+        filename: documents.filename,
+        title: documents.title,
+      })
+      .from(wikiEvents)
+      .innerJoin(documents, eq(documents.id, wikiEvents.documentId))
+      .where(
+        and(
+          eq(wikiEvents.tenantId, ctx.tenantId),
+          eq(documents.knowledgeBaseId, kb.id),
+        ),
+      )
+      .orderBy(desc(wikiEvents.createdAt))
+      .limit(limit)
+      .all();
+    if (rows.length === 0) {
+      return { content: [{ type: 'text' as const, text: `No wiki events yet in ${kb.name}.` }] };
+    }
+    let text = `## Recent activity in ${kb.name} (last ${rows.length})\n\n`;
+    for (const r of rows) {
+      const name = r.title ?? r.filename;
+      text += `- **${r.createdAt}** [${r.type}] \`${r.path}${r.filename}\` — ${name} _(${r.actorKind})_`;
+      if (r.summary) text += ` — ${r.summary}`;
+      text += `\n`;
+    }
+    return { content: [{ type: 'text' as const, text }] };
+  },
+);
+
+server.tool(
+  'trail_stats',
+  'One-shot overview of a knowledge base: Neurons, Sources, queue, oldest/newest, total words',
+  {
+    knowledge_base: z.string().optional().describe('Name, slug or id of the KB'),
+  },
+  async ({ knowledge_base }) => {
+    const ctx = await requireContext(trail);
+    const kb = await resolveKB(trail, knowledge_base, ctx.tenantId);
+    if (!kb) {
+      return {
+        content: [{ type: 'text' as const, text: `KB "${knowledge_base ?? '(default)'}" not found.` }],
+      };
+    }
+    const kbWhere = and(
+      eq(documents.tenantId, ctx.tenantId),
+      eq(documents.knowledgeBaseId, kb.id),
+      eq(documents.archived, false),
+    );
+    const [neurons, sources, pending, docDates] = await Promise.all([
+      trail.db
+        .select({ c: sql<number>`count(*)` })
+        .from(documents)
+        .where(and(kbWhere, eq(documents.kind, 'wiki')))
+        .get(),
+      trail.db
+        .select({ c: sql<number>`count(*)` })
+        .from(documents)
+        .where(and(kbWhere, eq(documents.kind, 'source')))
+        .get(),
+      trail.db
+        .select({ c: sql<number>`count(*)` })
+        .from(queueCandidates)
+        .where(
+          and(
+            eq(queueCandidates.tenantId, ctx.tenantId),
+            eq(queueCandidates.knowledgeBaseId, kb.id),
+            eq(queueCandidates.status, 'pending'),
+          ),
+        )
+        .get(),
+      trail.db
+        .select({
+          oldest: sql<string | null>`min(${documents.createdAt})`,
+          newest: sql<string | null>`max(${documents.createdAt})`,
+          // content can be null; coalesce to empty string so length(null) doesn't poison the sum
+          totalChars: sql<number>`coalesce(sum(length(coalesce(${documents.content}, ''))), 0)`,
+        })
+        .from(documents)
+        .where(and(kbWhere, eq(documents.kind, 'wiki')))
+        .get(),
+    ]);
+
+    // Rough word count: total chars / 5. Good enough for an overview.
+    const estWords = Math.round((docDates?.totalChars ?? 0) / 5);
+    let text = `## ${kb.name}\n\n`;
+    text += `- Neurons: **${neurons?.c ?? 0}**\n`;
+    text += `- Sources: **${sources?.c ?? 0}**\n`;
+    text += `- Pending queue: ${pending?.c ?? 0}\n`;
+    text += `- Oldest Neuron: ${docDates?.oldest ?? '—'}\n`;
+    text += `- Newest Neuron: ${docDates?.newest ?? '—'}\n`;
+    text += `- Neuron content: ~${estWords.toLocaleString('en')} words\n`;
+    return { content: [{ type: 'text' as const, text }] };
   },
 );
 

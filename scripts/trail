@@ -110,6 +110,7 @@ cmd_start() {
     TRAIL_DATA_DIR="$REPO/data" \
     TRAIL_INGEST_TOKEN="$token" \
     TRAIL_INGEST_TENANT_SLUG="${TRAIL_INGEST_TENANT_SLUG:-christian}" \
+    TRAIL_PROJECT_ROOT="$REPO" \
     PORT="$ENGINE_PORT" \
     APP_URL="http://127.0.0.1:$ADMIN_PORT" \
     nohup bun run --cwd apps/server src/index.ts >"$ENGINE_LOG" 2>&1 &
