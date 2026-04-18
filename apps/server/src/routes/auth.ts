@@ -11,6 +11,11 @@ const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET ?? '';
 const APP_URL = process.env.APP_URL ?? 'http://localhost:3030';
 const API_URL = process.env.API_URL ?? 'http://localhost:3031';
 
+// Cookies marked `secure` only travel over HTTPS. Deriving from APP_URL
+// keeps local http://localhost dev working while hardening prod — no env
+// flag to forget, just a truthful "what URL am I serving?" check.
+const SECURE_COOKIE = APP_URL.startsWith('https://');
+
 export const authRoutes = new Hono<AppBindings>();
 
 authRoutes.get('/google', (c) => {
@@ -27,7 +32,7 @@ authRoutes.get('/google', (c) => {
 
   setCookie(c, 'oauth_state', state, {
     httpOnly: true,
-    secure: false,
+    secure: SECURE_COOKIE,
     sameSite: 'Lax',
     path: '/',
     maxAge: 600,
@@ -41,6 +46,21 @@ authRoutes.get('/google/callback', async (c) => {
   const code = c.req.query('code');
   if (!code) {
     return c.redirect(`${APP_URL}/login?error=no_code`);
+  }
+
+  // OAuth 2.0 state check — required by the spec to prevent login-CSRF.
+  // An attacker who omits state (or supplies one we never issued) would
+  // otherwise be able to complete the flow against a victim's browser
+  // and log the victim in as the attacker's Google account, letting the
+  // attacker see anything the victim uploads after that. Reject unless
+  // the state echoed back matches the cookie we set in /google. One-time
+  // cookie: we delete it whether the check passes or fails so a replay
+  // can't reuse the same state twice.
+  const returnedState = c.req.query('state');
+  const cookieState = getCookie(c, 'oauth_state');
+  deleteCookie(c, 'oauth_state');
+  if (!returnedState || !cookieState || returnedState !== cookieState) {
+    return c.redirect(`${APP_URL}/login?error=invalid_state`);
   }
 
   const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
@@ -131,18 +151,28 @@ authRoutes.get('/google/callback', async (c) => {
 
   setCookie(c, 'session', sessionId, {
     httpOnly: true,
-    secure: false,
+    secure: SECURE_COOKIE,
     sameSite: 'Lax',
     path: '/',
     maxAge: 30 * 24 * 60 * 60,
   });
 
-  deleteCookie(c, 'oauth_state');
+  // oauth_state cookie was already cleared at the top of the handler
+  // alongside the state-match check.
 
   return c.redirect(`${APP_URL}/wikis`);
 });
 
-authRoutes.post('/logout', (c) => {
+authRoutes.post('/logout', async (c) => {
+  // Delete the DB-side session row too — not just the browser cookie.
+  // A stolen/copied cookie would otherwise keep working until its 30-day
+  // expiry because requireAuth only checks `sessions.expiresAt > now`,
+  // not whether the user intended to revoke.
+  const trail = getTrail(c);
+  const sessionId = getCookie(c, 'session');
+  if (sessionId) {
+    await trail.db.delete(sessions).where(eq(sessions.id, sessionId)).run();
+  }
   deleteCookie(c, 'session');
   return c.json({ ok: true });
 });
@@ -162,10 +192,16 @@ authRoutes.get('/dev-login', (c) => {
   if (process.env.TRAIL_DEV_AUTH !== '1') {
     return c.json({ error: 'dev-login disabled (set TRAIL_DEV_AUTH=1 in the engine env)' }, 403);
   }
-  const sessionId = c.req.query('session') ?? 'dev';
-  setCookie(c, 'session', sessionId, {
+  // Hardcoded session id — the dev seed creates a matching `sessions`
+  // row with id='dev'. Accepting `?session=X` used to let anyone with
+  // TRAIL_DEV_AUTH=1 enabled adopt ANY existing session id, including
+  // a real curator's, which is a flat privilege-escalation bug if the
+  // flag ever slipped into a shared environment. There is no legitimate
+  // reason to parametrise this on query — dev-login is one user, one
+  // fixed session.
+  setCookie(c, 'session', 'dev', {
     httpOnly: true,
-    secure: false,
+    secure: SECURE_COOKIE,
     sameSite: 'Lax',
     path: '/',
     maxAge: 30 * 24 * 60 * 60,

@@ -1,5 +1,6 @@
 import type { Context, Next } from 'hono';
 import { getCookie } from 'hono/cookie';
+import { timingSafeEqual } from 'node:crypto';
 import { sessions, users, tenants, type TrailDatabase } from '@trail/db';
 import { and, eq, gt } from 'drizzle-orm';
 import { INGEST_USER_ID } from '../bootstrap/ingest-user.js';
@@ -51,7 +52,19 @@ export async function requireAuth(c: Context, next: Next): Promise<Response | vo
       return c.json({ error: 'Bearer auth not configured on this engine' }, 401);
     }
     const presented = authHeader.slice(7).trim();
-    if (presented !== expected) {
+    // Constant-time compare — plain `!==` leaks per-byte timing that a
+    // patient attacker could aggregate across many requests to recover
+    // the token. Length check first: timingSafeEqual throws on mismatched
+    // lengths, and that throw itself is a (tiny) timing side channel, so
+    // we gate with a plain length check and only compare equal-length
+    // buffers. Presenting a wrong-length token lands in the same 403
+    // bucket as a wrong-byte token.
+    const presentedBuf = Buffer.from(presented);
+    const expectedBuf = Buffer.from(expected);
+    const ok =
+      presentedBuf.length === expectedBuf.length &&
+      timingSafeEqual(presentedBuf, expectedBuf);
+    if (!ok) {
       return c.json({ error: 'Invalid ingest token' }, 403);
     }
     const service = await trail.db
