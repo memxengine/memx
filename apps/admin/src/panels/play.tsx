@@ -12,20 +12,96 @@ import { NeuronLoader } from '../components/neuron-loader';
 import { CenteredLoader } from '../components/centered-loader';
 import { ChatThinkingAnimation } from '../components/chat-thinking-animation';
 
-type Section = { id: string; title: string; blurb: string; render: () => VNode };
+type Section = {
+  id: string;
+  navLabel: string;
+  title: string;
+  blurb: string;
+  render: () => VNode;
+};
+
+// Mirrors densityForSize() in neuron-loader.tsx. Kept inline for the
+// showcase caption rather than exporting — the loader's density curve
+// is an implementation detail that /play happens to want to label.
+function densityForSize(size: number): number {
+  if (size <= 32) return 5;
+  if (size <= 80) return 10;
+  if (size <= 160) return 20;
+  if (size <= 240) return 32;
+  return 50;
+}
+
+function InteractivePlayground() {
+  const [size, setSize] = useState(200);
+  const [count, setCount] = useState<number | 'auto'>('auto');
+  const resolved = count === 'auto' ? densityForSize(size) : count;
+  return (
+    <div class="flex flex-col gap-6">
+      <div class="flex flex-col gap-4 max-w-md">
+        <label class="flex flex-col gap-1 text-sm">
+          <span class="flex justify-between">
+            <span class="font-medium">Size</span>
+            <span class="font-mono text-[color:var(--color-fg-subtle)]">{size}px</span>
+          </span>
+          <input
+            type="range"
+            min={16}
+            max={500}
+            step={1}
+            value={size}
+            onInput={(e) => setSize(Number((e.target as HTMLInputElement).value))}
+            class="accent-[color:var(--color-accent)]"
+          />
+        </label>
+        <label class="flex flex-col gap-1 text-sm">
+          <span class="flex justify-between">
+            <span class="font-medium">Neuron count</span>
+            <span class="font-mono text-[color:var(--color-fg-subtle)]">
+              {count === 'auto' ? `auto (${resolved})` : resolved}
+            </span>
+          </span>
+          <input
+            type="range"
+            min={3}
+            max={80}
+            step={1}
+            value={count === 'auto' ? resolved : count}
+            onInput={(e) => setCount(Number((e.target as HTMLInputElement).value))}
+            class="accent-[color:var(--color-accent)]"
+          />
+          <button
+            type="button"
+            onClick={() => setCount('auto')}
+            class="self-start text-xs text-[color:var(--color-fg-muted)] hover:text-[color:var(--color-fg)] underline"
+          >
+            Reset to auto-density
+          </button>
+        </label>
+      </div>
+      <div
+        class="flex items-center justify-center rounded-md border border-[color:var(--color-border)] p-8 text-[color:var(--color-accent)]"
+        style={{ minHeight: `${Math.max(size + 48, 120)}px` }}
+      >
+        <NeuronLoader size={size} count={count === 'auto' ? undefined : count} />
+      </div>
+    </div>
+  );
+}
 
 const SECTIONS: Section[] = [
   {
     id: 'neuron-loader-sizes',
+    navLabel: 'Sizes',
     title: 'NeuronLoader — sizes',
-    blurb: 'The same animation rendered at every size we use in the app.',
+    blurb:
+      'The same animation rendered at every size we use in the app. Neuron count auto-scales with size: 5 in button-chrome, climbing to 50 at hero scale.',
     render: () => (
       <div class="flex items-end flex-wrap gap-10">
         {[16, 24, 32, 48, 80, 120, 200, 320].map((size) => (
           <div key={size} class="flex flex-col items-center gap-3">
             <NeuronLoader size={size} />
             <span class="text-[11px] font-mono text-[color:var(--color-fg-subtle)]">
-              {size}px
+              {size}px · {densityForSize(size)} neurons
             </span>
           </div>
         ))}
@@ -33,7 +109,35 @@ const SECTIONS: Section[] = [
     ),
   },
   {
+    id: 'neuron-density',
+    navLabel: 'Density',
+    title: 'NeuronLoader — density scale-up',
+    blurb:
+      'See how the constellation thickens as it grows. At hero scale (320+) you get a full brain-like network; at button scale it reads as calm waiting dots. Golden-angle (phyllotactic) spiral so density rises without overlap.',
+    render: () => (
+      <div class="flex items-end flex-wrap gap-16 text-[color:var(--color-accent)]">
+        {[32, 64, 128, 200, 320, 500].map((size) => (
+          <div key={size} class="flex flex-col items-center gap-3">
+            <NeuronLoader size={size} />
+            <span class="text-[11px] font-mono text-[color:var(--color-fg-subtle)]">
+              {size}px · {densityForSize(size)} neurons
+            </span>
+          </div>
+        ))}
+      </div>
+    ),
+  },
+  {
+    id: 'neuron-interactive',
+    navLabel: 'Playground',
+    title: 'NeuronLoader — interactive',
+    blurb:
+      'Scrub size and neuron-count live. The count slider overrides the auto-density curve — useful for finding sweet spots before they bake into the size → count mapping.',
+    render: () => <InteractivePlayground />,
+  },
+  {
     id: 'neuron-loader-with-label',
+    navLabel: 'In buttons',
     title: 'NeuronLoader — with label',
     blurb:
       'How it appears in a button (left: inside a primary button; right: inside a bordered secondary button). Button text colour inherits via currentColor.',
@@ -50,6 +154,7 @@ const SECTIONS: Section[] = [
   },
   {
     id: 'neuron-loader-chrome',
+    navLabel: 'Contrast',
     title: 'NeuronLoader — on accent + muted backgrounds',
     blurb:
       'Stress-test contrast. The animation uses currentColor so the surrounding text colour drives it.',
@@ -76,6 +181,7 @@ const SECTIONS: Section[] = [
   },
   {
     id: 'centered-loader',
+    navLabel: 'Panel loader',
     title: 'CenteredLoader — full-panel loading state',
     blurb:
       'What KbsPanel (/) renders while listKnowledgeBases() is pending. 400ms fade-in so fast loads don\'t flash.',
@@ -87,8 +193,10 @@ const SECTIONS: Section[] = [
   },
   {
     id: 'neuron-loader-hero',
+    navLabel: 'Hero',
     title: 'NeuronLoader — hero size (320px)',
-    blurb: 'Centered, standalone, accent-coloured. Useful as a splash while a long LLM call is in flight.',
+    blurb:
+      'Centered, standalone, accent-coloured. 50 neurons firing asynchronously — useful as a splash while a long LLM call is in flight.',
     render: () => (
       <div class="flex items-center justify-center py-8 text-[color:var(--color-accent)]">
         <NeuronLoader size={320} />
@@ -97,6 +205,7 @@ const SECTIONS: Section[] = [
   },
   {
     id: 'cms-vs-neuron',
+    navLabel: 'vs CMS',
     title: 'CMS ChatThinkingAnimation vs NeuronLoader',
     blurb:
       'Side-by-side at matching sizes. Left: cms-core\'s orbiting-dots-in-pulse-ring, ported to use trail accent colour. Right: our Neuron graph with asynchronous firings. Compare visual language, cadence, and screen presence.',
@@ -189,7 +298,7 @@ export function PlayPanel() {
                 : 'border-transparent text-[color:var(--color-fg-muted)] hover:text-[color:var(--color-fg)]')
             }
           >
-            {s.title.split(' — ')[0]}
+            {s.navLabel}
           </button>
         ))}
       </nav>
