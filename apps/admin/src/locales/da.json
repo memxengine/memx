@@ -110,7 +110,7 @@
     "item": {
       "approveAction": "Godkend",
       "rejectAction": "Afvis",
-      "approveSuccess": "Godkendt — wiki-side {docId}… oprettet.",
+      "approveSuccess": "Godkendt — Neuron {docId}… oprettet.",
       "approveSuccessNoDoc": "Godkendt.",
       "rejectSuccess": "Afvist.",
       "byAuthor": "af {who}",
@@ -163,6 +163,7 @@
     "summaryPlural": "{n} Neuroner",
     "empty": "Ingen Neuroner endnu. Kandidater der bliver godkendt i køen dukker op her.",
     "runLint": "Kør lint",
+    "runLintHint": "Scan Neuroner for forældreløse, forældede sider og modsigelser",
     "lintRunning": "Kører lint…",
     "lintDone": "Lint lavede {n} ny kandidat",
     "lintDonePlural": "Lint lavede {n} nye kandidater",

@@ -110,7 +110,7 @@
     "item": {
       "approveAction": "Approve",
       "rejectAction": "Reject",
-      "approveSuccess": "Approved — wiki page {docId}… created.",
+      "approveSuccess": "Approved — Neuron {docId}… created.",
       "approveSuccessNoDoc": "Approved.",
       "rejectSuccess": "Rejected.",
       "byAuthor": "by {who}",
@@ -163,6 +163,7 @@
     "summaryPlural": "{n} Neurons",
     "empty": "No Neurons yet. Candidates that pass the queue appear here.",
     "runLint": "Run lint",
+    "runLintHint": "Scan Neurons for orphans, stale pages, and contradictions",
     "lintRunning": "Running lint…",
     "lintDone": "Lint emitted {n} new candidate",
     "lintDonePlural": "Lint emitted {n} new candidates",

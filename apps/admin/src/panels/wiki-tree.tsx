@@ -82,20 +82,22 @@ export function WikiTreePanel() {
     <div class="page-shell">
       <header class="mb-6 flex items-end justify-between gap-4">
         <div>
-          <h1 class="text-2xl font-semibold tracking-tight mb-1">Neurons</h1>
+          <h1 class="text-2xl font-semibold tracking-tight mb-1">{t('wikiTree.title')}</h1>
           <p class="text-[color:var(--color-fg-muted)] text-sm">
-            {pages ? `${pages.length} compiled page${pages.length === 1 ? '' : 's'}` : (
-              <span class="loading-delayed inline-block">Loading…</span>
+            {pages ? (
+              t(pages.length === 1 ? 'wikiTree.summary' : 'wikiTree.summaryPlural', { n: pages.length })
+            ) : (
+              <span class="loading-delayed inline-block">{t('common.loading')}</span>
             )}
           </p>
         </div>
         <button
           onClick={onRunLint}
           disabled={lintBusy || !pages}
-          title="Scan Neurons for orphans, stale pages, and contradictions"
+          title={t('wikiTree.runLintHint')}
           class="shrink-0 px-3 py-1.5 text-[11px] font-mono uppercase tracking-wider rounded-md border border-[color:var(--color-border-strong)] hover:border-[color:var(--color-accent)] hover:text-[color:var(--color-accent)] disabled:opacity-50 disabled:cursor-not-allowed transition"
         >
-          {lintBusy ? '…running' : 'Run lint'}
+          {lintBusy ? t('wikiTree.lintRunning') : t('wikiTree.runLint')}
         </button>
       </header>
 
@@ -216,8 +218,8 @@ function originTitle(origin: Origin): string {
     case 'session':
       return 'Decision captured from a cc session (F39)';
     case 'concept':
-      return 'Abstract concept compiled by the wiki LLM';
+      return 'Abstract concept compiled by the Neuron LLM';
     case 'entity':
-      return 'Person, organization, or tool compiled by the wiki LLM';
+      return 'Person, organization, or tool compiled by the Neuron LLM';
   }
 }
