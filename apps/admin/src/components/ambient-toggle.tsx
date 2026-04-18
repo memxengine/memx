@@ -41,7 +41,7 @@ export function AmbientToggle() {
         class={
           'inline-flex items-center justify-center w-8 h-8 rounded-md border active:scale-95 transition ' +
           (enabled
-            ? 'border-[color:var(--color-accent)] text-[color:var(--color-accent)] hover:bg-[color:var(--color-bg-card)]'
+            ? 'ambient-on border-[color:var(--color-accent)] text-[color:var(--color-accent)] hover:bg-[color:var(--color-bg-card)]'
             : 'border-[color:var(--color-border)] text-[color:var(--color-fg-muted)] hover:border-[color:var(--color-border-strong)] hover:bg-[color:var(--color-bg-card)] hover:text-[color:var(--color-fg)]')
         }
       >
