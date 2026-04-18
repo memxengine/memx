@@ -19,6 +19,9 @@ import {
 import { INGEST_USER_ID } from '../bootstrap/ingest-user.js';
 import { broadcaster } from '../services/broadcast.js';
 import { ensureCandidateInLocale } from '../services/translation.js';
+import { proposeSourcesForOrphan } from '../services/source-inferer.js';
+import { documents } from '@trail/db';
+import { and, eq } from 'drizzle-orm';
 
 export const queueRoutes = new Hono();
 
@@ -221,19 +224,86 @@ queueRoutes.post('/queue/:id/resolve', async (c) => {
   if (!parsed.success) return c.json({ error: parsed.error.flatten() }, 400);
 
   const tenant = getTenant(c);
-  const existing = await getCandidate(getTrail(c), tenant.id, c.req.param('id'));
+  const trail = getTrail(c);
+  const existing = await getCandidate(trail, tenant.id, c.req.param('id'));
   if (!existing) return c.json({ error: 'Candidate not found' }, 404);
+
+  // Auto-link-sources: if the caller hasn't supplied args.sources, run
+  // the LLM inferer first to propose which Sources the orphan Neuron
+  // most likely draws from, then pass the result through to core. The
+  // core handler refuses to run with an empty args.sources, so we
+  // short-circuit with a 422 when the inferer can't find anything —
+  // the candidate stays pending for manual linking.
+  let payload = parsed.data;
+  if (payload.actionId === 'auto-link-sources') {
+    const existingSources = payload.args?.sources;
+    if (!Array.isArray(existingSources) || existingSources.length === 0) {
+      const actions = resolveActions(existing);
+      const action = actions.find((a) => a.id === 'auto-link-sources');
+      const docId =
+        typeof action?.args?.documentId === 'string' ? action.args.documentId : null;
+      if (!docId) {
+        return c.json(
+          { error: 'auto-link-sources action missing documentId on candidate' },
+          400,
+        );
+      }
+      const doc = await trail.db
+        .select({
+          id: documents.id,
+          content: documents.content,
+          knowledgeBaseId: documents.knowledgeBaseId,
+        })
+        .from(documents)
+        .where(
+          and(
+            eq(documents.id, docId),
+            eq(documents.tenantId, tenant.id),
+            eq(documents.kind, 'wiki'),
+          ),
+        )
+        .get();
+      if (!doc) {
+        return c.json({ error: 'Target Neuron not found' }, 404);
+      }
+      const inferred = await proposeSourcesForOrphan(
+        trail,
+        tenant.id,
+        doc.knowledgeBaseId,
+        doc.content ?? '',
+      );
+      if (inferred.length === 0) {
+        return c.json(
+          {
+            error: 'no_sources_inferred',
+            message:
+              "The LLM couldn't identify any plausible Sources for this Neuron. Link them manually via the editor.",
+          },
+          422,
+        );
+      }
+      payload = {
+        ...payload,
+        args: { ...(payload.args ?? {}), sources: inferred },
+      };
+    }
+  }
 
   try {
     const result = await resolveCandidate(
-      getTrail(c),
+      trail,
       tenant.id,
       c.req.param('id'),
       userActor(c),
-      parsed.data,
+      payload,
     );
     emitResolution(result, existing);
-    return c.json(result);
+    return c.json({
+      ...result,
+      ...(payload.actionId === 'auto-link-sources' && Array.isArray(payload.args?.sources)
+        ? { inferredSources: payload.args.sources as string[] }
+        : {}),
+    });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Unknown error';
     if (msg.startsWith('Candidate not found')) return c.json({ error: msg }, 404);

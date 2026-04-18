@@ -23,6 +23,12 @@ interface Me {
 }
 
 export function App({ children }: { children: ComponentChildren }) {
+  // Subscribe to locale changes so the header glossary link + any
+  // other App-owned t() calls re-render on language switch. Without
+  // this, the LanguageSwitcher flips its internal state but App
+  // itself never re-runs, so "Glossary"/"Ordforklaring" stays stuck
+  // at the initial locale.
+  useLocale();
   const [me, setMe] = useState<Me | null>(null);
   const [theme, setTheme] = useState<Theme>(getTheme());
   const canvasRef = useRef<HTMLCanvasElement | null>(null);

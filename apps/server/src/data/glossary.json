@@ -1,0 +1,212 @@
+{
+  "version": 1,
+  "terms": [
+    {
+      "id": "trail",
+      "label": { "en": "Trail", "da": "Trail" },
+      "definition": {
+        "en": "A single knowledge base — a collection of Sources, compiled Neurons, and curator decisions held together by a shared topic or project. A user can have many Trails (\"my zoneterapi Trail\", \"my iOS-dev notes Trail\").",
+        "da": "En enkelt vidensbase — en samling af Kilder, kompilerede Neuroner og kurator-beslutninger holdt sammen af et fælles emne eller projekt. En bruger kan have mange Trails (\"min zoneterapi-Trail\", \"min iOS-udviklings-Trail\")."
+      },
+      "relatedTerms": ["neuron", "source", "curator"]
+    },
+    {
+      "id": "neuron",
+      "label": { "en": "Neuron", "da": "Neuron" },
+      "definition": {
+        "en": "A compiled wiki page inside a Trail — a short, claim-dense markdown document generated from one or more Sources. Neurons link to each other with [[wiki-links]] and cite Sources via frontmatter.",
+        "da": "En kompileret wiki-side i en Trail — et kort, påstands-tæt markdown-dokument genereret fra en eller flere Kilder. Neuroner linker til hinanden med [[wiki-links]] og citerer Kilder via frontmatter."
+      },
+      "relatedTerms": ["trail", "source", "backlink"]
+    },
+    {
+      "id": "source",
+      "label": { "en": "Source", "da": "Kilde" },
+      "definition": {
+        "en": "An immutable raw document uploaded into a Trail — PDF, DOCX, MD, plain text. Sources are never edited after ingest; Neurons are compiled FROM them and cite them by filename.",
+        "da": "Et uforanderligt råt dokument uploadet til en Trail — PDF, DOCX, MD, almindelig tekst. Kilder bliver aldrig redigeret efter ingest; Neuroner kompileres FRA dem og citerer dem ved filnavn."
+      },
+      "relatedTerms": ["neuron", "ingest", "reference"]
+    },
+    {
+      "id": "curator",
+      "label": { "en": "Curator", "da": "Kurator" },
+      "definition": {
+        "en": "The human who decides what lives in a Trail. Curators review candidates in the Queue, approve or reject them, and occasionally edit Neurons directly. The Curator is the source of truth — the LLM proposes, the Curator disposes.",
+        "da": "Det menneske der bestemmer hvad der lever i en Trail. Kuratorer gennemgår kandidater i Køen, godkender eller afviser dem, og redigerer af og til Neuroner direkte. Kuratoren er den endelige autoritet — LLM'en foreslår, Kuratoren beslutter."
+      },
+      "relatedTerms": ["queue", "candidate"]
+    },
+    {
+      "id": "queue",
+      "label": { "en": "Curation Queue", "da": "Kurations-kø" },
+      "definition": {
+        "en": "The list of pending changes waiting for the Curator's decision. Every write into a Trail (new Neuron, edit, archive, lint alert) lands here first; the Queue is the ONLY path that can modify Neurons.",
+        "da": "Listen af afventende ændringer der venter på Kuratorens beslutning. Alle skrivninger i en Trail (ny Neuron, redigering, arkivering, lint-advarsel) lander her først; Køen er den ENESTE vej der kan ændre Neuroner."
+      },
+      "relatedTerms": ["candidate", "curator", "auto-approve"]
+    },
+    {
+      "id": "candidate",
+      "label": { "en": "Candidate", "da": "Kandidat" },
+      "definition": {
+        "en": "A single proposed change to a Trail — a new Neuron, an edit, an archive, or an alert from Lint. Each Candidate has a status (pending, approved, rejected) and a set of Actions the Curator can choose from.",
+        "da": "En enkelt foreslået ændring til en Trail — en ny Neuron, en redigering, en arkivering eller en advarsel fra Lint. Hver Kandidat har en status (afventer, godkendt, afvist) og et sæt Handlinger som Kuratoren kan vælge imellem."
+      },
+      "relatedTerms": ["queue", "action", "fingerprint"]
+    },
+    {
+      "id": "action",
+      "label": { "en": "Action", "da": "Handling" },
+      "definition": {
+        "en": "One of the resolution options on a Candidate. Default Candidates have Approve + Reject; richer Candidates (contradiction, orphan, stale) carry producer-specific Actions like \"Retire Neuron\", \"Link to sources\", \"Dismiss as false positive\". Each Action has a plain-language explanation describing what happens when you click it.",
+        "da": "En af beslutnings-mulighederne på en Kandidat. Standard-kandidater har Godkend + Afvis; rigere Kandidater (modsigelse, forældreløs, forældet) bærer producer-specifikke Handlinger som \"Arkiver Neuron\", \"Link til kilder\", \"Afvis som falsk positiv\". Hver Handling har en lægmand-forklaring der beskriver hvad der sker når du klikker på den."
+      },
+      "relatedTerms": ["candidate", "effect"]
+    },
+    {
+      "id": "lint",
+      "label": { "en": "Lint", "da": "Lint" },
+      "definition": {
+        "en": "Background scan of a Trail for structural problems — orphan Neurons (no citations), stale Neurons (untouched too long), contradictions (two Neurons with conflicting claims). Findings land as Candidates in the Queue. Runs on a schedule (nightly) and reactively on curator decisions.",
+        "da": "Baggrunds-scanning af en Trail for strukturelle problemer — forældreløse Neuroner (ingen citationer), forældede Neuroner (urørt for længe), modsigelser (to Neuroner med modstridende påstande). Fund lander som Kandidater i Køen. Kører på tidsplan (hver nat) og reaktivt på kurator-beslutninger."
+      },
+      "relatedTerms": ["orphan-neuron", "stale-neuron", "contradiction", "fingerprint"]
+    },
+    {
+      "id": "orphan-neuron",
+      "label": { "en": "Orphan Neuron", "da": "Forældreløs Neuron" },
+      "definition": {
+        "en": "A Neuron that cites no Sources in its frontmatter. Either the compiler wrote it without linking evidence, or the citation was lost in an edit. Lint flags it so the Curator can link the claims to Sources or archive the Neuron if its claims can't be defended.",
+        "da": "En Neuron der ikke citerer nogen Kilder i sit frontmatter. Enten skrev kompileren den uden at linke til evidens, eller også er citationen gået tabt i en redigering. Lint markerer det så Kuratoren kan linke påstandene til Kilder eller arkivere Neuronen hvis påstandene ikke kan forsvares."
+      },
+      "relatedTerms": ["neuron", "source", "lint", "reference"]
+    },
+    {
+      "id": "stale-neuron",
+      "label": { "en": "Stale Neuron", "da": "Forældet Neuron" },
+      "definition": {
+        "en": "A Neuron that hasn't been touched in a long time (default 90 days). Not automatically wrong, but the most likely to have drifted from what its Sources now say. Lint flags it so the Curator can confirm it's still accurate, refresh it from the Source, or archive.",
+        "da": "En Neuron der ikke har været rørt i lang tid (standard 90 dage). Ikke automatisk forkert, men den der har størst chance for at være drevet væk fra hvad Kilderne siger nu. Lint markerer den så Kuratoren kan bekræfte den stadig er præcis, opfriske den fra Kilden eller arkivere."
+      },
+      "relatedTerms": ["neuron", "lint", "source"]
+    },
+    {
+      "id": "contradiction",
+      "label": { "en": "Contradiction", "da": "Modsigelse" },
+      "definition": {
+        "en": "Two Neurons whose claims cannot both be true under standard reading. Detected by pairwise LLM comparison after a new or updated Neuron is approved. The Curator decides which side is right: retire one, reconcile manually, flag the Source, or dismiss as a false positive.",
+        "da": "To Neuroner hvis påstande ikke begge kan være sande under almindelig læsning. Opdaget af parvis LLM-sammenligning efter en ny eller opdateret Neuron er godkendt. Kuratoren beslutter hvilken side der har ret: arkiver den ene, forlig manuelt, markér Kilden, eller afvis som falsk positiv."
+      },
+      "relatedTerms": ["neuron", "lint", "action"]
+    },
+    {
+      "id": "false-positive",
+      "label": { "en": "False Positive", "da": "Falsk Positiv" },
+      "definition": {
+        "en": "A Lint finding that isn't actually a problem. The detector got it wrong — different phrasing looked like a contradiction, an intentionally-axiomatic page looked like an orphan, an evergreen reference looked stale. Dismissing as false positive blocks the finding from re-surfacing (in Trusting policy mode).",
+        "da": "Et Lint-fund der ikke reelt er et problem. Detektoren tog fejl — forskellig formulering lignede en modsigelse, en bevidst aksiomatisk side lignede en forældreløs, en evigtgyldig reference virkede forældet. At afvise som falsk positiv blokerer fundet fra at dukke op igen (i Tillidsfuld policy-tilstand)."
+      },
+      "relatedTerms": ["lint", "action", "lint-policy"]
+    },
+    {
+      "id": "lint-policy",
+      "label": { "en": "Lint Policy", "da": "Lint-politik" },
+      "definition": {
+        "en": "Per-Trail setting controlling what happens to rejected Lint findings. \"Trusting\" (default) permanently suppresses them — no nag-loop. \"Strict\" lets them re-fire on the next Lint pass for a second review. Versioned fingerprints re-qualify findings after the Neuron has actually been edited, independent of policy.",
+        "da": "Per-Trail indstilling der styrer hvad der sker med afviste Lint-fund. \"Tillidsfuld\" (standard) undertrykker dem permanent — ingen nag-løkke. \"Streng\" lader dem dukke op igen på næste Lint-pass til en anden gennemgang. Versionerede fingeraftryk kvalificerer fund igen når Neuronen faktisk er blevet redigeret, uanset politik."
+      },
+      "relatedTerms": ["lint", "fingerprint", "false-positive"]
+    },
+    {
+      "id": "fingerprint",
+      "label": { "en": "Fingerprint", "da": "Fingeraftryk" },
+      "definition": {
+        "en": "A stable identifier for a Lint finding, used to dedupe re-runs. A nightly Lint pass that finds the same orphan Neuron as yesterday skips re-emitting it. Includes the Neuron's version so a substantive rewrite creates a fresh fingerprint that bypasses old suppressions.",
+        "da": "En stabil identifikator for et Lint-fund, brugt til at fjerne dubletter ved gen-kørsler. Et nattetids Lint-pass der finder samme forældreløse Neuron som i går springer re-emission over. Inkluderer Neuronens version, så en substantiel omskrivning skaber et nyt fingeraftryk der omgår gamle undertrykkelser."
+      },
+      "relatedTerms": ["lint", "lint-policy"]
+    },
+    {
+      "id": "auto-approve",
+      "label": { "en": "Auto-approve", "da": "Auto-godkend" },
+      "definition": {
+        "en": "Policy that approves a Candidate without curator review. Fires for trusted pipelines (e.g. ingest-summary) and for candidates above a confidence threshold. Human-originated candidates never auto-approve by design — people click \"submit\", machines emit confidences.",
+        "da": "Politik der godkender en Kandidat uden kurator-gennemgang. Udløses for betroede pipelines (fx ingest-resumé) og for kandidater over en sikkerhedsgrænse. Menneske-initierede kandidater auto-godkendes aldrig efter design — mennesker klikker \"indsend\", maskiner udsender sikkerheder."
+      },
+      "relatedTerms": ["candidate", "curator", "confidence"]
+    },
+    {
+      "id": "ingest",
+      "label": { "en": "Ingest", "da": "Ingest" },
+      "definition": {
+        "en": "The process of reading a new Source, extracting its text, chunking it for search, and compiling one or more Neurons from it. Ingest produces ingest-summary candidates that auto-approve if confidence is high enough.",
+        "da": "Processen med at læse en ny Kilde, udtrække dens tekst, opdele den til søgning og kompilere en eller flere Neuroner fra den. Ingest producerer ingest-resumé-kandidater der auto-godkendes hvis sikkerheden er høj nok."
+      },
+      "relatedTerms": ["source", "neuron", "auto-approve"]
+    },
+    {
+      "id": "reference",
+      "label": { "en": "Reference", "da": "Reference" },
+      "definition": {
+        "en": "A tracked citation from a Neuron to a Source (provenance — \"this claim came from this document\") OR a [[wiki-link]] from a Neuron to another Neuron (navigation — \"see also\"). Lives in the document_references and wiki_backlinks tables respectively.",
+        "da": "En sporet citation fra en Neuron til en Kilde (herkomst — \"denne påstand kom fra dette dokument\") ELLER et [[wiki-link]] fra en Neuron til en anden Neuron (navigation — \"se også\"). Lever i tabellerne document_references og wiki_backlinks."
+      },
+      "relatedTerms": ["neuron", "source", "backlink", "frontmatter"]
+    },
+    {
+      "id": "frontmatter",
+      "label": { "en": "Frontmatter", "da": "Frontmatter" },
+      "definition": {
+        "en": "The YAML block at the top of every Neuron, between two `---` lines. Holds structured metadata: title, tags, date, and `sources: [...]` — the filenames the Neuron's claims came from. The reference extractor reads `sources` on save and writes the document_references rows that the backlink graph + orphan-detector rely on. Missing `sources` → Neuron shows up as an orphan on next Lint run.",
+        "da": "YAML-blokken øverst i hver Neuron, mellem to `---`-linjer. Holder struktureret metadata: title, tags, date, og `sources: [...]` — filnavnene på de Kilder Neuronens påstande stammer fra. Reference-ekstraktoren læser `sources` ved gemning og skriver document_references-rækkerne som baglink-grafen og forældreløs-detektoren bygger på. Manglende `sources` → Neuronen dukker op som forældreløs ved næste Lint-kørsel.\n\nDansk har intet etableret ord for dette; \"frontmatter\" bruges som låneord i dansk Jekyll/Hugo/static-site-tradition. Trail følger samme konvention."
+      },
+      "relatedTerms": ["neuron", "reference", "source", "orphan-neuron"]
+    },
+    {
+      "id": "backlink",
+      "label": { "en": "Backlink", "da": "Baglink" },
+      "definition": {
+        "en": "The inverse of a wiki-link. If Neuron A contains [[B]], then B has a backlink FROM A. Shown on the Neuron reader as \"N pages link here\" — lets the Curator see how interconnected a Neuron is.",
+        "da": "Det omvendte af et wiki-link. Hvis Neuron A indeholder [[B]], så har B et baglink FRA A. Vist på Neuron-læseren som \"N sider linker hertil\" — lader Kuratoren se hvor forbundet en Neuron er."
+      },
+      "relatedTerms": ["neuron", "reference"]
+    },
+    {
+      "id": "effect",
+      "label": { "en": "Effect", "da": "Effekt" },
+      "definition": {
+        "en": "The engine-level operation behind an Action. Examples: approve (commit the candidate's content), reject (discard), retire-neuron (archive a specific page), flag-source (mark a Source as untrustworthy), acknowledge (mark as handled manually). Multiple Actions can share an effect — a contradiction's \"Retire A\" and \"Retire B\" both use retire-neuron with different documentId args.",
+        "da": "Motor-niveau-operationen bag en Handling. Eksempler: godkend (commit kandidatens indhold), afvis (kasser), arkiver-neuron (arkiver en specifik side), markér-kilde (markér en Kilde som upålidelig), anerkend (markér som håndteret manuelt). Flere Handlinger kan dele en effekt — en modsigelses \"Arkiver A\" og \"Arkiver B\" bruger begge arkiver-neuron med forskellige documentId-argumenter."
+      },
+      "relatedTerms": ["action", "candidate"]
+    },
+    {
+      "id": "confidence",
+      "label": { "en": "Confidence", "da": "Sikkerhed" },
+      "definition": {
+        "en": "A 0-1 number on every machine-generated Candidate representing how sure the pipeline is. High confidence (≥0.8 by default) can auto-approve via policy; lower confidence lands pending for Curator review. Human-submitted candidates always land pending regardless.",
+        "da": "Et 0-1 tal på hver maskine-genereret Kandidat der repræsenterer hvor sikker pipelinen er. Høj sikkerhed (≥0,8 som standard) kan auto-godkendes via politik; lavere sikkerhed lander afventende til Kurator-gennemgang. Menneske-indsendte kandidater lander altid afventende uanset."
+      },
+      "relatedTerms": ["candidate", "auto-approve"]
+    },
+    {
+      "id": "auto-link",
+      "label": { "en": "Auto-link", "da": "Auto-link" },
+      "definition": {
+        "en": "A one-click action on an Orphan Neuron finding. The LLM reads the Neuron's content, reviews the top-matching Sources in the same Trail (pre-filtered by keyword overlap), and proposes the 1–3 Sources the Neuron's claims most likely came from. If confident, it patches the Neuron's frontmatter `sources: [...]` and the orphan alert disappears. If nothing matches clearly, it asks the Curator to link manually. Uses Claude Haiku to keep the cost predictable.",
+        "da": "Ét-klik-handling på et Forældreløs-Neuron-fund. LLM'en læser Neuronens indhold, gennemgår de tættest matchende Kilder i samme Trail (forhåndsfiltreret på nøgleords-overlap) og foreslår de 1-3 Kilder som Neuronens påstande mest sandsynligt kom fra. Er den sikker, patcher den Neuronens frontmatter `sources: [...]` og forældreløs-advarslen forsvinder. Finder den ikke et tydeligt match, beder den Kuratoren linke manuelt. Bruger Claude Haiku for forudsigelige omkostninger."
+      },
+      "relatedTerms": ["orphan-neuron", "frontmatter", "source", "reference", "llm"]
+    },
+    {
+      "id": "llm",
+      "label": { "en": "LLM", "da": "LLM" },
+      "definition": {
+        "en": "Large Language Model — the AI that does the heavy lifting inside Trail. Two specific jobs: (1) Compile Neurons from Sources during ingest (read the Source, extract concepts + claims, write structured markdown with provenance); (2) Lint Neurons for contradictions, propose orphan→Source links, translate action labels between EN/DA. Trail runs the LLM via the local Claude Code CLI — no Anthropic API key required, Max subscription billing. The Curator is always the final authority: the LLM proposes, the Curator disposes.",
+        "da": "Large Language Model — den AI der gør det tunge arbejde i Trail. To specifikke opgaver: (1) Kompilér Neuroner fra Kilder under ingest (læs Kilden, udtræk koncepter + påstande, skriv struktureret markdown med herkomst); (2) Lint Neuroner for modsigelser, foreslå forældreløs→Kilde-links, oversæt handlings-labels mellem EN/DA. Trail kører LLM'en via den lokale Claude Code CLI — ingen Anthropic API-nøgle krævet, Max-abonnements-afregning. Kuratoren er altid den endelige autoritet: LLM'en foreslår, Kuratoren beslutter."
+      },
+      "relatedTerms": ["ingest", "neuron", "source", "curator", "lint"]
+    }
+  ]
+}

@@ -61,31 +61,45 @@ async function runIngest(job: IngestJob): Promise<void> {
   const today = new Date().toISOString().slice(0, 10);
   const sourcePath = `${doc.path}${doc.filename}`;
 
-  const prompt = `You are the wiki compiler for knowledge base "${kb.name}" (slug: "${kb.slug}").
+  // User-controlled strings (filename, title, KB name/slug, path) are
+  // wrapped with JSON.stringify so quote/backtick/newline payloads can't
+  // break out of their string literals and redirect the compiler's
+  // behaviour. JSON produces a valid quoted literal AND the LLM
+  // round-trips the unescaped form when echoing the value back in a
+  // tool call — so `foo"bar.pdf` stays `foo"bar.pdf` at the MCP boundary.
+  const sFilename = JSON.stringify(doc.filename);
+  const sSourcePath = JSON.stringify(sourcePath);
+  const sKbName = JSON.stringify(kb.name);
+  const sKbSlug = JSON.stringify(kb.slug);
+  const summaryTitle = doc.title ?? doc.filename.replace(/\.\w+$/, '');
+  const sSummaryTitle = JSON.stringify(summaryTitle);
+  const sLogHeading = JSON.stringify(doc.title ?? doc.filename);
 
-A new source has been added: "${doc.filename}" at path "${sourcePath}".
+  const prompt = `You are the wiki compiler for knowledge base ${sKbName} (slug: ${sKbSlug}).
+
+A new source has been added: ${sFilename} at path ${sSourcePath}.
 
 Your job is to ingest this source into the wiki. Follow these steps exactly:
 
-1. Call \`read\` with path="${sourcePath}" to read the new source.
+1. Call \`read\` with path=${sSourcePath} to read the new source.
 
 2. Call \`search\` with mode="list" and kind="wiki" to see the current wiki structure.
 
 3. Call \`read\` with path="/neurons/overview.md" to understand the current wiki state.
 
 4. Create a source summary page:
-   Call \`write\` with command="create", path="/neurons/sources/", title="${doc.title ?? doc.filename.replace(/\.\w+$/, '')}", and content that includes:
-   - YAML frontmatter with title, tags (array), date (${today}), sources (["${doc.filename}"])
+   Call \`write\` with command="create", path="/neurons/sources/", title=${sSummaryTitle}, and content that includes:
+   - YAML frontmatter with title, tags (array), date (${today}), sources ([${sFilename}])
    - Key takeaways and findings
    - Important quotes or data points
 
 5. For each KEY CONCEPT found in the source (aim for 2-5 concepts):
    - Check if a concept page already exists (you saw the wiki listing in step 2).
-   - If it exists: \`read\` it, then \`write\` with command="str_replace" to integrate new information. Use the full path (e.g. "/neurons/concepts/concept-name.md") as the title parameter.
-   - If it doesn't exist: \`write\` with command="create", path="/neurons/concepts/", and full content with frontmatter.
+   - If it exists: \`read\` it, then \`write\` with command="str_replace" to integrate new information. Use the full path (e.g. "/neurons/concepts/concept-name.md") as the title parameter. CRITICAL: preserve existing frontmatter but ADD ${sFilename} to its \`sources: [...]\` array (de-dup if already listed). If the page has no \`sources\` field yet, insert one listing ${sFilename}.
+   - If it doesn't exist: \`write\` with command="create", path="/neurons/concepts/", and full content INCLUDING frontmatter with \`sources: [${sFilename}]\`.
 
 6. For each KEY ENTITY (person, organization, tool) found:
-   - Same pattern under /neurons/entities/.
+   - Same pattern under /neurons/entities/. Same \`sources\` frontmatter rule applies — every entity page MUST list ${sFilename} in its \`sources: [...]\`.
 
 7. Update the overview page:
    \`write\` with command="str_replace", title="/neurons/overview.md" — reflect the new knowledge and link to the new pages.
@@ -93,7 +107,7 @@ Your job is to ingest this source into the wiki. Follow these steps exactly:
 8. Log the ingest:
    \`write\` with command="append", title="/neurons/log.md", content:
 
-   ## [${today}] ingest | ${doc.title ?? doc.filename}
+   ## [${today}] ingest | ${sLogHeading}
    - Summary: (1-2 sentences)
    - Pages created: (list)
    - Pages updated: (list)
@@ -102,7 +116,8 @@ Your job is to ingest this source into the wiki. Follow these steps exactly:
 IMPORTANT RULES:
 - Be thorough but concise. Every claim should reference its source.
 - Use [[page-name]] for internal wiki cross-references.
-- All pages must have YAML frontmatter with title, tags, date.
+- ALL pages you create or update under /neurons/concepts/, /neurons/entities/, or /neurons/sources/ MUST have a \`sources: [...]\` field in their YAML frontmatter listing every Source filename the page draws claims from. The orphan-detector flags pages missing this field, so a missing \`sources\` list is a bug, not a shortcut. When updating an existing page, merge — don't replace — its existing sources array.
+- Required frontmatter fields on every page: title, tags, date, sources.
 - Do NOT create pages for trivial concepts. Focus on the 2-5 most important ones.
 - If the source is very short or trivial, just create the summary and update overview/log.
 - You do not need to pass knowledge_base to tool calls — the default KB is already set.`;

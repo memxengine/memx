@@ -27,7 +27,7 @@
  *     handles on the first minute)
  */
 import { queueCandidates, documents, type TrailDatabase } from '@trail/db';
-import { and, eq, isNull, like, or } from 'drizzle-orm';
+import { and, eq, like, or } from 'drizzle-orm';
 import type { CandidateAction, QueueCandidate } from '@trail/shared';
 import { ensureCandidateInLocale } from './translation.js';
 
@@ -98,8 +98,15 @@ async function run(trail: TrailDatabase): Promise<void> {
 
 /**
  * Walk every pending candidate whose metadata carries a `lintFingerprint`
- * starting with `lint:` AND has null actions, and attach the right action
- * set based on the fingerprint prefix. Returns the number of rows updated.
+ * starting with `lint:` and attach / refresh the right action set based on
+ * the fingerprint prefix. Returns the number of rows updated.
+ *
+ * Runs on candidates with NULL actions (first-time enrichment) AND on
+ * candidates whose stored actions don't include every expected action id
+ * for the current detector contract (rebuild after the lint surface
+ * evolved — e.g. F90.1 added 'auto-link-sources' to orphan-Neuron
+ * findings). Idempotent: candidates whose stored actions already match
+ * the current contract are skipped, including their translation cache.
  *
  * The action sets are kept in sync with the detector source-of-truth
  * (packages/core/src/lint/*.ts). Add a new detector → add a branch here.
@@ -111,12 +118,12 @@ async function enrichActionsFromFingerprints(trail: TrailDatabase): Promise<numb
       tenantId: queueCandidates.tenantId,
       title: queueCandidates.title,
       metadata: queueCandidates.metadata,
+      actions: queueCandidates.actions,
     })
     .from(queueCandidates)
     .where(
       and(
         eq(queueCandidates.status, 'pending'),
-        isNull(queueCandidates.actions),
         or(
           like(queueCandidates.metadata, '%"lintFingerprint":"lint:orphan-neuron:%'),
           like(queueCandidates.metadata, '%"lintFingerprint":"lint:orphan-source:%'),
@@ -131,14 +138,49 @@ async function enrichActionsFromFingerprints(trail: TrailDatabase): Promise<numb
   for (const row of rows) {
     const actions = await buildActionsFromMetadata(trail, row as EnrichCandidate);
     if (!actions) continue;
+    if (storedActionsMatch(row.actions, actions)) continue;
+    // When we overwrite the action set, the per-action translation cache
+    // on the candidate (stored on each action's label/explanation.da) is
+    // stale by construction — new EN strings need new DA strings. Clear
+    // the whole `translations` column so ensureCandidateInLocale re-runs
+    // the LLM on next view. Coarser than strictly necessary (also clears
+    // title/content translations) but cheap and honest.
     await trail.db
       .update(queueCandidates)
-      .set({ actions: JSON.stringify(actions) })
+      .set({ actions: JSON.stringify(actions), translations: null })
       .where(eq(queueCandidates.id, row.id))
       .run();
     updated += 1;
   }
   return updated;
+}
+
+/**
+ * True when every action id in `fresh` is already present in `stored`.
+ * Cheap contract check that avoids re-stamping candidates whose action
+ * set matches the current detector output. Note: compares ids only, not
+ * label/explanation text — translations live on the translations column
+ * and are cleared separately when we DO re-stamp.
+ */
+function storedActionsMatch(storedRaw: string | null, fresh: CandidateAction[]): boolean {
+  if (!storedRaw) return false;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(storedRaw);
+  } catch {
+    return false;
+  }
+  if (!Array.isArray(parsed)) return false;
+  const storedIds = new Set<string>();
+  for (const a of parsed) {
+    if (a && typeof a === 'object' && typeof (a as { id?: unknown }).id === 'string') {
+      storedIds.add((a as { id: string }).id);
+    }
+  }
+  for (const a of fresh) {
+    if (!storedIds.has(a.id)) return false;
+  }
+  return true;
 }
 
 interface EnrichCandidate {
@@ -211,15 +253,29 @@ function orphanNeuronActions(docId: string, d: DocLabel): CandidateAction[] {
   const link = wikiLink(d);
   return [
     {
+      id: 'auto-link-sources',
+      effect: 'auto-link-sources',
+      args: { documentId: docId },
+      label: { en: 'Auto-link sources' },
+      explanation: {
+        en:
+          `Ask the LLM to infer which Source documents ${link} most likely draws its claims ` +
+          `from, then patch its frontmatter \`sources: [...]\` accordingly. The reference ` +
+          `extractor picks that up and this alert resolves on the next lint run. If the LLM ` +
+          `finds no plausible match you'll get a toast and the finding stays pending for ` +
+          `manual linking.`,
+      },
+    },
+    {
       id: 'link-sources',
       effect: 'acknowledge',
       args: { documentId: docId },
-      label: { en: 'Link to sources' },
+      label: { en: 'Link manually' },
       explanation: {
         en:
           `Open ${link} in the Neurons tab and add \`sources: [...]\` to its frontmatter ` +
           `listing the Source filenames its claims came from. The reference extractor picks ` +
-          `those up on save and this alert resolves on the next lint pass. Nothing else is ` +
+          `those up on save and this alert resolves on the next lint run. Nothing else is ` +
           `modified now — you do the linking yourself.`,
       },
     },
@@ -262,7 +318,7 @@ function orphanSourceActions(docId: string, label: string): CandidateAction[] {
         en:
           `Leave "${label}" in place — you plan to cite it in a future Neuron, or the ` +
           `compiler should eventually pick it up. Nothing changes; this alert will re-fire ` +
-          `on the next lint pass if the Source is still uncited.`,
+          `on the next lint run if the Source is still uncited.`,
       },
     },
     {

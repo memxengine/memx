@@ -122,8 +122,8 @@
       "reopen": "Genåbn",
       "reopenSuccess": "Genåbnet — tilbage i Afventer.",
       "reopenHint": "Sætter kandidaten tilbage i Afventer-køen så du kan vælge igen.",
-      "autoLinkSuccess": "Linket til: {sources}. Bliver ryddet ved næste lint-kørsel.",
-      "autoLinkNoSources": "LLM'en kunne ikke finde nogen sandsynlige Kilder til denne Neuron. Åbn editoren og link dem manuelt."
+      "autoLinkSuccess": "Neuronen er nu koblet til: {sources}",
+      "autoLinkNoSources": "Auto-link fandt ikke et sikkert match. Åbn editoren og vælg kilder selv."
     }
   },
   "sources": {

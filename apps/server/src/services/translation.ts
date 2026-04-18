@@ -228,6 +228,19 @@ Hard rules:
   untranslated — it's verbatim source material. Translate only the
   framing sentence that precedes the blockquote if any.
 - Keep each action \`label\` a short button text (1-4 words).
+- Trail-specific glossary (apply when translating to Danish):
+  - "lint pass" / "lint run" → "lint-kørsel" (never "lint-køre", never "lint-pass")
+  - "Neuron" → "Neuron" (do NOT translate; it is a product term)
+  - "Trail" / "Trails" → "Trail" / "Trails" (do NOT translate; product name)
+  - "Source" (when referring to a source document) → "Kilde"
+  - "frontmatter" → "frontmatter" (keep English; technical term)
+  - "curator" → "kurator"
+  - "link" / "linking" (as verb) → "link" / "linke" / "linket" (do NOT translate to "forbind")
+  - "Auto-link sources" → "Auto-link kilder" (never "Auto-forbind")
+  - "Link manually" → "Link manuelt" (never "Forbind manuelt")
+  - "false positive" → "falsk alarm" (plain-language, never "falskt positiv")
+  - "Dismiss" → "Afvis"
+  - "Archive" → "Arkivér"
 
 Return ONLY a JSON object with the same keys as the input. For actions,
 return them as an array in the same order:

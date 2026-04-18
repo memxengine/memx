@@ -165,6 +165,13 @@ export const CandidateEffectKindEnum = z.enum([
   'flag-source',
   'refresh-from-source',
   'mark-still-relevant',
+  // Orphan-Neuron recovery: LLM infers which Sources the Neuron's claims
+  // most likely came from and patches the Neuron's frontmatter `sources:
+  // [...]` so the reference-extractor can populate document_references on
+  // next save. The inferred filenames travel in args.sources; the target
+  // Neuron id is args.documentId. See apps/server/src/services/source-inferer.ts
+  // for the LLM call — core's handler assumes args.sources is populated.
+  'auto-link-sources',
 ]);
 
 export const CandidateActionSchema = z.object({

@@ -99,16 +99,30 @@ export async function detectOrphans(
       },
       actions: [
         {
+          id: 'auto-link-sources',
+          effect: 'auto-link-sources',
+          args: { documentId: w.id },
+          label: { en: 'Auto-link sources' },
+          explanation: {
+            en:
+              `Ask the LLM to infer which Source documents [[${stripMd(w.filename)}|${label}]] ` +
+              `most likely draws its claims from, then patch its frontmatter \`sources: [...]\` ` +
+              `accordingly. The reference extractor picks that up and this alert resolves on ` +
+              `the next lint run. If the LLM finds no plausible match you'll get a toast and ` +
+              `the finding stays pending for manual linking.`,
+          },
+        },
+        {
           id: 'link-sources',
           effect: 'acknowledge',
           args: { documentId: w.id },
-          label: { en: 'Link to sources' },
+          label: { en: 'Link manually' },
           explanation: {
             en:
               `Open [[${stripMd(w.filename)}|${label}]] in the Neurons tab and add ` +
               `\`sources: [...]\` to its frontmatter listing the Source filenames its claims ` +
               `came from. The reference extractor picks those up on save and this alert ` +
-              `resolves on the next lint pass. Nothing else is modified now — you do the ` +
+              `resolves on the next lint run. Nothing else is modified now — you do the ` +
               `linking yourself.`,
           },
         },
@@ -213,7 +227,7 @@ export async function detectOrphans(
             en:
               `Leave "${label}" in place — you plan to cite it in a future Neuron, or the ` +
               `compiler should eventually pick it up. Nothing changes; this alert will re-fire ` +
-              `on the next lint pass if the Source is still uncited.`,
+              `on the next lint run if the Source is still uncited.`,
           },
         },
         {

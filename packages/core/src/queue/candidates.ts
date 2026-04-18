@@ -493,6 +493,8 @@ export async function resolveCandidate(
       return executeFlagSource(trail, candidate, action, actor, ctx);
     case 'mark-still-relevant':
       return executeMarkStillRelevant(trail, candidate, action, actor, ctx);
+    case 'auto-link-sources':
+      return executeAutoLinkSources(trail, candidate, action, payload, actor, ctx);
     case 'merge-into-new':
     case 'refresh-from-source':
       throw new Error(`Effect "${action.effect}" is planned for a later iteration.`);
@@ -973,6 +975,199 @@ async function executeMarkStillRelevant(
     autoApproved: ctx.auto,
     status: 'approved',
   };
+}
+
+// ── Effect: auto-link-sources ──────────────────────────────────────
+// Orphan-Neuron recovery. The server route pre-computes which Source
+// filenames the Neuron's claims most likely came from (via an LLM pass
+// over the Neuron content + the KB's Source list) and injects them into
+// `action.args.sources`. This handler's job is pure DB: patch the
+// Neuron's frontmatter to add `sources: [...]`, bump version, emit a
+// wiki_event, and mark the candidate approved. The reference-extractor
+// subscribes to candidate_approved and writes the document_references
+// rows on the fly, so the next lint pass no longer sees the Neuron as
+// an orphan.
+//
+// Guards:
+//   - args.documentId must resolve to a wiki Neuron in the same tenant.
+//   - args.sources must be a non-empty string array. Empty means the
+//     inferer couldn't find any plausible Sources — throwing here is
+//     deliberate so the UI can surface "couldn't auto-link" and the
+//     candidate stays pending for manual handling.
+
+async function executeAutoLinkSources(
+  trail: TrailDatabase,
+  candidate: QueueCandidate,
+  action: CandidateAction,
+  payload: ResolveCandidatePayload,
+  actor: Actor,
+  ctx: CommitContext,
+): Promise<ResolutionResult> {
+  // documentId is design-time — stamped on the candidate's action when
+  // the lint finding was emitted — so we read it from the stored action.
+  // sources is runtime — the server route runs the LLM inferer and
+  // injects the proposed filenames into payload.args before calling
+  // resolveCandidate. Reading from payload keeps the stored action
+  // immutable while still letting the effect mutate the target doc.
+  const targetId = asString(action.args?.documentId);
+  if (!targetId) {
+    throw new Error(`auto-link-sources action missing args.documentId on ${candidate.id}`);
+  }
+  const sources = asStringArray(payload.args?.sources);
+  if (!sources || sources.length === 0) {
+    throw new Error(
+      `auto-link-sources action on ${candidate.id} has no payload.args.sources — server must populate this via the inferer before calling resolveCandidate`,
+    );
+  }
+
+  return trail.db.transaction(async (tx) => {
+    const doc = await tx
+      .select()
+      .from(documents)
+      .where(
+        and(
+          eq(documents.id, targetId),
+          eq(documents.tenantId, candidate.tenantId),
+          eq(documents.kind, 'wiki'),
+        ),
+      )
+      .get();
+    if (!doc) throw new Error(`auto-link-sources: target Neuron not found: ${targetId}`);
+
+    const patched = addSourcesToFrontmatter(doc.content ?? '', sources);
+    if (patched === doc.content) {
+      // Every inferred source already present — nothing to write. Still
+      // resolve the candidate so the orphan-finding doesn't nag on next
+      // lint pass; the reference-extractor's next pass will pick up the
+      // existing frontmatter.
+      await finaliseApproved(tx, candidate.id, actor, doc.id, action.id, ctx);
+      return {
+        candidateId: candidate.id,
+        actionId: action.id,
+        effect: action.effect,
+        documentId: doc.id,
+        wikiEventId: null,
+        autoApproved: ctx.auto,
+        status: 'approved',
+      };
+    }
+
+    const newVersion = doc.version + 1;
+    const prevEventId = await lastEventIdFor(tx, candidate.tenantId, doc.id);
+
+    await tx
+      .update(documents)
+      .set({
+        content: patched,
+        fileSize: patched.length,
+        version: newVersion,
+        updatedAt: ctx.now,
+      })
+      .where(eq(documents.id, doc.id))
+      .run();
+
+    const eventId = await emitEvent(tx, {
+      tenantId: candidate.tenantId,
+      documentId: doc.id,
+      eventType: 'edited',
+      previousVersion: doc.version,
+      newVersion,
+      prevEventId,
+      contentSnapshot: patched,
+      candidateId: candidate.id,
+      actor,
+      ctx,
+    });
+
+    await finaliseApproved(tx, candidate.id, actor, doc.id, action.id, ctx);
+    return {
+      candidateId: candidate.id,
+      actionId: action.id,
+      effect: action.effect,
+      documentId: doc.id,
+      wikiEventId: eventId,
+      autoApproved: ctx.auto,
+      status: 'approved',
+    };
+  });
+}
+
+/**
+ * Add a `sources: [...]` line to a Neuron's YAML frontmatter. Merges
+ * with an existing `sources` field if present (dedup, preserve order).
+ * Creates a frontmatter block if the Neuron has none at all. Exported
+ * for tests.
+ */
+export function addSourcesToFrontmatter(content: string, newSources: string[]): string {
+  const cleaned = newSources.map((s) => s.trim()).filter(Boolean);
+  if (cleaned.length === 0) return content;
+
+  const fmMatch = content.match(/^(---\s*\n)([\s\S]*?)(\n---\s*(?:\r?\n|$))/);
+  if (!fmMatch) {
+    const yaml = `sources: [${cleaned.map((s) => JSON.stringify(s)).join(', ')}]`;
+    return `---\n${yaml}\n---\n\n${content}`;
+  }
+
+  const [whole, openRaw, bodyRaw, closeRaw] = fmMatch;
+  const open = openRaw!;
+  const body = bodyRaw!;
+  const close = closeRaw!;
+  const rest = content.slice(whole.length);
+
+  // Existing single-line sources: sources: ["A.pdf", "B.pdf"]
+  const oneLine = body.match(/^sources:\s*\[(.*?)\]\s*$/m);
+  if (oneLine) {
+    const existing = oneLine[1]!
+      .split(',')
+      .map((s) => s.trim().replace(/^["']|["']$/g, ''))
+      .filter(Boolean);
+    const merged = dedupStable([...existing, ...cleaned]);
+    const newLine = `sources: [${merged.map((s) => JSON.stringify(s)).join(', ')}]`;
+    const newBody = body.replace(oneLine[0], newLine);
+    return open + newBody + close + rest;
+  }
+
+  // Existing multi-line block:
+  //   sources:
+  //     - "A.pdf"
+  //     - B.pdf
+  const block = body.match(/^sources:\s*\n((?:\s+-\s+.+(?:\r?\n|$))+)/m);
+  if (block) {
+    const existing = block[1]!
+      .split('\n')
+      .map((line) => line.match(/^\s+-\s+(.+)$/)?.[1])
+      .filter((s): s is string => !!s)
+      .map((s) => s.trim().replace(/^["']|["']$/g, ''));
+    const merged = dedupStable([...existing, ...cleaned]);
+    const newLine = `sources: [${merged.map((s) => JSON.stringify(s)).join(', ')}]`;
+    const newBody = body.replace(block[0].replace(/\n$/, ''), newLine);
+    return open + newBody + close + rest;
+  }
+
+  // No sources field — append one to the frontmatter.
+  const yaml = `sources: [${cleaned.map((s) => JSON.stringify(s)).join(', ')}]`;
+  const newBody = body.replace(/\s*$/, '') + '\n' + yaml;
+  return open + newBody + close + rest;
+}
+
+function dedupStable(arr: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const s of arr) {
+    if (seen.has(s)) continue;
+    seen.add(s);
+    out.push(s);
+  }
+  return out;
+}
+
+function asStringArray(v: unknown): string[] | null {
+  if (!Array.isArray(v)) return null;
+  const out: string[] = [];
+  for (const item of v) {
+    if (typeof item === 'string' && item.length > 0) out.push(item);
+  }
+  return out.length > 0 ? out : null;
 }
 
 // ── Shared helpers ─────────────────────────────────────────────────

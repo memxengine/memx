@@ -75,6 +75,10 @@ export function QueuePanel() {
   const [data, setData] = useState<QueueListResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [actingOn, setActingOn] = useState<string | null>(null);
+  // Which specific actionId is currently in-flight on `actingOn`. Scopes
+  // the NeuronLoader animation to the clicked button rather than every
+  // action in the row.
+  const [actingActionId, setActingActionId] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [toast, setToast] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
   const [rejectTarget, setRejectTarget] = useState<QueueCandidate | null>(null);
@@ -251,23 +255,50 @@ export function QueuePanel() {
     }
 
     setActingOn(c.id);
+    setActingActionId(action.id);
     try {
       const result = await resolveCandidate(c.id, {
         actionId: action.id,
         args: action.args,
       });
-      setToast({
-        kind: 'success',
-        text:
-          result.documentId && result.effect === 'approve'
-            ? t('queue.item.approveSuccess', { docId: result.documentId.slice(0, 12) })
-            : t('queue.item.approveSuccessNoDoc'),
-      });
+      const sources = (result as { inferredSources?: unknown }).inferredSources;
+      if (action.id === 'auto-link-sources' && Array.isArray(sources) && sources.length > 0) {
+        setToast({
+          kind: 'success',
+          text: t('queue.item.autoLinkSuccess', {
+            sources: (sources as string[]).join(', '),
+          }),
+        });
+      } else {
+        setToast({
+          kind: 'success',
+          text:
+            result.documentId && result.effect === 'approve'
+              ? t('queue.item.approveSuccess', { docId: result.documentId.slice(0, 12) })
+              : t('queue.item.approveSuccessNoDoc'),
+        });
+      }
       reload();
     } catch (err) {
-      setToast({ kind: 'error', text: err instanceof Error ? err.message : t('common.error') });
+      // The LLM inferer returns 422 when it can't find any plausible
+      // Source for an orphan Neuron. Surface a localised, actionable
+      // message so the curator knows to link manually instead of
+      // retrying the same button.
+      if (
+        err instanceof ApiError &&
+        err.status === 422 &&
+        action.id === 'auto-link-sources'
+      ) {
+        setToast({ kind: 'error', text: t('queue.item.autoLinkNoSources') });
+      } else {
+        setToast({
+          kind: 'error',
+          text: err instanceof Error ? err.message : t('common.error'),
+        });
+      }
     } finally {
       setActingOn(null);
+      setActingActionId(null);
     }
   }
 
@@ -421,6 +452,7 @@ export function QueuePanel() {
             isExpanded={expanded.has(c.id)}
             onToggle={() => toggleExpanded(c.id)}
             busy={actingOn === c.id}
+            busyActionId={actingOn === c.id ? actingActionId : null}
             onResolve={onResolve}
             onReopen={onReopen}
             selected={selected.has(c.id)}
@@ -433,10 +465,10 @@ export function QueuePanel() {
       {toast ? (
         <div
           class={
-            'fixed bottom-6 right-6 px-4 py-3 rounded-md border text-sm shadow-lg ' +
+            'fixed bottom-6 right-6 max-w-md px-4 py-3 rounded-md border text-sm shadow-lg backdrop-blur-md ' +
             (toast.kind === 'success'
-              ? 'border-[color:var(--color-success)]/30 bg-[color:var(--color-success)]/10 text-[color:var(--color-fg)]'
-              : 'border-[color:var(--color-danger)]/30 bg-[color:var(--color-danger)]/10 text-[color:var(--color-fg)]')
+              ? 'border-[color:var(--color-success)]/60 bg-[color:var(--color-success)]/25 text-[color:var(--color-fg)]'
+              : 'border-[color:var(--color-danger)]/60 bg-[color:var(--color-danger)]/25 text-[color:var(--color-fg)]')
           }
         >
           {toast.text}
@@ -562,6 +594,8 @@ interface RowProps {
   isExpanded: boolean;
   onToggle: () => void;
   busy: boolean;
+  /** Which actionId is in-flight on this row (null when idle). */
+  busyActionId: string | null;
   onResolve: (c: QueueCandidate, action: CandidateAction) => void;
   onReopen: (c: QueueCandidate) => void;
   selected: boolean;
@@ -576,6 +610,7 @@ function CandidateRow({
   isExpanded,
   onToggle,
   busy,
+  busyActionId,
   onResolve,
   onReopen,
   selected,
@@ -672,6 +707,7 @@ function CandidateRow({
             kbId={kbId}
             localisedActions={bundle.actions}
             busy={busy}
+            busyActionId={busyActionId}
             onResolve={(action) => onResolve(c, action)}
           />
         ) : c.status === 'rejected' ? (

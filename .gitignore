@@ -143,6 +143,11 @@ vite.config.ts.timestamp-*
 
 # memx-specific
 data/
+# apps/server/src/data/ holds hand-curated source-of-truth JSON (glossary
+# terms, etc.) that IS part of the repo — re-include it so fresh clones
+# get the same content the engine imports at boot.
+!apps/server/src/data/
+!apps/server/src/data/**
 *.db
 *.db-wal
 *.db-shm

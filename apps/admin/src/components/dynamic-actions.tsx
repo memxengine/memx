@@ -21,6 +21,7 @@ import { useEffect, useMemo, useState } from 'preact/hooks';
 import type { VNode } from 'preact';
 import type { CandidateAction, QueueCandidate } from '@trail/shared';
 import { bilingual, t, useLocale } from '../lib/i18n';
+import { NeuronLoader } from './neuron-loader';
 
 /**
  * Inline `[[target|display]]` rewriter — same resolution rules as the
@@ -65,6 +66,13 @@ interface Props {
    */
   localisedActions: CandidateAction[] | null;
   busy: boolean;
+  /**
+   * The actionId the curator actually clicked (when `busy` is true).
+   * Used to scope the Neuron-loader animation to the clicked button
+   * instead of every button on the row — otherwise all four buttons
+   * would animate simultaneously while one LLM call runs.
+   */
+  busyActionId?: string | null;
   /** Called when the curator clicks an action. Receives the whole action
    *  so the parent can reach into args (e.g. which Neuron to retire). */
   onResolve: (action: CandidateAction) => void;
@@ -75,6 +83,7 @@ export function DynamicActionButtons({
   kbId,
   localisedActions,
   busy,
+  busyActionId,
   onResolve,
 }: Props) {
   const locale = useLocale();
@@ -146,6 +155,7 @@ export function DynamicActionButtons({
       {actions.map((action, i) => {
         const isPrimary = i === 0;
         const isExpanded = expanded === action.id;
+        const isClicked = busy && busyActionId === action.id;
         return (
           <div key={action.id} class="flex flex-col gap-0.5">
             <button
@@ -158,7 +168,13 @@ export function DynamicActionButtons({
                   : 'border border-[color:var(--color-border-strong)] hover:bg-[color:var(--color-bg)]')
               }
             >
-              {busy ? '…' : bilingual(action.label, locale)}
+              {isClicked ? (
+                <NeuronLoader size={32} label={bilingual(action.label, locale) + '…'} />
+              ) : busy ? (
+                '…'
+              ) : (
+                bilingual(action.label, locale)
+              )}
             </button>
             <button
               onClick={() => setExpanded(isExpanded ? null : action.id)}

@@ -122,8 +122,8 @@
       "reopen": "Re-open",
       "reopenSuccess": "Re-opened — back in Pending.",
       "reopenHint": "Puts this candidate back in the Pending queue so you can decide again.",
-      "autoLinkSuccess": "Linked to: {sources}. Resolves on next lint run.",
-      "autoLinkNoSources": "The LLM couldn't identify any plausible Sources for this Neuron. Open the editor and link them manually."
+      "autoLinkSuccess": "Neuron is now linked to: {sources}",
+      "autoLinkNoSources": "Auto-link couldn't find a clear match. Open the editor and pick sources yourself."
     }
   },
   "sources": {
