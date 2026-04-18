@@ -145,6 +145,57 @@ interface RawImage {
   height: number;
 }
 
+/**
+ * Per-object timeout when resolving image XObjects.
+ *
+ * pdfjs' `page.objs.get(id, cb)` is a callback API over an internal state
+ * machine. For certain soft-masked or unusual-kind images the state
+ * machine can wedge — the callback is never fired, no error, no resolve.
+ * A slide-export PDF (N slides × ~2 images each) only needs one such
+ * object to hang the whole job, which is exactly how
+ * `Øreakupunktur_DIFZT_2025.pdf` starves the 120s outer timeout despite
+ * having only 10 images total. Racing a timeout per object keeps a bad
+ * object from poisoning the rest of the extraction — we skip it and
+ * log, and the page still gets its text + any images that did resolve.
+ *
+ * 8s is generous: a clean resolve is typically <100ms. If it hasn't
+ * fired by 8s the state machine isn't making progress and won't.
+ */
+const IMAGE_OBJECT_TIMEOUT_MS = 8_000;
+
+function getImageObject(
+  page: PDFPageProxy,
+  objId: string,
+): Promise<{ data?: Uint8Array | Uint8ClampedArray; width?: number; height?: number; kind?: number } | null> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      console.warn(`[pdf] image object ${objId} did not resolve within ${IMAGE_OBJECT_TIMEOUT_MS}ms — skipping`);
+      resolve(null);
+    }, IMAGE_OBJECT_TIMEOUT_MS);
+    try {
+      page.objs.get(objId, (obj: unknown) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(
+          obj as
+            | { data?: Uint8Array | Uint8ClampedArray; width?: number; height?: number; kind?: number }
+            | null,
+        );
+      });
+    } catch (err) {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      console.warn(`[pdf] image object ${objId} threw during resolve:`, (err as Error).message);
+      resolve(null);
+    }
+  });
+}
+
 async function extractImages(page: PDFPageProxy, pageNum: number): Promise<RawImage[]> {
   const images: RawImage[] = [];
   let opList;
@@ -166,20 +217,15 @@ async function extractImages(page: PDFPageProxy, pageNum: number): Promise<RawIm
   let imgIndex = 0;
   for (const objId of imgObjectIds) {
     try {
-      const obj = await new Promise<unknown>((resolve) => {
-        page.objs.get(objId, resolve);
-      });
-      const img = obj as
-        | { data?: Uint8Array | Uint8ClampedArray; width?: number; height?: number; kind?: number }
-        | null;
+      const img = await getImageObject(page, objId);
       if (!img || !img.data || !img.width || !img.height) continue;
 
       imgIndex++;
       const filename = `page-${pageNum}-img-${imgIndex}.png`;
       const pngBytes = rgbaToPng(img.data, img.width, img.height, img.kind);
       images.push({ filename, bytes: pngBytes, width: img.width, height: img.height });
-    } catch {
-      // Skip images that fail to decode.
+    } catch (err) {
+      console.warn(`[pdf] page ${pageNum} image ${objId} decode failed:`, (err as Error).message);
     }
   }
   return images;
