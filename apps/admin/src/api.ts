@@ -179,9 +179,23 @@ export function listWikiPages(kbId: string): Promise<Document[]> {
   return api(`/api/v1/knowledge-bases/${encodeURIComponent(kbId)}/documents?kind=wiki`);
 }
 
-/** List sources in a KB (kind='source', non-archived). */
-export function listSources(kbId: string): Promise<Document[]> {
-  return api(`/api/v1/knowledge-bases/${encodeURIComponent(kbId)}/documents?kind=source`);
+/**
+ * List sources in a KB (kind='source'). `filter` controls archive visibility:
+ *   - 'active' (default): only non-archived
+ *   - 'archived': only archived
+ *   - 'all': both
+ */
+export function listSources(
+  kbId: string,
+  filter: 'active' | 'archived' | 'all' = 'active',
+): Promise<Document[]> {
+  const params = new URLSearchParams({ kind: 'source' });
+  if (filter === 'archived') params.set('archived', 'true');
+  else if (filter === 'all') params.set('archived', 'all');
+  // default (active): no archived param — server defaults to archived=false
+  return api(
+    `/api/v1/knowledge-bases/${encodeURIComponent(kbId)}/documents?${params.toString()}`,
+  );
 }
 
 /** Fetch a document + its full content. */
@@ -255,6 +269,16 @@ export class NeuronEditConflictError extends Error {
 /** Soft-archive a document. Sets archived=true + status='archived'. */
 export function archiveDocument(docId: string): Promise<void> {
   return api(`/api/v1/documents/${encodeURIComponent(docId)}`, { method: 'DELETE' });
+}
+
+/** Restore an archived document. Inverse of archiveDocument. */
+export function restoreDocument(
+  docId: string,
+): Promise<{ id: string; archived: false; status: 'ready' }> {
+  return api(`/api/v1/documents/${encodeURIComponent(docId)}/restore`, {
+    method: 'POST',
+    body: JSON.stringify({}),
+  });
 }
 
 /** Retry a failed source's ingest pipeline against the bytes already in storage. */

@@ -13,6 +13,7 @@ import { rewriteWikiLinks } from '../lib/wiki-links';
 import { displayPath } from '../lib/display-path';
 import { t } from '../lib/i18n';
 import { TagChips, parseTags, serializeTags } from '../components/tag-chips';
+import { Modal, ModalButton } from '../components/modal';
 
 /**
  * F91 — Neuron editor. Split-view markdown editor for Neurons, lifted
@@ -44,6 +45,9 @@ export function NeuronEditorPanel() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [conflict, setConflict] = useState<{ current: number; expected: number } | null>(null);
   const [savedToast, setSavedToast] = useState<string | null>(null);
+  // Discard-confirmation modal — replaces native confirm() so the dialog
+  // matches the rest of the admin's visual language.
+  const [discardOpen, setDiscardOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
@@ -115,7 +119,15 @@ export function NeuronEditorPanel() {
   };
 
   const handleCancel = () => {
-    if (dirty && !confirm(t('neuronEditor.discardConfirm'))) return;
+    if (dirty) {
+      setDiscardOpen(true);
+      return;
+    }
+    exitToReader();
+  };
+
+  const confirmDiscard = () => {
+    setDiscardOpen(false);
     exitToReader();
   };
 
@@ -284,6 +296,26 @@ export function NeuronEditorPanel() {
           {savedToast}
         </div>
       ) : null}
+
+      <Modal
+        open={discardOpen}
+        title={t('neuronEditor.discardTitle')}
+        onClose={() => setDiscardOpen(false)}
+        footer={
+          <>
+            <ModalButton onClick={() => setDiscardOpen(false)}>
+              {t('common.cancel')}
+            </ModalButton>
+            <ModalButton variant="danger" onClick={confirmDiscard}>
+              {t('neuronEditor.discardConfirm')}
+            </ModalButton>
+          </>
+        }
+      >
+        <p class="text-sm text-[color:var(--color-fg-muted)] leading-relaxed">
+          {t('neuronEditor.discardBody')}
+        </p>
+      </Modal>
     </div>
   );
 }

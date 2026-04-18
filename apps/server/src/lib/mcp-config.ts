@@ -1,4 +1,5 @@
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { writeFileSync, existsSync } from 'node:fs';
 import { DATA_DIR } from '@trail/db';
 
@@ -12,9 +13,16 @@ import { DATA_DIR } from '@trail/db';
  * every boot; rewrites the file so path changes in the repo layout are picked up.
  */
 export function ensureMcpConfig(): string {
+  // Resolve the MCP entry relative to THIS file's location, not
+  // process.cwd(). Earlier version used cwd which broke when scripts
+  // (e.g. reprocess-source.ts) were launched from the repo root —
+  // cwd-relative path then pointed at /apps/mcp/... instead of
+  // /apps/server/../mcp/... Same pattern as chat.ts's MCP_SERVER_PATH.
+  // TRAIL_MCP_ENTRY env still wins for overrides in unusual layouts.
+  const THIS_DIR = dirname(fileURLToPath(import.meta.url));
   const mcpEntry = resolve(
     process.env.TRAIL_MCP_ENTRY ??
-      join(process.cwd(), '..', 'mcp', 'src', 'index.ts'),
+      join(THIS_DIR, '..', '..', '..', 'mcp', 'src', 'index.ts'),
   );
 
   if (!existsSync(mcpEntry)) {

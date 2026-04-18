@@ -5,7 +5,7 @@
     "search": "Søg",
     "queue": "Kø",
     "sources": "Kilder",
-    "trails": "Stier",
+    "trails": "Trails",
     "glossary": "Ordforklaring",
     "signOut": "Log ud",
     "theme": {
@@ -127,7 +127,19 @@
     "showContent": "Vis hele indholdet",
     "hideContent": "Skjul indhold",
     "retry": "Prøv igen",
+    "retryHint": "Kør ingest-pipelinen igen mod de uploadede bytes",
     "archive": "Arkivér",
+    "archiveHint": "Arkivér denne kilde — skjules fra listen, data bevares",
+    "archiveTitle": "Arkivér denne kilde?",
+    "archiveBody": "Kilden bliver skjult fra listen, men slettes ikke permanent — data og metadata forbliver i databasen. Du kan gendanne den fra Arkiverede-fanen når som helst.",
+    "restore": "Gendan",
+    "restoreHint": "Bring denne kilde tilbage til den aktive liste",
+    "filter": {
+      "active": "Aktive",
+      "archived": "Arkiverede",
+      "all": "Alle"
+    },
+    "emptyArchived": "Ingen arkiverede kilder.",
     "processing": "Behandler…",
     "failed": "Fejlede",
     "uploading": "Uploader {name}…",
@@ -148,7 +160,7 @@
   },
   "chat": {
     "title": "Chat",
-    "placeholder": "Spørg om hvad som helst i denne Sti…",
+    "placeholder": "Spørg om hvad som helst i denne Trail…",
     "ask": "Spørg",
     "thinking": "Tænker…",
     "saveAsNeuron": "Gem som Neuron",
@@ -156,9 +168,9 @@
     "citations": "Kilder"
   },
   "kbs": {
-    "title": "Stier",
-    "empty": "Ingen Stier endnu. Opret én for at komme i gang.",
-    "create": "Opret Sti",
+    "title": "Trails",
+    "empty": "Ingen Trails endnu. Opret én for at komme i gang.",
+    "create": "Opret Trail",
     "pendingBadge": "{n} afventer",
     "lintPolicy": {
       "label": "Lint-politik",
@@ -189,7 +201,9 @@
     "titlePlaceholder": "Titel",
     "tagsPlaceholder": "Tags (komma-separeret)",
     "footerHint": "⌘+S for at gemme · Esc for at annullere",
-    "discardConfirm": "Forkast ugemte ændringer?",
+    "discardTitle": "Forkast ugemte ændringer?",
+    "discardBody": "Dine redigeringer bliver ikke gemt. Dette kan ikke fortrydes.",
+    "discardConfirm": "Forkast",
     "conflictBanner": "Neuronen er redigeret siden du åbnede den (v{current} vs v{expected}). Genindlæs for at se den nyeste version.",
     "reload": "Genindlæs"
   },

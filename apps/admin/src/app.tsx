@@ -67,10 +67,15 @@ export function App({ children }: { children: ComponentChildren }) {
           <div class="flex items-center gap-4 py-3">
             <a href="/" class="flex items-center gap-2.5">
               <TrailLogo />
-              <span class="font-mono text-lg font-semibold tracking-tight text-[color:var(--color-fg)]">
+              {/* Live SF Mono wordmark — matches landing nav spec exactly:
+                  18px mobile, 22px desktop (≥768px), weight 600, -0.02em. */}
+              <span
+                class="font-mono font-semibold text-[18px] md:text-[22px] text-[color:var(--color-fg)]"
+                style="letter-spacing: -0.02em;"
+              >
                 trail
               </span>
-              <span class="text-[color:var(--color-fg-subtle)] text-sm ml-1">admin</span>
+              <span class="text-[color:var(--color-fg-subtle)] text-sm md:text-base ml-1">admin</span>
             </a>
             <div class="ml-auto flex items-center gap-3 text-sm">
               <a
@@ -103,8 +108,16 @@ function displayName(me: Me): string {
 
 /** Three concentric circles — same mark as the landing's memx-logo.svg. */
 function TrailLogo() {
+  // Matches landing spec: 32×32 mobile, 40×40 from 768px+. `w-8 md:w-10`
+  // (and matching h-) drives both dimensions responsively — `width/height`
+  // attributes are omitted so CSS wins over intrinsic SVG sizing.
   return (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="28" height="28" aria-hidden="true">
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 32 32"
+      class="w-8 h-8 md:w-10 md:h-10"
+      aria-hidden="true"
+    >
       <circle cx="16" cy="16" r="14" fill="none" stroke="currentColor" stroke-width="2" />
       <circle
         cx="16"

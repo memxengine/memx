@@ -24,12 +24,19 @@ documentRoutes.get('/knowledge-bases/:kbId/documents', async (c) => {
   const kbId = c.req.param('kbId');
   const path = c.req.query('path');
   const kindParam = c.req.query('kind');
+  const archivedParam = c.req.query('archived'); // 'true' | 'false' | 'all'
 
   const conditions = [
     eq(documents.tenantId, tenant.id),
     eq(documents.knowledgeBaseId, kbId),
-    eq(documents.archived, false),
   ];
+
+  // Archive filter. Default (no param) = active only (archived=false) so
+  // existing callers don't need to change. Explicit 'all' skips the
+  // filter; 'true' shows only archived docs.
+  if (archivedParam !== 'all') {
+    conditions.push(eq(documents.archived, archivedParam === 'true'));
+  }
 
   if (path) conditions.push(eq(documents.path, path));
 
@@ -267,6 +274,36 @@ documentRoutes.delete('/documents/:docId', async (c) => {
     .run();
 
   return c.body(null, 204);
+});
+
+/**
+ * Restore an archived document — inverse of DELETE /documents/:docId.
+ * Flips `archived=false` + resets status back to 'ready'. The curator's
+ * undo path when they archived something by mistake; the archive row
+ * reappears in the normal Sources list and is editable/indexable again.
+ *
+ * No-op for already-unarchived docs (idempotent) — safer than 409 when
+ * two tabs race on the same row.
+ */
+documentRoutes.post('/documents/:docId/restore', async (c) => {
+  const trail = getTrail(c);
+  const tenant = getTenant(c);
+  const docId = c.req.param('docId');
+
+  const doc = await trail.db
+    .select()
+    .from(documents)
+    .where(and(eq(documents.id, docId), eq(documents.tenantId, tenant.id)))
+    .get();
+  if (!doc) return c.json({ error: 'Document not found' }, 404);
+
+  await trail.db
+    .update(documents)
+    .set({ archived: false, status: 'ready', updatedAt: new Date().toISOString() })
+    .where(eq(documents.id, docId))
+    .run();
+
+  return c.json({ id: docId, archived: false, status: 'ready' });
 });
 
 /**

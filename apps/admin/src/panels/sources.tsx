@@ -5,6 +5,7 @@ import type { Document } from '@trail/shared';
 import {
   listSources,
   archiveDocument,
+  restoreDocument,
   retryDocument,
   getDocumentContent,
   ApiError,
@@ -12,7 +13,9 @@ import {
 import { displayPath } from '../lib/display-path';
 import { UploadDropzone } from '../components/upload-dropzone';
 import { ProcessingIndicator } from '../components/processing-indicator';
+import { Modal, ModalButton } from '../components/modal';
 import { useEvents, onStreamOpen, onFocusRefresh, debounce } from '../lib/event-stream';
+import { t, useLocale } from '../lib/i18n';
 
 /**
  * Sources panel — the original documents uploaded into a Trail. Sources
@@ -25,19 +28,32 @@ import { useEvents, onStreamOpen, onFocusRefresh, debounce } from '../lib/event-
  * else in the engine's whitelist). Uploaded docs trigger the ingest
  * pipeline; when it finishes, Neurons appear in the queue for approval.
  */
+type FilterStatus = 'active' | 'archived' | 'all';
+
+const FILTER_TABS: ReadonlyArray<{ value: FilterStatus }> = [
+  { value: 'active' },
+  { value: 'archived' },
+  { value: 'all' },
+];
+
 export function SourcesPanel() {
   const route = useRoute();
   const kbId = route.params.kbId ?? '';
+  useLocale();
+  const [filter, setFilter] = useState<FilterStatus>('active');
   const [docs, setDocs] = useState<Document[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  // Custom modal for archive confirmation — no native window.confirm.
+  const [archiveTarget, setArchiveTarget] = useState<Document | null>(null);
+  const [archiveBusy, setArchiveBusy] = useState(false);
 
   const reload = useCallback(() => {
     if (!kbId) return;
-    listSources(kbId)
+    listSources(kbId, filter)
       .then((list) => setDocs(list.slice().sort((a, b) => a.filename.localeCompare(b.filename))))
       .catch((err: ApiError) => setError(err.message));
-  }, [kbId]);
+  }, [kbId, filter]);
   const reloadDebounced = useCallback(debounce(reload, 100), [reload]);
 
   useEffect(() => {
@@ -65,18 +81,52 @@ export function SourcesPanel() {
     [reload],
   );
 
-  const onArchive = useCallback(async (doc: Document) => {
-    const ok = window.confirm(
-      `Archive "${doc.filename}"? This soft-deletes the source — rows stay in the DB, just hidden from the list.`,
-    );
-    if (!ok) return;
+  // Open the archive-confirmation modal. The actual mutation fires from
+  // the modal's confirm handler so the curator has a chance to back out.
+  const onArchive = useCallback((doc: Document) => {
+    setArchiveTarget(doc);
+  }, []);
+
+  const confirmArchive = useCallback(async () => {
+    const doc = archiveTarget;
+    if (!doc) return;
+    setArchiveBusy(true);
     try {
       await archiveDocument(doc.id);
-      setDocs((prev) => (prev ? prev.filter((d) => d.id !== doc.id) : prev));
+      // Optimistic remove only when the Archived / All filters wouldn't
+      // have kept the row on screen — otherwise reload so it re-appears
+      // correctly styled in the Archived view.
+      if (filter === 'active') {
+        setDocs((prev) => (prev ? prev.filter((d) => d.id !== doc.id) : prev));
+      } else {
+        reload();
+      }
+      setArchiveTarget(null);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : String(err));
+    } finally {
+      setArchiveBusy(false);
     }
-  }, []);
+  }, [archiveTarget, filter, reload]);
+
+  // Restore an archived source back to active. No confirmation modal —
+  // restore is a pure undo, zero data loss, so a one-click action is the
+  // right UX weight.
+  const onRestore = useCallback(
+    async (doc: Document) => {
+      try {
+        await restoreDocument(doc.id);
+        if (filter === 'archived') {
+          setDocs((prev) => (prev ? prev.filter((d) => d.id !== doc.id) : prev));
+        } else {
+          reload();
+        }
+      } catch (err) {
+        setError(err instanceof ApiError ? err.message : String(err));
+      }
+    },
+    [filter, reload],
+  );
 
   const onRetry = useCallback(async (doc: Document) => {
     try {
@@ -105,12 +155,12 @@ export function SourcesPanel() {
   return (
     <div class="page-shell">
       <header class="mb-6">
-        <h1 class="text-2xl font-semibold tracking-tight mb-1">Sources</h1>
+        <h1 class="text-2xl font-semibold tracking-tight mb-1">{t('sources.title')}</h1>
         <p class="text-[color:var(--color-fg-muted)] text-sm">
           {docs ? (
-            `${docs.length} source document${docs.length === 1 ? '' : 's'}`
+            t(docs.length === 1 ? 'sources.summary' : 'sources.summaryPlural', { n: docs.length })
           ) : (
-            <span class="loading-delayed inline-block">Loading…</span>
+            <span class="loading-delayed inline-block">{t('common.loading')}</span>
           )}
         </p>
       </header>
@@ -118,6 +168,26 @@ export function SourcesPanel() {
       <section class="mb-8">
         <UploadDropzone kbId={kbId} onUploaded={onUploaded} />
       </section>
+
+      {/* Filter strip — same grammar as Queue's status tabs. Active is
+          default; Archived shows soft-deleted sources with a Restore
+          button on each row so an accidental archive is one-click reversible. */}
+      <nav class="flex gap-1 mb-5 border-b border-[color:var(--color-border)]">
+        {FILTER_TABS.map((tab) => (
+          <button
+            key={tab.value}
+            onClick={() => setFilter(tab.value)}
+            class={
+              'px-3 py-2 text-sm font-medium transition border-b-2 -mb-px ' +
+              (filter === tab.value
+                ? 'border-[color:var(--color-accent)] text-[color:var(--color-fg)]'
+                : 'border-transparent text-[color:var(--color-fg-muted)] hover:text-[color:var(--color-fg)]')
+            }
+          >
+            {t(`sources.filter.${tab.value}`)}
+          </button>
+        ))}
+      </nav>
 
       {error ? (
         <div class="border border-[color:var(--color-danger)]/30 bg-[color:var(--color-danger)]/5 rounded-md p-4 text-sm mb-4">
@@ -127,7 +197,7 @@ export function SourcesPanel() {
 
       {docs && docs.length === 0 ? (
         <div class="text-center py-16 text-[color:var(--color-fg-subtle)]">
-          No Sources yet. Drop a file above — PDFs, Word docs, or markdown compile into Neurons automatically.
+          {filter === 'archived' ? t('sources.emptyArchived') : t('sources.empty')}
         </div>
       ) : null}
 
@@ -139,10 +209,41 @@ export function SourcesPanel() {
             isExpanded={expanded.has(doc.id)}
             onToggle={() => toggleExpanded(doc.id)}
             onArchive={onArchive}
+            onRestore={onRestore}
             onRetry={onRetry}
           />
         ))}
       </ul>
+
+      <Modal
+        open={archiveTarget !== null}
+        title={t('sources.archiveTitle')}
+        onClose={() => setArchiveTarget(null)}
+        footer={
+          <>
+            <ModalButton onClick={() => setArchiveTarget(null)} disabled={archiveBusy}>
+              {t('common.cancel')}
+            </ModalButton>
+            <ModalButton variant="danger" onClick={confirmArchive} disabled={archiveBusy}>
+              {archiveBusy ? '…' : t('sources.archive')}
+            </ModalButton>
+          </>
+        }
+      >
+        {archiveTarget ? (
+          <div class="space-y-3">
+            <div>
+              <div class="text-[11px] font-mono uppercase tracking-wider text-[color:var(--color-fg-subtle)] mb-1">
+                {t('sources.title').toLowerCase()}
+              </div>
+              <div class="text-sm font-medium break-all">{archiveTarget.filename}</div>
+            </div>
+            <p class="text-sm text-[color:var(--color-fg-muted)] leading-relaxed">
+              {t('sources.archiveBody')}
+            </p>
+          </div>
+        ) : null}
+      </Modal>
     </div>
   );
 }
@@ -152,16 +253,20 @@ interface RowProps {
   isExpanded: boolean;
   onToggle: () => void;
   onArchive: (d: Document) => void;
+  onRestore: (d: Document) => void;
   onRetry: (d: Document) => void;
 }
 
-function SourceRow({ doc, isExpanded, onToggle, onArchive, onRetry }: RowProps) {
-  const canExpand = doc.status === 'ready' || doc.status === 'failed';
+function SourceRow({ doc, isExpanded, onToggle, onArchive, onRestore, onRetry }: RowProps) {
+  const canExpand = doc.status === 'ready' || doc.status === 'failed' || doc.archived;
+  const isArchived = doc.archived;
   return (
     <li
       class={
         'border rounded-md transition ' +
-        (doc.status === 'failed'
+        (isArchived
+          ? 'border-[color:var(--color-border)] bg-[color:var(--color-bg-card)]/40 opacity-70'
+          : doc.status === 'failed'
           ? 'border-[color:var(--color-danger)]/40 bg-[color:var(--color-danger)]/5'
           : 'border-[color:var(--color-border)] bg-[color:var(--color-bg-card)]/80 hover:border-[color:var(--color-border-strong)]')
       }
@@ -195,23 +300,38 @@ function SourceRow({ doc, isExpanded, onToggle, onArchive, onRetry }: RowProps) 
             <ProcessingIndicator startedAt={doc.updatedAt} />
           ) : null}
         </div>
-        {doc.status === 'failed' ? (
+        {/* Row actions. Logic by state:
+            - Archived rows → Restore only (one-click undo, no modal).
+            - Failed rows → Retry (when binary) + Archive.
+            - Ready rows → Archive.
+            - Processing/pending → no actions (no races during ingest). */}
+        {isArchived ? (
           <div class="flex items-center gap-3 shrink-0">
-            {doc.fileType === 'pdf' || doc.fileType === 'docx' ? (
+            <button
+              onClick={() => onRestore(doc)}
+              class="text-[11px] font-mono text-[color:var(--color-accent)] hover:text-[color:var(--color-fg)] transition"
+              title={t('sources.restoreHint')}
+            >
+              {t('sources.restore')}
+            </button>
+          </div>
+        ) : doc.status === 'failed' || doc.status === 'ready' ? (
+          <div class="flex items-center gap-3 shrink-0">
+            {doc.status === 'failed' && (doc.fileType === 'pdf' || doc.fileType === 'docx') ? (
               <button
                 onClick={() => onRetry(doc)}
                 class="text-[11px] font-mono text-[color:var(--color-accent)] hover:text-[color:var(--color-fg)] transition"
-                title="Re-run the ingest pipeline against the uploaded bytes"
+                title={t('sources.retryHint')}
               >
-                retry
+                {t('sources.retry').toLowerCase()}
               </button>
             ) : null}
             <button
               onClick={() => onArchive(doc)}
               class="text-[11px] font-mono text-[color:var(--color-danger)] hover:text-[color:var(--color-fg)] transition"
-              title="Archive this source — soft-deletes, audit trail intact"
+              title={t('sources.archiveHint')}
             >
-              archive
+              {t('sources.archive').toLowerCase()}
             </button>
           </div>
         ) : null}
@@ -222,7 +342,7 @@ function SourceRow({ doc, isExpanded, onToggle, onArchive, onRetry }: RowProps) 
           onClick={onToggle}
           class="w-full text-left px-4 pb-3 text-[11px] font-mono text-[color:var(--color-fg-subtle)] hover:text-[color:var(--color-fg-muted)] transition"
         >
-          {isExpanded ? '▲ Hide content' : '▼ Show full content'}
+          {isExpanded ? `▲ ${t('sources.hideContent')}` : `▼ ${t('sources.showContent')}`}
         </button>
       ) : null}
 
