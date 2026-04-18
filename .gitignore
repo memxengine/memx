@@ -161,3 +161,4 @@ data/
 # scripts/process-ambient.sh converts these to apps/admin/public/ambient/*.opus
 # which IS committed.
 docs/assets/sound/*.mp3
+docs/assets/sound/**/*.mp3

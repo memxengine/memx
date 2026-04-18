@@ -7,6 +7,7 @@ import { mountConstellation } from './lib/constellation';
 import { TrailNav } from './components/trail-nav';
 import { AmbientProvider } from './components/ambient-provider';
 import { AmbientToggle } from './components/ambient-toggle';
+import { ThinkingSubscriber } from './components/thinking-subscriber';
 import { ambientRoute } from './lib/ambient-store';
 import { routeFromPath } from './lib/route-to-ambient';
 import { useKb } from './lib/kb-cache';
@@ -113,6 +114,7 @@ export function App({ children }: { children: ComponentChildren }) {
       </header>
       <main class="relative z-10 flex-1">{me ? children : null}</main>
       <AmbientProvider />
+      {me ? <ThinkingSubscriber /> : null}
     </div>
   );
 }
