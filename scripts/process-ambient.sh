@@ -33,6 +33,14 @@ declare -A TRIM_SEC=(
   ["chat"]="120"
 )
 
+# Per-output leading-skip (seconds). Some sources open with true silence +
+# a slow fade-in that feels like dead air when the loop starts. A hard
+# `-ss` skip cuts to the audible body of the clip. Applied via input-side
+# seek so loudnorm sees the final audio.
+declare -A SKIP_SEC=(
+  ["idle"]="2"
+)
+
 # Per-output fade-out (seconds, applied at the tail of the trimmed window).
 # Smooths the loop seam audibly when the source wasn't mastered for looping.
 declare -A FADE_OUT_SEC=(
@@ -47,10 +55,15 @@ for entry in "${MAP[@]}"; do
   [[ -f "$src" ]] || continue
 
   trim="${TRIM_SEC[$dst_stem]:-}"
+  skip="${SKIP_SEC[$dst_stem]:-}"
   fade="${FADE_OUT_SEC[$dst_stem]:-}"
 
   filters="loudnorm=I=-18:TP=-2:LRA=7"
+  input_args=()
   trim_args=()
+  if [[ -n "$skip" ]]; then
+    input_args=(-ss "$skip")
+  fi
   if [[ -n "$trim" ]]; then
     trim_args=(-t "$trim")
     if [[ -n "$fade" ]]; then
@@ -59,9 +72,9 @@ for entry in "${MAP[@]}"; do
     fi
   fi
 
-  echo ">>> $src_stem.mp3 → $dst_stem.opus${trim:+  (trim ${trim}s${fade:+, fade ${fade}s})}"
+  echo ">>> $src_stem.mp3 → $dst_stem.opus${skip:+  (skip ${skip}s)}${trim:+  (trim ${trim}s${fade:+, fade ${fade}s})}"
   ffmpeg -hide_banner -loglevel error -y \
-    -i "$src" "${trim_args[@]}" \
+    "${input_args[@]}" -i "$src" "${trim_args[@]}" \
     -af "$filters" \
     -c:a libopus -b:a 96k -vbr on -compression_level 10 -application audio \
     "$dst"
