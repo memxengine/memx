@@ -48,32 +48,48 @@ export function AmbientToggle() {
         {enabled ? <SpeakerOnIcon /> : <SpeakerOffIcon />}
       </button>
       {open ? (
+        // Two-div structure on purpose: the outer absolute div is the
+        // hover "bridge". Its `pt-1.5` creates visual breathing space
+        // above the visible card WITHOUT introducing a DOM gap — so the
+        // mouse travelling from the button down to the slider stays
+        // inside the wrapper's subtree and mouseleave doesn't fire mid-
+        // traverse. Margin-top would break this (the gap would be
+        // outside the wrapper's layout).
         <div
-          class="absolute top-full right-0 mt-1.5 z-20 flex items-center gap-2 px-3 py-2 rounded-md border border-[color:var(--color-border-strong)] bg-[color:var(--color-bg-card)] shadow-lg"
+          class="absolute top-full right-0 z-20 pt-1.5"
           onMouseEnter={() => setOpen(true)}
         >
-          <span class="font-mono text-[10px] uppercase tracking-wider text-[color:var(--color-fg-subtle)]">
-            {Math.round(volume * 100)}
-          </span>
-          <input
-            type="range"
-            min={0}
-            max={100}
-            step={1}
-            value={Math.round(volume * 100)}
-            aria-label={t('nav.ambient.volume')}
-            onInput={(e) => {
-              const v = Number((e.currentTarget as HTMLInputElement).value);
-              ambientVolume.value = Math.max(0, Math.min(1, v / 100));
-            }}
-            onBlur={(e) => {
-              const next = e.relatedTarget as Node | null;
-              if (!next || !(e.currentTarget.parentElement?.parentElement?.contains(next))) {
-                setOpen(false);
-              }
-            }}
-            class="w-24 accent-[color:var(--color-accent)]"
-          />
+          <div class="flex items-center gap-2 px-3 py-2 rounded-md border border-[color:var(--color-border-strong)] bg-[color:var(--color-bg-card)] shadow-lg">
+            <span class="font-mono text-[10px] uppercase tracking-wider text-[color:var(--color-fg-subtle)]">
+              {Math.round(volume * 100)}
+            </span>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              step={1}
+              value={Math.round(volume * 100)}
+              aria-label={t('nav.ambient.volume')}
+              onInput={(e) => {
+                const v = Number((e.currentTarget as HTMLInputElement).value);
+                ambientVolume.value = Math.max(0, Math.min(1, v / 100));
+              }}
+              // Holding pointer-capture across the wrapper keeps the
+              // slider open while the user drags, even if they overshoot
+              // the wrapper's bounds — otherwise a fast drag closes the
+              // popover mid-scrub.
+              onPointerDown={(e) => {
+                (e.currentTarget as HTMLInputElement).setPointerCapture(e.pointerId);
+              }}
+              onBlur={(e) => {
+                const next = e.relatedTarget as Node | null;
+                if (!next || !(e.currentTarget.parentElement?.parentElement?.parentElement?.contains(next))) {
+                  setOpen(false);
+                }
+              }}
+              class="w-24 accent-[color:var(--color-accent)]"
+            />
+          </div>
         </div>
       ) : null}
     </div>
