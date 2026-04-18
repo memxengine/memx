@@ -1,6 +1,6 @@
 # Trail — Feature Index
 
-**Last updated:** 2026-04-16
+**Last updated:** 2026-04-18
 
 ---
 
@@ -103,6 +103,7 @@ Status reflects the engine (this repo). Landing-site and CMS-adapter work lives 
 | F90 | [Dynamic Curator Actions + Per-Trail Lint Policy](#f90-curator-actions) | Done | 1 | — |
 | F91 | [Neuron Editor (Markdown Split-View)](#f91-neuron-editor) | Done | 1 | [features/F91-neuron-editor.md](features/F91-neuron-editor.md) |
 | F92 | [Tags on Neurons (Filter + Facet + Auto-Suggest)](#f92-tags-on-neurons) | Planned | 2 | [features/F92-tags-on-neurons.md](features/F92-tags-on-neurons.md) |
+| F93 | [Button Sound Feedback (Opt-In, Web Audio)](#f93-button-sound-feedback) | Planned | 1 | [features/F93-button-sound-feedback.md](features/F93-button-sound-feedback.md) |
 
 ---
 
@@ -361,3 +362,6 @@ Split-view markdown editor on the reader route (`?edit=1`). Saves route through 
 
 ### F92 — Tags on Neurons
 Tag chips already render in F91's reader and editor, but no aggregate surface exists. F92 adds a per-KB tag-aggregate endpoint, a filter bar on the Neuron listing, a tag facet on search, and an LLM auto-suggest pass during chat-save so new Neurons arrive pre-tagged. Also introduces a canonicaliser (`lowercase`, `kebab-case`, `[a-z0-9-]` only) + a one-shot backfill for existing tag strings. Colour coding per tag deliberately out of scope.
+
+### F93 — Button Sound Feedback
+Optional, opt-in audible click feedback in the admin UI. Three subtle tones (neutral / success / danger) synthesized via the Web Audio API — no asset bundle, ~0 KB beyond the helper. Wired through `ModalButton`'s existing variant prop (covers every modal footer with zero callsite churn) plus a single delegated `pointerdown` listener on the document for plain `<button>` elements. Header toggle next to the theme toggle; preference persists in `localStorage.trail.admin.sound`. Defaults off, with `prefers-reduced-motion: reduce` keeping it off until explicitly enabled. Hidden-tab + disabled-button + SSE-rerender guards keep cues bound to user intent only.

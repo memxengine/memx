@@ -1,6 +1,6 @@
 # Trail — Roadmap
 
-**Last updated:** 2026-04-16
+**Last updated:** 2026-04-18
 **Source of truth for feature numbering:** [FEATURES.md](./FEATURES.md)
 
 ---
@@ -83,6 +83,7 @@ The remaining Phase 1 scope, ordered by leverage and dependency.
 | F23 | Wiki-Link Parser (`[[]]`, `[[kb:]]`, `[[ext:]]`) | F07 | Small |
 | F30 | Chat Citations Render | F12, F23 | Small |
 | F32 | Lint Pass (Orphans/Gaps/Contradictions) | F15, F17 | Medium |
+| F93 | Button Sound Feedback (Opt-In, Web Audio) | F18, F87 | Small |
 
 ### Pipelines + Adapters — widen the ingest surface
 
