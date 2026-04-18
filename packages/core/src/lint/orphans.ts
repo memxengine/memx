@@ -5,7 +5,7 @@ import {
   queueCandidates,
   type TrailDatabase,
 } from '@trail/db';
-import { and, asc, eq, notInArray, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, notInArray, sql } from 'drizzle-orm';
 import { isExternalConnector } from '@trail/shared';
 import type { LintFinding, LintOptions } from './types.js';
 
@@ -73,24 +73,38 @@ export async function detectOrphans(
     .groupBy(documents.id)
     .all();
 
+  // F98 — skip Neurons whose provenance tells us citations aren't
+  // expected. Two signals, OR'd:
+  //
+  //  (a) Originating candidate's connector is external (buddy, MCP,
+  //      chat, api) — the Neuron came from a cc session, tool call,
+  //      or conversation; no Source in KB to link.
+  //  (b) Neuron lives under an external-reserved path (/neurons/
+  //      sessions/, /neurons/queries/) — catches historical data
+  //      ported via scripts that used the wrong candidate kind but
+  //      correct path, where signal (a) misreports.
+  //
+  // Either signal is enough. Flagging would generate unsolvable
+  // queue work: the auto-link inferer can't find matches that don't
+  // exist.
+  //
+  // Batch-resolve connectors for all ref-less non-external-path docs
+  // up front. One LEFT JOIN instead of N queries per doc (prev impl
+  // was O(n) round-trips through resolveOriginatingConnector). At KBs
+  // with hundreds of orphan candidates this was the lint's bottleneck.
+  const candidateOrphanIds = wikiRows
+    .filter((w) => w.refCount === 0 && !isExternalPath(w.path))
+    .map((w) => w.id);
+  const connectorByDocId = await resolveConnectorsForDocs(
+    trail,
+    tenantId,
+    candidateOrphanIds,
+  );
+
   for (const w of wikiRows) {
     if (w.refCount > 0) continue;
-    // F98 — skip Neurons whose provenance tells us citations aren't
-    // expected. Two signals, OR'd:
-    //
-    //  (a) Originating candidate's connector is external (buddy, MCP,
-    //      chat, api) — the Neuron came from a cc session, tool call,
-    //      or conversation; no Source in KB to link.
-    //  (b) Neuron lives under an external-reserved path (/neurons/
-    //      sessions/, /neurons/queries/) — catches historical data
-    //      ported via scripts that used the wrong candidate kind but
-    //      correct path, where signal (a) misreports.
-    //
-    // Either signal is enough. Flagging would generate unsolvable
-    // queue work: the auto-link inferer can't find matches that don't
-    // exist.
     if (isExternalPath(w.path)) continue;
-    const originatingConnector = await resolveOriginatingConnector(trail, tenantId, w.id);
+    const originatingConnector = connectorByDocId.get(w.id) ?? null;
     if (isExternalConnector(originatingConnector)) continue;
     const label = w.title ?? w.filename;
     findings.push({
@@ -281,54 +295,63 @@ export async function detectOrphans(
 }
 
 /**
- * F98 — walk back through `wiki_events` to the Neuron's creation event,
- * then to the candidate that caused it, and return its `metadata.connector`.
+ * F98 — batch variant: walk wiki_events → queue_candidates in a single
+ * LEFT JOIN for all docs at once and return `Map<docId, connector|null>`.
  *
- * Returns null when any link in the chain is missing (legacy docs
- * without a tracked creation event, broken candidate refs, malformed
- * metadata JSON). A null return falls through to the default flagging
- * behaviour — we only SKIP flagging when we're confident the Neuron
- * came from an external connector. "Unknown provenance" gets the
- * pre-F98 treatment.
+ * Null-valued entries mean the chain exists but had no resolvable
+ * connector (broken candidate ref, malformed metadata JSON, or no
+ * 'created' event at all) — callers treat those as "unknown provenance"
+ * and fall through to default flagging, same as the pre-F98 behaviour.
+ *
+ * Rows are ordered by createdAt asc + Map-first-write semantics to
+ * deterministically pick the earliest 'created' event when a doc has
+ * more than one (rare; can happen after restore-from-archive).
  */
-async function resolveOriginatingConnector(
+async function resolveConnectorsForDocs(
   trail: TrailDatabase,
   tenantId: string,
-  docId: string,
-): Promise<string | null> {
-  const event = await trail.db
-    .select({ sourceCandidateId: wikiEvents.sourceCandidateId })
-    .from(wikiEvents)
-    .where(
-      and(
-        eq(wikiEvents.tenantId, tenantId),
-        eq(wikiEvents.documentId, docId),
-        eq(wikiEvents.eventType, 'created'),
-      ),
-    )
-    .orderBy(asc(wikiEvents.createdAt))
-    .limit(1)
-    .get();
-  if (!event?.sourceCandidateId) return null;
+  docIds: string[],
+): Promise<Map<string, string | null>> {
+  const out = new Map<string, string | null>();
+  if (docIds.length === 0) return out;
 
-  const candidate = await trail.db
-    .select({ metadata: queueCandidates.metadata })
-    .from(queueCandidates)
-    .where(
+  const rows = await trail.db
+    .select({
+      documentId: wikiEvents.documentId,
+      metadata: queueCandidates.metadata,
+    })
+    .from(wikiEvents)
+    .leftJoin(
+      queueCandidates,
       and(
-        eq(queueCandidates.id, event.sourceCandidateId),
+        eq(queueCandidates.id, wikiEvents.sourceCandidateId),
         eq(queueCandidates.tenantId, tenantId),
       ),
     )
-    .get();
-  if (!candidate?.metadata) return null;
+    .where(
+      and(
+        eq(wikiEvents.tenantId, tenantId),
+        eq(wikiEvents.eventType, 'created'),
+        inArray(wikiEvents.documentId, docIds),
+      ),
+    )
+    .orderBy(asc(wikiEvents.createdAt))
+    .all();
 
-  try {
-    const parsed = JSON.parse(candidate.metadata) as { connector?: unknown };
-    return typeof parsed.connector === 'string' ? parsed.connector : null;
-  } catch {
-    return null;
+  for (const row of rows) {
+    if (out.has(row.documentId)) continue;
+    let connector: string | null = null;
+    if (row.metadata) {
+      try {
+        const parsed = JSON.parse(row.metadata) as { connector?: unknown };
+        if (typeof parsed.connector === 'string') connector = parsed.connector;
+      } catch {
+        // malformed metadata — treat as unknown provenance
+      }
+    }
+    out.set(row.documentId, connector);
   }
+  return out;
 }
 
 /**
