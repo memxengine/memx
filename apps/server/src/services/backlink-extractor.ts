@@ -36,6 +36,39 @@ type WikiDoc = {
 };
 
 /**
+ * Minimal Neuron projection used by `resolveLink`. Load once per
+ * extraction pass, not once per [[link]].
+ */
+export type WikiNeuronRef = {
+  id: string;
+  filename: string;
+  title: string | null;
+};
+
+async function loadWikiPool(
+  trail: TrailDatabase,
+  tenantId: string,
+  kbId: string,
+): Promise<WikiNeuronRef[]> {
+  return trail.db
+    .select({
+      id: documents.id,
+      filename: documents.filename,
+      title: documents.title,
+    })
+    .from(documents)
+    .where(
+      and(
+        eq(documents.tenantId, tenantId),
+        eq(documents.knowledgeBaseId, kbId),
+        eq(documents.kind, 'wiki'),
+        eq(documents.archived, false),
+      ),
+    )
+    .all();
+}
+
+/**
  * Extract every `[[...]]` string from a Neuron body. Ignores frontmatter
  * (between the first pair of `---` lines) — source refs live there, and we
  * don't want to double-count a [[link]] that happens to sit in YAML.
@@ -62,58 +95,38 @@ function stripFrontmatter(content: string): string {
 
 /**
  * Resolve a link to a target Neuron in the same KB. Returns null if no
- * match is found via any strategy.
+ * match is found via any strategy. Pure in-memory lookup against the
+ * pool — callers hoist the KB wiki-list once per extraction pass.
  */
-async function resolveLink(
-  trail: TrailDatabase,
-  tenantId: string,
-  kbId: string,
+function resolveLink(
+  pool: WikiNeuronRef[],
   fromDocId: string,
   linkText: string,
-): Promise<{ id: string } | null> {
+): { id: string } | null {
   const target = linkText.trim();
   if (!target) return null;
 
-  // Load every wiki document in this KB once per extraction pass. Cheap for
-  // small-to-medium KBs; if this becomes a hot path with 10k+ Neurons we
-  // cache per-extractor-call. For now each candidate_approved triggers a
-  // fresh query — correct by construction.
-  const neurons = await trail.db
-    .select({
-      id: documents.id,
-      filename: documents.filename,
-      title: documents.title,
-    })
-    .from(documents)
-    .where(
-      and(
-        eq(documents.tenantId, tenantId),
-        eq(documents.knowledgeBaseId, kbId),
-        eq(documents.kind, 'wiki'),
-        eq(documents.archived, false),
-      ),
-    )
-    .all();
-
-  // Self-link would loop a Neuron against itself — skip.
-  const pool = neurons.filter((n) => n.id !== fromDocId);
-  if (pool.length === 0) return null;
+  // Self-link would loop a Neuron against itself — skip. Explicit guard
+  // (cheaper than relying on the wiki_backlinks unique-index to reject
+  // the insert attempt, and keeps the intent visible at the call site).
+  const candidates = pool.filter((n) => n.id !== fromDocId);
+  if (candidates.length === 0) return null;
 
   // Strategy 1: exact filename match (with or without .md extension).
   const withMd = target.endsWith('.md') ? target : `${target}.md`;
-  const exact = pool.find((n) => n.filename === withMd || n.filename === target);
+  const exact = candidates.find((n) => n.filename === withMd || n.filename === target);
   if (exact) return { id: exact.id };
 
   // Strategy 2: slugified link text matches filename stem.
   const slug = slugify(target) || target.toLowerCase();
-  const bySlug = pool.find((n) => stripExt(n.filename).toLowerCase() === slug);
+  const bySlug = candidates.find((n) => stripExt(n.filename).toLowerCase() === slug);
   if (bySlug) return { id: bySlug.id };
 
   // Strategy 3: case-insensitive title match. We match the FULL title so
   // `[[F87]]` doesn't accidentally grab "F87 shipped" — use `===` on the
   // lowercased form, not includes().
   const needle = target.toLowerCase();
-  const byTitle = pool.find((n) => (n.title ?? '').toLowerCase() === needle);
+  const byTitle = candidates.find((n) => (n.title ?? '').toLowerCase() === needle);
   if (byTitle) return { id: byTitle.id };
 
   return null;
@@ -155,10 +168,17 @@ async function insertBacklink(
  * — otherwise a rewrite that removes a link would leave a stale backlink
  * pointing at the now-unreferenced target. Returns the count of NEW rows
  * written (existing ones skip via unique index).
+ *
+ * `pool` lets a batch caller (backfill) hoist the KB wiki-list once and
+ * reuse it across many docs — O(N) selects become O(K) where K is the
+ * number of distinct KBs. Single-doc callers omit it and we load once
+ * per call — still O(1) select regardless of link count, where it used
+ * to be O(L) (one per [[link]] in the body).
  */
 export async function extractBacklinksForDoc(
   trail: TrailDatabase,
   docId: string,
+  pool?: WikiNeuronRef[],
 ): Promise<number> {
   const doc = await trail.db
     .select({
@@ -178,11 +198,12 @@ export async function extractBacklinksForDoc(
   if (!doc || doc.kind !== 'wiki' || doc.archived || !doc.content) return 0;
 
   const links = parseWikiLinks(doc.content);
+  const wikiPool = pool ?? (await loadWikiPool(trail, doc.tenantId, doc.knowledgeBaseId));
 
   // Resolve every link, keep only those that land on a real Neuron.
   const resolved: Array<{ targetId: string; linkText: string }> = [];
   for (const linkText of links) {
-    const target = await resolveLink(trail, doc.tenantId, doc.knowledgeBaseId, doc.id, linkText);
+    const target = resolveLink(wikiPool, doc.id, linkText);
     if (target) resolved.push({ targetId: target.id, linkText });
   }
 
@@ -210,15 +231,31 @@ export async function extractBacklinksForDoc(
  */
 export async function backfillBacklinks(trail: TrailDatabase): Promise<void> {
   const wikiDocs = await trail.db
-    .select({ id: documents.id })
+    .select({
+      id: documents.id,
+      tenantId: documents.tenantId,
+      knowledgeBaseId: documents.knowledgeBaseId,
+    })
     .from(documents)
     .where(and(eq(documents.kind, 'wiki'), eq(documents.archived, false)))
     .all();
 
+  // Cache the wiki-pool per (tenant, KB) so a KB with thousands of
+  // Neurons only triggers one SELECT for the whole backfill pass
+  // instead of one per doc. Relies on the fact that `documents` isn't
+  // mutated mid-backfill (we only insert/delete wiki_backlinks rows).
+  const poolByKb = new Map<string, WikiNeuronRef[]>();
+
   let totalInserted = 0;
   let touched = 0;
   for (const d of wikiDocs) {
-    const n = await extractBacklinksForDoc(trail, d.id);
+    const key = `${d.tenantId}|${d.knowledgeBaseId}`;
+    let pool = poolByKb.get(key);
+    if (!pool) {
+      pool = await loadWikiPool(trail, d.tenantId, d.knowledgeBaseId);
+      poolByKb.set(key, pool);
+    }
+    const n = await extractBacklinksForDoc(trail, d.id, pool);
     if (n > 0) {
       totalInserted += n;
       touched += 1;
