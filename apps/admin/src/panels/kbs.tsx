@@ -1,21 +1,15 @@
 import { useCallback, useEffect, useState } from 'preact/hooks';
 import type { KnowledgeBase } from '@trail/shared';
-import { listKnowledgeBases, updateKnowledgeBase, ApiError } from '../api';
+import { listKnowledgeBases, ApiError } from '../api';
 import { useEvents, onStreamOpen, onFocusRefresh, debounce } from '../lib/event-stream';
 import { invalidateKbs } from '../lib/kb-cache';
 import { t, useLocale } from '../lib/i18n';
+import { CenteredLoader } from '../components/centered-loader';
 
 export function KnowledgeBasesPanel() {
   useLocale();
   const [kbs, setKbs] = useState<KnowledgeBase[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [toast, setToast] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
-
-  useEffect(() => {
-    if (!toast) return;
-    const timer = setTimeout(() => setToast(null), 4000);
-    return () => clearTimeout(timer);
-  }, [toast]);
 
   const reload = useCallback(() => {
     listKnowledgeBases()
@@ -64,9 +58,12 @@ export function KnowledgeBasesPanel() {
   }
 
   if (!kbs) {
+    // Root (/) is pre-session — the user's locale preference hasn't
+    // been validated yet, so hardcode "Loading…" in English rather
+    // than trusting the localStorage value at this point.
     return (
-      <div class="page-shell loading-delayed text-[color:var(--color-fg-muted)] text-sm">
-        {t('common.loading')}
+      <div class="page-shell">
+        <CenteredLoader label="Loading…" />
       </div>
     );
   }
@@ -110,11 +107,6 @@ export function KnowledgeBasesPanel() {
                     ) : null}
                   </a>
                   <div class="flex items-center gap-3 shrink-0">
-                    <LintPolicyToggle
-                      kb={kb}
-                      onUpdated={reload}
-                      onError={(msg) => setToast({ kind: 'error', text: msg })}
-                    />
                     {pending > 0 ? (
                       <span
                         class="inline-flex items-center justify-center min-w-[1.5rem] h-[1.5rem] px-2 rounded-full text-[11px] font-mono font-semibold bg-[color:var(--color-accent)] text-[color:var(--color-accent-fg)]"
@@ -134,93 +126,6 @@ export function KnowledgeBasesPanel() {
           );
         })}
       </ul>
-
-      {toast ? (
-        <div
-          class={
-            'fixed bottom-6 right-6 z-40 px-4 py-3 rounded-md border text-sm shadow-lg max-w-md ' +
-            (toast.kind === 'success'
-              ? 'border-[color:var(--color-success)]/30 bg-[color:var(--color-success)]/10 text-[color:var(--color-fg)]'
-              : 'border-[color:var(--color-danger)]/30 bg-[color:var(--color-danger)]/10 text-[color:var(--color-fg)]')
-          }
-        >
-          {toast.text}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-/**
- * Two-button segmented control for flipping a Trail's lint policy
- * between 'trusting' (rejected findings stay dismissed) and 'strict'
- * (rejected findings re-fire on next lint pass). Default is trusting —
- * the opt-in to strict is a deliberate choice for curators who want the
- * extra safety net against wrongful dismissals.
- */
-function LintPolicyToggle({
-  kb,
-  onUpdated,
-  onError,
-}: {
-  kb: KnowledgeBase;
-  onUpdated: () => void;
-  onError: (message: string) => void;
-}) {
-  const [busy, setBusy] = useState(false);
-  const current = kb.lintPolicy ?? 'trusting';
-
-  const flip = async (next: 'trusting' | 'strict'): Promise<void> => {
-    if (next === current || busy) return;
-    setBusy(true);
-    try {
-      await updateKnowledgeBase(kb.id, { lintPolicy: next });
-      onUpdated();
-    } catch (err) {
-      // Surface + log + re-sync. Previously silent, which let a failed
-      // PATCH look like a successful toggle. Surfacing via toast tells
-      // the curator it didn't land; onUpdated re-fetches so the button
-      // reflects the true server state instead of the optimistic value.
-      const detail = err instanceof Error ? err.message : String(err);
-      console.error('[lint-policy] PATCH failed:', detail);
-      onError(t('kbs.lintPolicy.saveFailed', { error: detail }));
-      onUpdated();
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div
-      class="inline-flex items-center rounded-md border border-[color:var(--color-border)] overflow-hidden text-[10px] font-mono uppercase tracking-wide"
-      role="group"
-      aria-label={t('kbs.lintPolicy.label')}
-    >
-      {(['trusting', 'strict'] as const).map((p) => {
-        const active = p === current;
-        return (
-          <button
-            key={p}
-            type="button"
-            disabled={busy}
-            onClick={(e) => {
-              e.stopPropagation();
-              e.preventDefault();
-              void flip(p);
-            }}
-            title={t(`kbs.lintPolicy.${p}Hint`)}
-            class={
-              'px-2 py-1 transition disabled:opacity-50 ' +
-              (active
-                ? 'bg-[color:var(--color-accent)] text-[color:var(--color-accent-fg)]'
-                : 'text-[color:var(--color-fg-muted)] hover:text-[color:var(--color-fg)] hover:bg-[color:var(--color-bg)]')
-            }
-            aria-pressed={active}
-          >
-            {t(`kbs.lintPolicy.${p}`)}
-          </button>
-        );
-      })}
     </div>
   );
 }
