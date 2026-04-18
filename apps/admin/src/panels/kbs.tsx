@@ -3,7 +3,7 @@ import type { KnowledgeBase } from '@trail/shared';
 import { listKnowledgeBases, ApiError } from '../api';
 import { useEvents, onStreamOpen, onFocusRefresh, debounce } from '../lib/event-stream';
 import { invalidateKbs } from '../lib/kb-cache';
-import { t, useLocale } from '../lib/i18n';
+import { t, useLocale, getLocale } from '../lib/i18n';
 import { CenteredLoader } from '../components/centered-loader';
 
 export function KnowledgeBasesPanel() {
@@ -77,10 +77,24 @@ export function KnowledgeBasesPanel() {
     );
   }
 
+  // Total Neurons across every Trail on this server. Each KB already
+  // ships a `wikiPageCount` in the list response, so no extra round-trip —
+  // we just sum. Archived KBs are excluded by the server; archived
+  // Neurons are excluded from the per-KB count by the same query.
+  const totalNeurons = kbs.reduce((n, kb) => {
+    const count = (kb as KnowledgeBase & { wikiPageCount?: number }).wikiPageCount;
+    return n + (typeof count === 'number' ? count : 0);
+  }, 0);
+  const locale = getLocale();
+  const formattedTotal = totalNeurons.toLocaleString(locale === 'da' ? 'da-DK' : 'en-US');
+
   return (
     <div class="page-shell">
       <header class="mb-8">
         <h1 class="text-2xl font-semibold tracking-tight mb-1">{t('kbs.title')}</h1>
+        <p class="text-sm text-[color:var(--color-fg-muted)]">
+          {t('kbs.totalNeurons', { n: formattedTotal })}
+        </p>
       </header>
       <ul class="space-y-2">
         {kbs.map((kb) => {
