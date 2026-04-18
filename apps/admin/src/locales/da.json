@@ -5,6 +5,8 @@
     "search": "Søg",
     "queue": "Kø",
     "sources": "Kilder",
+    "settings": "Indstillinger",
+    "accountSettings": "Kontoindstillinger",
     "trails": "Trails",
     "glossary": "Ordforklaring",
     "signOut": "Log ud",
@@ -223,5 +225,30 @@
     "placeholder": "Tilføj tag — Enter eller komma",
     "placeholderMore": "Tilføj endnu et…",
     "remove": "Fjern tag {tag}"
+  },
+  "settings": {
+    "savedToast": "Gemt.",
+    "trail": {
+      "title": "Trail-indstillinger",
+      "subtitle": "Konfiguration pr. Trail for {name}.",
+      "descriptionLabel": "Beskrivelse",
+      "descriptionPlaceholder": "En eller to sætninger om hvad denne Trail indeholder.",
+      "languageLabel": "Sprog",
+      "languageHint": "Bestemmer hvilket sprog der bruges som canonical LLM compile-target. Curators kan stadig vise admin'en på det andet sprog."
+    },
+    "account": {
+      "title": "Konto",
+      "subtitle": "Din profil, tenant og enheds-lokale præferencer.",
+      "profile": "Profil",
+      "name": "Navn",
+      "email": "E-mail",
+      "tenant": "Tenant",
+      "tenantName": "Organisation",
+      "tenantSlug": "Slug",
+      "plan": "Plan",
+      "ambient": "Ambient lyd",
+      "ambientEnabled": "Afspil ambient-loops mens jeg arbejder",
+      "ambientVolume": "Lydstyrke"
+    }
   }
 }

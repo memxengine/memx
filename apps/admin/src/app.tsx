@@ -102,7 +102,13 @@ export function App({ children }: { children: ComponentChildren }) {
                 {t('nav.glossary')}
               </a>
               {me ? (
-                <span class="text-[color:var(--color-fg-muted)]">{displayName(me)}</span>
+                <a
+                  href="/settings"
+                  class="text-[color:var(--color-fg-muted)] hover:text-[color:var(--color-fg)] transition"
+                  title={t('nav.accountSettings')}
+                >
+                  {displayName(me)}
+                </a>
               ) : null}
               <LanguageSwitcher />
               <AmbientToggle />

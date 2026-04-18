@@ -9,6 +9,9 @@ import { SourcesPanel } from './panels/sources';
 import { SearchPanel } from './panels/search';
 import { ChatPanel } from './panels/chat';
 import { GlossaryPanel } from './panels/glossary';
+import { PlayPanel } from './panels/play';
+import { SettingsTrailPanel } from './panels/settings-trail';
+import { SettingsAccountPanel } from './panels/settings-account';
 import { NotFound } from './panels/not-found';
 import { initTheme } from './theme';
 import './index.css';
@@ -28,7 +31,10 @@ function Main() {
           <Route path="/kb/:kbId/sources" component={SourcesPanel} />
           <Route path="/kb/:kbId/search" component={SearchPanel} />
           <Route path="/kb/:kbId/chat" component={ChatPanel} />
+          <Route path="/kb/:kbId/settings" component={SettingsTrailPanel} />
+          <Route path="/settings" component={SettingsAccountPanel} />
           <Route path="/glossary" component={GlossaryPanel} />
+          <Route path="/play" component={PlayPanel} />
           <Route default component={NotFound} />
         </Router>
       </App>

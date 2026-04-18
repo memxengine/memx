@@ -5,6 +5,8 @@
     "search": "Search",
     "queue": "Queue",
     "sources": "Sources",
+    "settings": "Settings",
+    "accountSettings": "Account settings",
     "trails": "Trails",
     "glossary": "Glossary",
     "signOut": "Sign out",
@@ -223,5 +225,30 @@
     "placeholder": "Add tag — Enter or comma",
     "placeholderMore": "Add another…",
     "remove": "Remove tag {tag}"
+  },
+  "settings": {
+    "savedToast": "Saved.",
+    "trail": {
+      "title": "Trail settings",
+      "subtitle": "Per-Trail configuration for {name}.",
+      "descriptionLabel": "Description",
+      "descriptionPlaceholder": "One or two sentences about what this Trail contains.",
+      "languageLabel": "Language",
+      "languageHint": "Affects which locale is used as the canonical LLM compile target. Curators can still view the admin in the other language."
+    },
+    "account": {
+      "title": "Account",
+      "subtitle": "Your profile, tenant, and device-local preferences.",
+      "profile": "Profile",
+      "name": "Name",
+      "email": "Email",
+      "tenant": "Tenant",
+      "tenantName": "Organisation",
+      "tenantSlug": "Slug",
+      "plan": "Plan",
+      "ambient": "Ambient audio",
+      "ambientEnabled": "Play ambient loops while I work",
+      "ambientVolume": "Volume"
+    }
   }
 }
