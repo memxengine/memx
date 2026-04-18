@@ -48,6 +48,12 @@ export function SourcesPanel() {
   // Custom modal for archive confirmation — no native window.confirm.
   const [archiveTarget, setArchiveTarget] = useState<Document | null>(null);
   const [archiveBusy, setArchiveBusy] = useState(false);
+  // Re-ingest confirmation modal. Re-ingest is non-destructive (output
+  // replaces existing Neurons, idempotent server-side) but costs LLM
+  // tokens + takes 1-2 min per source, so a user-forced re-ingest
+  // should be an intentional click, not a drive-by.
+  const [reingestTarget, setReingestTarget] = useState<Document | null>(null);
+  const [reingestBusy, setReingestBusy] = useState(false);
 
   const reload = useCallback(() => {
     if (!kbId) return;
@@ -144,7 +150,20 @@ export function SourcesPanel() {
     }
   }, []);
 
-  const onReingest = useCallback(async (doc: Document) => {
+  // Open the re-ingest confirmation modal. Actual mutation fires from
+  // confirmReingest so the curator has a chance to back out — LLM work
+  // is expensive enough that a mis-click shouldn't immediately burn
+  // tokens. (retry has no modal because it's usually invoked on a row
+  // that's already in a failed state; re-ingest is also offered on
+  // ready rows where accidental clicks are more likely.)
+  const onReingest = useCallback((doc: Document) => {
+    setReingestTarget(doc);
+  }, []);
+
+  const confirmReingest = useCallback(async () => {
+    const doc = reingestTarget;
+    if (!doc) return;
+    setReingestBusy(true);
     try {
       const result = await reingestDocument(doc.id);
       if (!result.alreadyRunning) {
@@ -156,10 +175,13 @@ export function SourcesPanel() {
             : prev,
         );
       }
+      setReingestTarget(null);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : String(err));
+    } finally {
+      setReingestBusy(false);
     }
-  }, []);
+  }, [reingestTarget]);
 
   const toggleExpanded = useCallback((id: string) => {
     setExpanded((prev) => {
@@ -259,6 +281,36 @@ export function SourcesPanel() {
             </div>
             <p class="text-sm text-[color:var(--color-fg-muted)] leading-relaxed">
               {t('sources.archiveBody')}
+            </p>
+          </div>
+        ) : null}
+      </Modal>
+
+      <Modal
+        open={reingestTarget !== null}
+        title={t('sources.reingestTitle')}
+        onClose={() => setReingestTarget(null)}
+        footer={
+          <>
+            <ModalButton onClick={() => setReingestTarget(null)} disabled={reingestBusy}>
+              {t('common.cancel')}
+            </ModalButton>
+            <ModalButton onClick={confirmReingest} disabled={reingestBusy}>
+              {reingestBusy ? '…' : t('sources.reingest')}
+            </ModalButton>
+          </>
+        }
+      >
+        {reingestTarget ? (
+          <div class="space-y-3">
+            <div>
+              <div class="text-[11px] font-mono uppercase tracking-wider text-[color:var(--color-fg-subtle)] mb-1">
+                {t('sources.title').toLowerCase()}
+              </div>
+              <div class="text-sm font-medium break-all">{reingestTarget.filename}</div>
+            </div>
+            <p class="text-sm text-[color:var(--color-fg-muted)] leading-relaxed">
+              {t('sources.reingestBody')}
             </p>
           </div>
         ) : null}

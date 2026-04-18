@@ -130,6 +130,8 @@
     "retryHint": "Re-run the full pipeline (extract + ingest) against the uploaded bytes",
     "reingest": "Re-ingest",
     "reingestHint": "Skip file-format extract; re-run only the LLM wiki-compile against existing content",
+    "reingestTitle": "Re-run ingest on this source?",
+    "reingestBody": "This re-runs the LLM wiki-compile against the existing extracted content. Expect it to take 1-2 minutes and use LLM tokens. Existing Neurons from this source will be replaced by the new compile.",
     "archive": "Archive",
     "archiveHint": "Archive this source — hidden from the list, data intact",
     "archiveTitle": "Archive this source?",
