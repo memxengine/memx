@@ -1,14 +1,5 @@
-export function slugify(text: string): string {
-  return text
-    .toLowerCase()
-    .trim()
-    .replace(/[^\w\s-]/g, '')
-    .replace(/[\s_]+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '');
-}
-
-export function uniqueSlug(text: string): string {
-  const base = slugify(text);
-  return base || crypto.randomUUID().slice(0, 8);
-}
+// Re-export the canonical implementation so existing
+// `import { slugify } from '@trail/core'` imports keep working. The actual
+// body lives in @trail/shared so the admin (browser bundle, no node:crypto)
+// and CLI scripts can share it without pulling a server-side dep.
+export { slugify, uniqueSlug } from '@trail/shared';

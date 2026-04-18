@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'preact/hooks';
 import { useRoute } from 'preact-iso';
 import type { Document } from '@trail/shared';
-import { listWikiPages, runLint, ApiError } from '../api';
+import { listWikiPages, runLint, ApiError, type WikiSortOrder } from '../api';
 import { displayPath } from '../lib/display-path';
 import { useEvents, onStreamOpen, onFocusRefresh, debounce } from '../lib/event-stream';
 import { t, useLocale } from '../lib/i18n';
+import { CenteredLoader } from '../components/centered-loader';
 
 /**
  * Neurons tree — groups all compiled wiki pages in a KB by their
@@ -19,6 +20,29 @@ export function WikiTreePanel() {
   const [error, setError] = useState<string | null>(null);
   const [lintBusy, setLintBusy] = useState(false);
   const [toast, setToast] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
+  // Sort preference persists in localStorage so returning curators see
+  // the same order they left with. `newest` is the default when nothing
+  // is cached — living knowledge bases are scanned by "what changed
+  // most recently" more often than anything else.
+  const [sortOrder, setSortOrderRaw] = useState<WikiSortOrder>(() => {
+    try {
+      const stored = localStorage.getItem('trail.admin.wiki-sort');
+      if (stored === 'newest' || stored === 'oldest' || stored === 'title') return stored;
+    } catch {
+      // no localStorage (SSR/sandbox)
+    }
+    return 'newest';
+  });
+  const [sortMenuOpen, setSortMenuOpen] = useState(false);
+  const setSortOrder = useCallback((next: WikiSortOrder) => {
+    setSortOrderRaw(next);
+    try {
+      localStorage.setItem('trail.admin.wiki-sort', next);
+    } catch {
+      // ignore
+    }
+    setSortMenuOpen(false);
+  }, []);
 
   useEffect(() => {
     if (!toast) return;
@@ -45,10 +69,10 @@ export function WikiTreePanel() {
 
   const reload = useCallback(() => {
     if (!kbId) return;
-    listWikiPages(kbId)
+    listWikiPages(kbId, sortOrder)
       .then(setPages)
       .catch((err: ApiError) => setError(err.message));
-  }, [kbId]);
+  }, [kbId, sortOrder]);
   const reloadDebounced = useCallback(debounce(reload, 100), [reload]);
 
   useEffect(() => {
@@ -70,13 +94,44 @@ export function WikiTreePanel() {
   const grouped = useMemo(() => {
     if (!pages) return null;
     const groups = new Map<string, Document[]>();
+    // Server already returns pages in the chosen order — preserve it
+    // within each group by pushing in iteration order.
     for (const p of pages) {
       const key = (p as { path?: string }).path ?? '/';
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key)!.push(p);
     }
-    return [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0]));
-  }, [pages]);
+    // Sort the GROUPS themselves to match the user's sort preference.
+    // Without this only the within-group order changed on sort-switch,
+    // which was easy to miss since the eye scans groups top-to-bottom.
+    const entries = [...groups.entries()];
+    const docTs = (d: Document): number => {
+      const raw = (d as { updatedAt?: string; createdAt?: string }).updatedAt
+        ?? (d as { createdAt?: string }).createdAt
+        ?? '';
+      const parsed = new Date(raw.replace(' ', 'T') + (raw.includes('Z') || raw.includes('+') ? '' : 'Z')).getTime();
+      return Number.isNaN(parsed) ? 0 : parsed;
+    };
+    if (sortOrder === 'newest') {
+      // Group order = max(updatedAt) of children, descending.
+      entries.sort((a, b) => {
+        const aMax = Math.max(...a[1].map(docTs));
+        const bMax = Math.max(...b[1].map(docTs));
+        return bMax - aMax;
+      });
+    } else if (sortOrder === 'oldest') {
+      // Group order = min(createdAt), ascending.
+      entries.sort((a, b) => {
+        const aMin = Math.min(...a[1].map(docTs));
+        const bMin = Math.min(...b[1].map(docTs));
+        return aMin - bMin;
+      });
+    } else {
+      // 'title' or unknown → alphabetical by group path.
+      entries.sort((a, b) => a[0].localeCompare(b[0]));
+    }
+    return entries;
+  }, [pages, sortOrder]);
 
   return (
     <div class="page-shell">
@@ -91,14 +146,50 @@ export function WikiTreePanel() {
             )}
           </p>
         </div>
-        <button
-          onClick={onRunLint}
-          disabled={lintBusy || !pages}
-          title={t('wikiTree.runLintHint')}
-          class="shrink-0 px-3 py-1.5 text-[11px] font-mono uppercase tracking-wider rounded-md border border-[color:var(--color-border-strong)] hover:border-[color:var(--color-accent)] hover:text-[color:var(--color-accent)] disabled:opacity-50 disabled:cursor-not-allowed transition"
-        >
-          {lintBusy ? t('wikiTree.lintRunning') : t('wikiTree.runLint')}
-        </button>
+        <div class="shrink-0 flex items-center gap-2">
+          <div class="relative">
+            <button
+              onClick={() => setSortMenuOpen((v) => !v)}
+              disabled={!pages}
+              title={t('wikiTree.sortHint')}
+              aria-expanded={sortMenuOpen}
+              class="inline-flex items-center gap-1 px-3 py-1.5 text-[11px] font-mono uppercase tracking-wider rounded-md border border-[color:var(--color-border-strong)] hover:border-[color:var(--color-accent)] hover:text-[color:var(--color-accent)] disabled:opacity-50 disabled:cursor-not-allowed transition"
+            >
+              <span>{t('wikiTree.sort')}: {t(`wikiTree.sortOptions.${sortOrder}`)}</span>
+              <span class="text-[9px]">{sortMenuOpen ? '▲' : '▼'}</span>
+            </button>
+            {sortMenuOpen ? (
+              <div
+                class="absolute right-0 top-full mt-1 min-w-[180px] rounded-md border border-[color:var(--color-border-strong)] bg-[color:var(--color-bg)] shadow-lg overflow-hidden z-10"
+                role="menu"
+              >
+                {(['newest', 'oldest', 'title'] as const).map((opt) => (
+                  <button
+                    key={opt}
+                    role="menuitem"
+                    onClick={() => setSortOrder(opt)}
+                    class={
+                      'w-full px-3 py-2 text-left text-[11px] font-mono uppercase tracking-wider transition ' +
+                      (opt === sortOrder
+                        ? 'bg-[color:var(--color-accent)]/15 text-[color:var(--color-fg)]'
+                        : 'text-[color:var(--color-fg-muted)] hover:bg-[color:var(--color-bg-card)] hover:text-[color:var(--color-fg)]')
+                    }
+                  >
+                    {t(`wikiTree.sortOptions.${opt}`)}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+          <button
+            onClick={onRunLint}
+            disabled={lintBusy || !pages}
+            title={t('wikiTree.runLintHint')}
+            class="shrink-0 px-3 py-1.5 text-[11px] font-mono uppercase tracking-wider rounded-md border border-[color:var(--color-border-strong)] hover:border-[color:var(--color-accent)] hover:text-[color:var(--color-accent)] disabled:opacity-50 disabled:cursor-not-allowed transition"
+          >
+            {lintBusy ? t('wikiTree.lintRunning') : t('wikiTree.runLint')}
+          </button>
+        </div>
       </header>
 
       {error ? (
@@ -106,6 +197,8 @@ export function WikiTreePanel() {
           {error}
         </div>
       ) : null}
+
+      {!pages && !error ? <CenteredLoader /> : null}
 
       {grouped?.length === 0 ? (
         <div class="text-center py-16 text-[color:var(--color-fg-subtle)]">
@@ -121,9 +214,13 @@ export function WikiTreePanel() {
             </h2>
             <ul class="space-y-1">
               {docs.map((doc) => {
-                const d = doc as Document & { filename: string; title: string | null; path?: string };
+                const d = doc as Document & { filename: string; title: string | null; path?: string; createdAt?: string; updatedAt?: string };
                 const slug = d.filename.replace(/\.md$/i, '');
                 const origin = classifyOrigin(d.path);
+                // Prefer updatedAt for the visible timestamp so
+                // recently-touched Neurons read as fresh. createdAt is
+                // the fallback for rows that have never been edited.
+                const ts = d.updatedAt ?? d.createdAt ?? null;
                 return (
                   <li key={doc.id}>
                     <a
@@ -145,8 +242,14 @@ export function WikiTreePanel() {
                           ) : null}
                           <span class="truncate">{d.title ?? slug}</span>
                         </div>
-                        <div class="text-[11px] font-mono text-[color:var(--color-fg-subtle)] truncate">
-                          {d.filename}
+                        <div class="text-[11px] font-mono text-[color:var(--color-fg-subtle)] truncate flex items-center gap-2">
+                          <span class="truncate">{d.filename}</span>
+                          {ts ? (
+                            <>
+                              <span class="opacity-60">·</span>
+                              <span class="shrink-0" title={ts}>{formatRelative(ts)}</span>
+                            </>
+                          ) : null}
                         </div>
                       </div>
                       <span class="text-[color:var(--color-fg-subtle)] group-hover:text-[color:var(--color-accent)] transition">
@@ -222,4 +325,32 @@ function originTitle(origin: Origin): string {
     case 'entity':
       return 'Person, organization, or tool compiled by the Neuron LLM';
   }
+}
+
+/**
+ * Compact relative timestamp for Neuron list rows. "2m", "3t", "idag",
+ * "4d", "2u", "16/04/2026". Errs on the side of brevity — the full ISO
+ * timestamp sits in the `title` attribute for hover. SQLite timestamps
+ * arrive as "YYYY-MM-DD HH:MM:SS" without timezone; we treat them as UTC.
+ */
+function formatRelative(iso: string): string {
+  const parsed = new Date(iso.replace(' ', 'T') + (iso.includes('Z') || iso.includes('+') ? '' : 'Z'));
+  if (Number.isNaN(parsed.getTime())) return iso;
+  const now = Date.now();
+  const diffMs = now - parsed.getTime();
+  const sec = Math.round(diffMs / 1000);
+  if (sec < 45) return t('common.time.now');
+  const min = Math.round(sec / 60);
+  if (min < 60) return `${min}${t('common.time.minute')}`;
+  const hr = Math.round(min / 60);
+  if (hr < 24) return `${hr}${t('common.time.hour')}`;
+  const day = Math.round(hr / 24);
+  if (day < 7) return `${day}${t('common.time.day')}`;
+  const wk = Math.round(day / 7);
+  if (wk < 5) return `${wk}${t('common.time.week')}`;
+  // Older than ~1 month: show absolute date, dd/mm/yyyy (locale-neutral).
+  const dd = String(parsed.getDate()).padStart(2, '0');
+  const mm = String(parsed.getMonth() + 1).padStart(2, '0');
+  const yyyy = parsed.getFullYear();
+  return `${dd}/${mm}/${yyyy}`;
 }

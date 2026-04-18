@@ -3,11 +3,13 @@ import { createApp } from './app.js';
 import { ensureIngestUser } from './bootstrap/ingest-user.js';
 import { recoverZombieIngests } from './bootstrap/zombie-ingest.js';
 import { rewriteWikiToNeurons } from './bootstrap/rewrite-wiki-paths.js';
+import { cleanupExternalOrphans } from './bootstrap/F98-cleanup-external-orphans.js';
 import { startContradictionLint } from './services/contradiction-lint.js';
 import { backfillReferences, startReferenceExtractor } from './services/reference-extractor.js';
 import { backfillBacklinks, startBacklinkExtractor } from './services/backlink-extractor.js';
 import { startLintScheduler } from './services/lint-scheduler.js';
 import { startQueueBackfill } from './services/queue-backfill.js';
+import { startActionRecommender, backfillRecommendations } from './services/action-recommender.js';
 
 const PORT = Number(process.env.PORT ?? 3031);
 
@@ -21,6 +23,11 @@ await trail.initFTS();
 await ensureIngestUser(trail);
 await recoverZombieIngests(trail);
 await rewriteWikiToNeurons(trail);
+// F98 — dismiss pending orphan-findings targeting external-originated
+// Neurons (buddy, MCP, chat, api). Their sources live outside Trail;
+// the orphan detector used to falsely flag them. Idempotent — zero
+// rows to update after the first run is the steady state.
+await cleanupExternalOrphans(trail);
 await backfillReferences(trail);
 await backfillBacklinks(trail);
 
@@ -46,6 +53,23 @@ const stopLintScheduler = startLintScheduler(trail);
 // Danish admin boots with Danish content already cached. Runs 30s after
 // boot; sequential so the CLI subprocess doesn't fan out.
 const stopQueueBackfill = startQueueBackfill(trail);
+
+// F96 — action recommender subscribes to candidate_created. LLM call
+// per pending candidate; stamps metadata.recommendation with a
+// suggested action id + reasoning. Admin renders the badge; bulk-
+// accept route uses it for per-candidate dispatch.
+const stopActionRecommender = startActionRecommender(trail);
+
+// One-shot backfill for existing pending candidates that landed
+// before the recommender was wired up. Runs 60s after boot so it
+// doesn't compete with queue-backfill's translation work. Serial, so
+// it cooks at CLI pace (~5s/candidate). The process owns its own
+// error isolation — a single bad candidate doesn't abort the batch.
+setTimeout(() => {
+  void backfillRecommendations(trail).catch((err) => {
+    console.error('[action-recommender] backfill failed:', err);
+  });
+}, 60_000);
 
 const app = createApp(trail);
 

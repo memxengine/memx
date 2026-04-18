@@ -174,6 +174,34 @@ export const CandidateEffectKindEnum = z.enum([
   'auto-link-sources',
 ]);
 
+/**
+ * F96 — LLM-proposed recommendation for a candidate. Stored inside
+ * `metadata.recommendation` (JSON column) and surfaced in the admin as
+ * a "💡 Anbefalet: X" badge above the action row. Curator can click
+ * the specific action manually OR click "Accept recommendation" to
+ * one-click execute the recommended actionId. Works in bulk too.
+ */
+export const CandidateRecommendationSchema = z.object({
+  /** The actionId the LLM thinks fits best. Must match one of the
+   *  candidate's own action ids. */
+  recommendedActionId: z.string().min(1),
+  /** 0-1 confidence in the recommendation itself (not the candidate's
+   *  overall confidence). Renders as a tier-coloured pill alongside. */
+  confidence: z.number().min(0).max(1),
+  /**
+   * 1-3 sentence LLM-written justification for WHY this action fits
+   *  this specific candidate. Generated in the Trail's own language
+   *  (from `knowledge_bases.language`) — one Haiku call, one language
+   *  per Trail. The admin renders it verbatim; no per-view translation
+   *  round-trip. */
+  reasoning: z.string().min(1).max(1000),
+  /** When was the recommendation computed — for debugging stale
+   *  recommendations after content edits. */
+  generatedAt: z.string(),
+});
+
+export type CandidateRecommendation = z.infer<typeof CandidateRecommendationSchema>;
+
 export const CandidateActionSchema = z.object({
   // Stable machine id. Callers reference this via POST /resolve {actionId}.
   id: z.string().min(1),
@@ -271,6 +299,13 @@ export const ListQueueQuerySchema = z.object({
   knowledgeBaseId: z.string().optional(),
   kind: QueueCandidateKindEnum.optional(),
   status: QueueCandidateStatusEnum.optional(),
+  /**
+   * Filter by ingestion connector (upload, mcp:claude-code, buddy, chat,
+   * lint, curator, api, …). Matches `metadata.connector` via substring
+   * LIKE since connector lives inside the JSON blob. Multiple connectors
+   * are passed as a comma-separated string — the engine splits and ORs.
+   */
+  connector: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50),
   cursor: z.string().optional(),
 });

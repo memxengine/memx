@@ -47,7 +47,14 @@
     "error": "Noget gik galt.",
     "tryAgain": "Prøv igen",
     "copyId": "Kopiér ID",
-    "copied": "Kopieret!"
+    "copied": "Kopieret!",
+    "time": {
+      "now": "nu",
+      "minute": "m",
+      "hour": "t",
+      "day": "d",
+      "week": "u"
+    }
   },
   "queue": {
     "kinds": {
@@ -64,6 +71,20 @@
       "source-retraction": "kilde-tilbagetrækning",
       "scheduled-recompile": "planlagt gen-kompilering"
     },
+    "kindHints": {
+      "chat-answer": "Et chat-svar kuratoren valgte at gemme som Neuron.",
+      "ingest-summary": "En Neuron compileren skrev fra en Kilde under ingest.",
+      "ingest-page-update": "En redigering af en eksisterende Neuron fra ingest.",
+      "cross-ref-suggestion": "En henvisning eller forældreløs-advarsel fra lint — en Neuron uden citationer, eller en Kilde ingen linker til.",
+      "contradiction-alert": "To Neuroner hvis påstande modsiger hinanden. Kurator vælger hvem der har ret.",
+      "gap-detection": "Et spørgsmål vidensbasen ikke kunne svare godt på — forslag til ny Kilde.",
+      "user-correction": "En direkte redigering kuratoren sendte via Neuron-editoren.",
+      "reader-feedback": "En læser markerede et svar som forkert eller ufuldstændigt.",
+      "external-feed": "En kandidat sendt af en ekstern pipeline (fx buddy session-artefakter).",
+      "version-conflict": "En samtidig redigerings-kollision. Kurator vælger hvilken version der overlever.",
+      "source-retraction": "En Kilde er markeret upålidelig — kompileringer fra den skal efterses.",
+      "scheduled-recompile": "En planlagt gen-kompilering af en Neuron for at samle ny evidens op."
+    },
     "status": {
       "pending": "afventer",
       "approved": "godkendt",
@@ -71,11 +92,28 @@
       "ingested": "indlæst",
       "autoApproved": "auto-godkendt"
     },
+    "statusHints": {
+      "pending": "Venter på kuratorens beslutning.",
+      "approved": "Kuratoren godkendte denne kandidat — ændringen er commit'et.",
+      "rejected": "Kuratoren afviste kandidaten. Intet ændret.",
+      "ingested": "Kandidatens indhold er landet i wikien.",
+      "autoApproved": "Tillidsfuld pipeline — godkendelsespolitikken auto-committede den. Intet manuelt klik nødvendigt."
+    },
     "op": {
       "label": "handling",
       "create": "opret",
       "update": "opdater",
       "archive": "arkivér"
+    },
+    "opHints": {
+      "create": "Godkendelse opretter en ny Neuron.",
+      "update": "Godkendelse redigerer en eksisterende Neuron.",
+      "archive": "Godkendelse arkiverer (blød-sletter) en Neuron."
+    },
+    "confidenceTierHints": {
+      "high": "Høj sikkerhed — auto-godkendes ved ≥ 0,8.",
+      "medium": "Middel sikkerhed — fortjener review.",
+      "low": "Lav sikkerhed — kræver opmærksomhed."
     },
     "meta": {
       "op": "handling",
@@ -87,6 +125,12 @@
     "byPipeline": "af pipeline",
     "byAuthor": "af {who}",
     "conf": "sikkerhed {n}",
+    "connectorFilterLabel": "Kilde:",
+    "connectorFilterClear": "ryd",
+    "createdVia": "Skabt via",
+    "recommended": "💡 Anbefalet",
+    "acceptRecommendation": "Accepter",
+    "recommendationManualOnly": "kun manuelt",
     "title": "Kø til godkendelse",
     "summary": "{n} kandidat {status}",
     "summaryPlural": "{n} kandidater {status}",
@@ -106,6 +150,9 @@
       "confirmReject": "Afvis {n}",
       "approvedToast": "Godkendte {ok}/{total}",
       "rejectedToast": "Afviste {ok}/{total}",
+      "acceptedRecommendationsToast": "Accepterede {ok}/{total} anbefalinger",
+      "acceptRecommendations": "Accepter {n} anbefalinger",
+      "acceptRecommendationsHint": "{ready} af {total} valgte kandidater har en klar anbefaling. Rækker uden (stadig ved at blive beregnet) eller med afvis-anbefaling springes over.",
       "failureSuffix": " — {n} fejlede",
       "approveDisabledRich": "En eller flere af de valgte kræver et specifikt valg (modsigelse, forældreløs, forældet) — håndtér dem enkeltvis."
     },
@@ -121,6 +168,8 @@
       "rejectTitle": "Afvis denne kandidat?",
       "rejectPrompt": "Begrundelse (valgfri)",
       "whatDoesThisMean": "Hvad betyder det her?",
+      "showOptions": "Vis {n} andre valg",
+      "hideOptions": "Skjul valg",
       "reopen": "Genåbn",
       "reopenSuccess": "Genåbnet — tilbage i Afventer.",
       "reopenHint": "Sætter kandidaten tilbage i Afventer-køen så du kan vælge igen.",
@@ -166,6 +215,13 @@
     "empty": "Ingen Neuroner endnu. Kandidater der bliver godkendt i køen dukker op her.",
     "runLint": "Kør lint",
     "runLintHint": "Scan Neuroner for forældreløse, forældede sider og modsigelser",
+    "sort": "Sortér",
+    "sortHint": "Vælg rækkefølge på Neuroner i listen",
+    "sortOptions": {
+      "newest": "Nyeste",
+      "oldest": "Ældste",
+      "title": "Titel"
+    },
     "lintRunning": "Kører lint…",
     "lintDone": "Lint lavede {n} ny kandidat",
     "lintDonePlural": "Lint lavede {n} nye kandidater",
@@ -186,6 +242,7 @@
     "empty": "Ingen Trails endnu. Opret én for at komme i gang.",
     "create": "Opret Trail",
     "pendingBadge": "{n} afventer",
+    "totalNeurons": "Neuroner på denne trail-server: {n}",
     "lintPolicy": {
       "label": "Lint-politik",
       "trusting": "tillidsfuld",
@@ -193,6 +250,26 @@
       "trustingHint": "Tillidsfuld: afviste lint-fund undertrykkes permanent. Ingen nag-løkke på afviste fund.",
       "strictHint": "Streng: afviste lint-fund må dukke op igen ved næste lint-kørsel. Fanger fejlagtige afvisninger på bekostning af mere støj.",
       "saveFailed": "Kunne ikke gemme lint-politik — {error}. Henter nuværende tilstand."
+    }
+  },
+  "connectors": {
+    "roadmapSuffix": "Roadmap — ikke wiret op endnu.",
+    "unknownConnector": "Ukendt connector: {id}",
+    "hints": {
+      "upload": "En fil sluppet på Kilder-siden — PDF, Markdown, DOCX. Ingest-pipelinen kompilerede Neuroner fra den.",
+      "mcp:claude-code": "En Claude Code cc-session skrev denne Neuron via Trail MCP.",
+      "mcp:cursor": "En Cursor-editor-session skrev dette via Trail MCP.",
+      "mcp": "En MCP-klient der ikke identificerede sig via TRAIL_CONNECTOR.",
+      "buddy": "Buddy sendte en cc-session-artefakt (F39). Session-ræsonnement destilleret til en genbrugbar Neuron.",
+      "chat": "Et gemt chat-svar — kuratoren stillede Trail et spørgsmål og trykkede 'gem som Neuron'.",
+      "lint": "Et lint-detektor-fund — forældreløs, forældet, modsigelse eller hul.",
+      "curator": "En direkte redigering af kuratoren via Neuron-editoren.",
+      "api": "Et bearer-autentificeret POST fra et script, CI-hook eller webhook.",
+      "slack": "Planlagt ingest af Slack-kanal-beskeder ind i Trail.",
+      "discord": "Planlagt ingest af Discord-server-beskeder ind i Trail.",
+      "notion": "Planlagt ingest af Notion-sider ind i Trail.",
+      "github": "Planlagt ingest af GitHub-issues, PRs og discussions.",
+      "linear": "Planlagt ingest af Linear-tickets og kommentarer."
     }
   },
   "glossary": {
@@ -231,10 +308,12 @@
     "trail": {
       "title": "Trail-indstillinger",
       "subtitle": "Konfiguration pr. Trail for {name}.",
+      "nameLabel": "Navn",
+      "nameHint": "Visnings-navn på denne Trail. Ændringer påvirker ikke URL'en — slug'et forbliver det samme.",
       "descriptionLabel": "Beskrivelse",
       "descriptionPlaceholder": "En eller to sætninger om hvad denne Trail indeholder.",
       "languageLabel": "Sprog",
-      "languageHint": "Bestemmer hvilket sprog der bruges som canonical LLM compile-target. Curators kan stadig vise admin'en på det andet sprog."
+      "languageHint": "Sproget som LLM-genereret indhold på denne Trail bruger — både Neuron-kompilering fra Kilder OG F96 action-recommender-begrundelser. Admin-UI'et kører stadig på det sprog du har valgt i sprog-skifteren øverst; kun indholdet følger denne indstilling."
     },
     "account": {
       "title": "Konto",

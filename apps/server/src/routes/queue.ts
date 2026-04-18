@@ -428,3 +428,145 @@ queueRoutes.post('/queue/bulk', async (c) => {
 
   return c.json(results);
 });
+
+/**
+ * F96 — bulk-execute each candidate's LLM-recommended action. Unlike
+ * /queue/bulk which applies the SAME action to all, this looks up
+ * `metadata.recommendation.recommendedActionId` per candidate and
+ * dispatches that specific action. Candidates without a recommendation
+ * are skipped gracefully (reported as failed with a clear reason).
+ *
+ * Useful for the "Accept recommendation"-across-selection curator flow:
+ * scan 40 orphans, trust the LLM's picks on the ones you agree with,
+ * select all, accept. One-click batch resolution.
+ */
+queueRoutes.post('/queue/bulk-accept-recommendations', async (c) => {
+  const body = (await c.req.json().catch(() => null)) as { ids?: unknown } | null;
+  const ids = Array.isArray(body?.ids)
+    ? body!.ids.filter((id): id is string => typeof id === 'string')
+    : [];
+  if (ids.length === 0) return c.json({ error: 'ids array required' }, 400);
+  if (ids.length > 500) return c.json({ error: 'max 500 ids per batch' }, 400);
+
+  const tenant = getTenant(c);
+  const trail = getTrail(c);
+  const actor = userActor(c);
+
+  const results = {
+    requested: ids.length,
+    succeeded: [] as Array<{ id: string; actionId: string }>,
+    failed: [] as Array<{ id: string; error: string }>,
+  };
+
+  for (const id of ids) {
+    const existing = await getCandidate(trail, tenant.id, id);
+    if (!existing) {
+      results.failed.push({ id, error: 'not found' });
+      continue;
+    }
+    const recActionId = extractRecommendedActionId(existing.metadata);
+    if (!recActionId) {
+      results.failed.push({ id, error: 'no recommendation yet — try again shortly' });
+      continue;
+    }
+    // Reject-effect actions need a reason-prompt UX — don't auto-execute
+    // these in bulk. Curator should click them one-by-one so they can
+    // type a rejection reason.
+    const actions = resolveActions(existing);
+    const matched = actions.find((a) => a.id === recActionId);
+    if (!matched) {
+      results.failed.push({ id, error: `recommended action "${recActionId}" not in candidate's actions` });
+      continue;
+    }
+    // Reject-effect in bulk: pass the LLM's reasoning as the rejection
+    // reason so the candidate still records WHY it was dismissed — no
+    // need to route through the reason-modal for each one.
+    const reason = matched.effect === 'reject'
+      ? extractRecommendationReasoning(existing.metadata) ?? 'accepted LLM recommendation'
+      : undefined;
+
+    try {
+      // auto-link-sources needs runtime args.sources populated by the
+      // LLM inferer — the same step the single-resolve route does.
+      // Without this, core's handler throws "no payload.args.sources"
+      // and only actions that don't need LLM inference (archive,
+      // acknowledge, etc.) succeed in bulk. Run the inferer per
+      // candidate here before dispatching.
+      let argsForResolve: Record<string, unknown> | undefined = matched.args;
+      if (recActionId === 'auto-link-sources') {
+        const docId = typeof matched.args?.documentId === 'string' ? matched.args.documentId : null;
+        if (!docId) {
+          results.failed.push({ id, error: 'auto-link-sources action missing documentId' });
+          continue;
+        }
+        const doc = await trail.db
+          .select({ content: documents.content, knowledgeBaseId: documents.knowledgeBaseId })
+          .from(documents)
+          .where(and(eq(documents.id, docId), eq(documents.tenantId, tenant.id), eq(documents.kind, 'wiki')))
+          .get();
+        if (!doc) {
+          results.failed.push({ id, error: 'target Neuron not found' });
+          continue;
+        }
+        const inferred = await proposeSourcesForOrphan(
+          trail,
+          tenant.id,
+          doc.knowledgeBaseId,
+          doc.content ?? '',
+        );
+        if (inferred.length === 0) {
+          results.failed.push({
+            id,
+            error: 'no plausible sources inferred — link manually instead',
+          });
+          continue;
+        }
+        argsForResolve = { ...(matched.args ?? {}), sources: inferred };
+      }
+
+      const parsed = ResolveCandidateSchema.safeParse({
+        actionId: recActionId,
+        args: argsForResolve,
+        ...(reason ? { reason } : {}),
+      });
+      if (!parsed.success) {
+        results.failed.push({ id, error: 'invalid resolve payload' });
+        continue;
+      }
+      const r = await resolveCandidate(trail, tenant.id, id, actor, parsed.data);
+      emitResolution(r, existing);
+      results.succeeded.push({ id, actionId: recActionId });
+    } catch (err) {
+      results.failed.push({ id, error: err instanceof Error ? err.message : String(err) });
+    }
+  }
+
+  return c.json(results);
+});
+
+/**
+ * Pull the LLM-recommended actionId out of a candidate's metadata JSON.
+ * Returns null when the recommendation hasn't landed yet (still running
+ * in the background) or the field is malformed.
+ */
+function extractRecommendedActionId(metadata: string | null): string | null {
+  if (!metadata) return null;
+  try {
+    const parsed = JSON.parse(metadata) as { recommendation?: { recommendedActionId?: unknown } };
+    const id = parsed.recommendation?.recommendedActionId;
+    return typeof id === 'string' ? id : null;
+  } catch {
+    return null;
+  }
+}
+
+function extractRecommendationReasoning(metadata: string | null): string | null {
+  if (!metadata) return null;
+  try {
+    const parsed = JSON.parse(metadata) as { recommendation?: { reasoning?: unknown } };
+    const r = parsed.recommendation?.reasoning;
+    return typeof r === 'string' ? r : null;
+  } catch {
+    return null;
+  }
+}

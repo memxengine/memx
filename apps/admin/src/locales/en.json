@@ -47,7 +47,14 @@
     "error": "Something went wrong.",
     "tryAgain": "Try again",
     "copyId": "Copy ID",
-    "copied": "Copied!"
+    "copied": "Copied!",
+    "time": {
+      "now": "now",
+      "minute": "m",
+      "hour": "h",
+      "day": "d",
+      "week": "w"
+    }
   },
   "queue": {
     "kinds": {
@@ -64,6 +71,20 @@
       "source-retraction": "source retraction",
       "scheduled-recompile": "scheduled recompile"
     },
+    "kindHints": {
+      "chat-answer": "A chat answer the curator chose to save as a Neuron.",
+      "ingest-summary": "A Neuron the compiler wrote from a Source during ingest.",
+      "ingest-page-update": "An edit to an existing Neuron emitted during ingest.",
+      "cross-ref-suggestion": "A cross-reference or orphan finding from lint — a Neuron without citations or a Source nothing links to.",
+      "contradiction-alert": "Two Neurons whose claims conflict. Curator picks which side wins.",
+      "gap-detection": "A question the knowledge base couldn't answer well — suggests adding a Source.",
+      "user-correction": "A direct edit the curator submitted via the Neuron editor.",
+      "reader-feedback": "A reader flagged an answer as wrong or incomplete.",
+      "external-feed": "A candidate posted by an external pipeline (e.g. buddy session artifacts).",
+      "version-conflict": "A concurrent-edit collision on a Neuron. Curator picks which version survives.",
+      "source-retraction": "A Source was marked untrustworthy — compiles from it need a second look.",
+      "scheduled-recompile": "A periodic recompile of an existing Neuron to pick up new evidence."
+    },
     "status": {
       "pending": "pending",
       "approved": "approved",
@@ -71,11 +92,28 @@
       "ingested": "ingested",
       "autoApproved": "auto-approved"
     },
+    "statusHints": {
+      "pending": "Waiting for the curator's decision.",
+      "approved": "The curator accepted this candidate — its change is committed.",
+      "rejected": "The curator discarded this candidate. Nothing changed.",
+      "ingested": "The candidate's content has landed in the wiki.",
+      "autoApproved": "Trusted pipeline — the approval policy auto-committed this. No human click needed."
+    },
     "op": {
       "label": "op",
       "create": "create",
       "update": "update",
       "archive": "archive"
+    },
+    "opHints": {
+      "create": "Approving this candidate creates a new Neuron.",
+      "update": "Approving this candidate edits an existing Neuron in place.",
+      "archive": "Approving this candidate archives (soft-deletes) a Neuron."
+    },
+    "confidenceTierHints": {
+      "high": "High confidence — eligible for auto-approval at ≥ 0.8.",
+      "medium": "Medium confidence — worth a manual review.",
+      "low": "Low confidence — likely needs attention."
     },
     "meta": {
       "op": "op",
@@ -87,6 +125,12 @@
     "byPipeline": "by pipeline",
     "byAuthor": "by {who}",
     "conf": "conf {n}",
+    "connectorFilterLabel": "Source:",
+    "connectorFilterClear": "clear",
+    "createdVia": "Created via",
+    "recommended": "💡 Recommended",
+    "acceptRecommendation": "Accept",
+    "recommendationManualOnly": "manual only",
     "title": "Curator queue",
     "summary": "{n} {status} candidate",
     "summaryPlural": "{n} {status} candidates",
@@ -106,6 +150,9 @@
       "confirmReject": "Reject {n}",
       "approvedToast": "Approved {ok}/{total}",
       "rejectedToast": "Rejected {ok}/{total}",
+      "acceptedRecommendationsToast": "Accepted {ok}/{total} recommendations",
+      "acceptRecommendations": "Accept {n} recommendations",
+      "acceptRecommendationsHint": "{ready} of {total} selected candidates have a ready recommendation. Rows without one (still computing) or with a reject-recommendation are skipped.",
       "failureSuffix": " — {n} failed",
       "approveDisabledRich": "One or more selected items need a specific choice (contradiction, orphan, stale) — handle those one at a time."
     },
@@ -121,6 +168,8 @@
       "rejectTitle": "Reject this candidate?",
       "rejectPrompt": "Optional reason",
       "whatDoesThisMean": "What does this mean?",
+      "showOptions": "Show {n} other options",
+      "hideOptions": "Hide options",
       "reopen": "Re-open",
       "reopenSuccess": "Re-opened — back in Pending.",
       "reopenHint": "Puts this candidate back in the Pending queue so you can decide again.",
@@ -166,6 +215,13 @@
     "empty": "No Neurons yet. Candidates that pass the queue appear here.",
     "runLint": "Run lint",
     "runLintHint": "Scan Neurons for orphans, stale pages, and contradictions",
+    "sort": "Sort",
+    "sortHint": "Choose how Neurons are ordered in the list",
+    "sortOptions": {
+      "newest": "Newest",
+      "oldest": "Oldest",
+      "title": "Title"
+    },
     "lintRunning": "Running lint…",
     "lintDone": "Lint emitted {n} new candidate",
     "lintDonePlural": "Lint emitted {n} new candidates",
@@ -186,6 +242,7 @@
     "empty": "No Trails yet. Create one to get started.",
     "create": "Create Trail",
     "pendingBadge": "{n} pending",
+    "totalNeurons": "Neurons on this trail server: {n}",
     "lintPolicy": {
       "label": "Lint policy",
       "trusting": "trusting",
@@ -193,6 +250,26 @@
       "trustingHint": "Trusting: rejected lint findings are suppressed permanently. No nag-loop on dismissed findings.",
       "strictHint": "Strict: rejected lint findings may re-fire on the next lint pass. Catches wrongful dismissals at the cost of more noise.",
       "saveFailed": "Couldn't save lint policy — {error}. Reloading current state."
+    }
+  },
+  "connectors": {
+    "roadmapSuffix": "Roadmap — not yet wired.",
+    "unknownConnector": "Unknown connector: {id}",
+    "hints": {
+      "upload": "A file dropped on the Sources page — PDF, Markdown, DOCX. The ingest pipeline compiled Neurons from it.",
+      "mcp:claude-code": "A Claude Code cc session wrote this Neuron via Trail MCP.",
+      "mcp:cursor": "A Cursor editor session wrote this via Trail MCP.",
+      "mcp": "An MCP client that didn't identify itself via TRAIL_CONNECTOR.",
+      "buddy": "Buddy piped in a cc-session artifact (F39). Session reasoning distilled into a reusable Neuron.",
+      "chat": "A saved chat answer — the curator asked Trail a question and pressed 'save as Neuron'.",
+      "lint": "A lint detector finding — orphan, stale, contradiction, or gap.",
+      "curator": "A direct edit by the curator via the Neuron editor.",
+      "api": "A bearer-authed POST from a script, CI hook, or webhook.",
+      "slack": "Planned ingest of Slack channel messages into Trail.",
+      "discord": "Planned ingest of Discord server messages into Trail.",
+      "notion": "Planned ingest of Notion pages into Trail.",
+      "github": "Planned ingest of GitHub issues, PRs, and discussions.",
+      "linear": "Planned ingest of Linear tickets and comments."
     }
   },
   "glossary": {
@@ -231,10 +308,12 @@
     "trail": {
       "title": "Trail settings",
       "subtitle": "Per-Trail configuration for {name}.",
+      "nameLabel": "Name",
+      "nameHint": "Display name for this Trail. Changing it doesn't affect the URL — the slug stays the same.",
       "descriptionLabel": "Description",
       "descriptionPlaceholder": "One or two sentences about what this Trail contains.",
       "languageLabel": "Language",
-      "languageHint": "Affects which locale is used as the canonical LLM compile target. Curators can still view the admin in the other language."
+      "languageHint": "Language used for LLM-generated content on this Trail — Neuron compilation from Sources AND F96 action-recommender reasoning. The admin chrome stays in whatever language you picked in the top-right switcher; only the content follows this setting."
     },
     "account": {
       "title": "Account",

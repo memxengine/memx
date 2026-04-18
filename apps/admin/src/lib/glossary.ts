@@ -71,10 +71,3 @@ export function useGlossary(): Glossary | null {
   }, [g]);
   return g;
 }
-
-/** Look up a single term by id. Returns null while loading or on miss. */
-export function useTerm(id: string): GlossaryTerm | null {
-  const g = useGlossary();
-  if (!g) return null;
-  return g.terms.find((t) => t.id === id) ?? null;
-}

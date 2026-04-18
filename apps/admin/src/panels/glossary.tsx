@@ -9,6 +9,7 @@
 import { useMemo } from 'preact/hooks';
 import { bilingual, t, useLocale } from '../lib/i18n';
 import { useGlossary, type GlossaryTerm } from '../lib/glossary';
+import { CenteredLoader } from '../components/centered-loader';
 
 export function GlossaryPanel() {
   const locale = useLocale();
@@ -28,11 +29,7 @@ export function GlossaryPanel() {
         <p class="text-[color:var(--color-fg-muted)] text-sm">{t('glossary.subtitle')}</p>
       </header>
 
-      {!glossary ? (
-        <div class="loading-delayed text-[color:var(--color-fg-muted)] text-sm">
-          {t('common.loading')}
-        </div>
-      ) : null}
+      {!glossary ? <CenteredLoader /> : null}
 
       <ul class="space-y-6">
         {sorted.map((term) => (

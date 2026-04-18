@@ -1,4 +1,4 @@
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, or, like, sql, type SQL } from 'drizzle-orm';
 import type { BaseSQLiteDatabase } from 'drizzle-orm/sqlite-core';
 import {
   queueCandidates,
@@ -273,6 +273,12 @@ export async function createCandidate(
   if (!kb) throw new Error(`Knowledge base not found: ${input.knowledgeBaseId}`);
 
   const id = `cnd_${crypto.randomUUID().slice(0, 12)}`;
+  // Every candidate carries `metadata.connector` so the Queue filter
+  // and Neuron attribution panel know which ingestion pathway emitted
+  // it. Callers that know the connector set it explicitly in
+  // input.metadata; those that don't get a best-effort inference from
+  // kind + existing metadata hints.
+  const stampedMetadata = stampConnector(input.metadata, input.kind);
   await db
     .insert(queueCandidates)
     .values({
@@ -282,7 +288,7 @@ export async function createCandidate(
       kind: input.kind,
       title: input.title,
       content: input.content,
-      metadata: input.metadata ?? null,
+      metadata: stampedMetadata,
       confidence: input.confidence ?? null,
       impactEstimate: input.impactEstimate ?? null,
       status: 'pending',
@@ -373,6 +379,10 @@ export async function submitCuratorEdit(
     ...(input.title !== undefined ? { title: input.title } : {}),
     ...(input.tags !== undefined ? { tags: input.tags } : {}),
   };
+  // Curator-edit path bypasses createCandidate (writes straight to the
+  // queue inside a transaction) so stampConnector isn't applied — set
+  // connector explicitly in the metadata JSON.
+  const metadata = JSON.stringify({ ...op, connector: 'curator' });
   const candidateTitle = input.title ?? doc.title ?? docId;
   const now = new Date().toISOString();
 
@@ -386,7 +396,7 @@ export async function submitCuratorEdit(
         kind: 'user-correction',
         title: candidateTitle,
         content: input.content,
-        metadata: JSON.stringify(op),
+        metadata,
         confidence: 1,
         impactEstimate: null,
         status: 'pending',
@@ -1247,6 +1257,48 @@ function safeParseJson(raw: string): Record<string, unknown> {
   return {};
 }
 
+/**
+ * Ensure `metadata.connector` is populated on every candidate. When the
+ * caller already supplied one we respect it — that's the explicit-is-
+ * better-than-implicit path (Chat, buddy, MCP, lint). When missing we
+ * infer from `kind` so legacy callers + old clients still flow into a
+ * sensible bucket rather than showing up unattributed.
+ *
+ * Returns the metadata serialised back as JSON (or null if input was
+ * null and we couldn't infer anything, which is rare since every kind
+ * has a fallback).
+ */
+function stampConnector(
+  rawMetadata: string | null | undefined,
+  kind: CreateQueueCandidate['kind'],
+): string | null {
+  const parsed = rawMetadata ? safeParseJson(rawMetadata) : {};
+  if (typeof parsed.connector === 'string' && parsed.connector.length > 0) {
+    // Already set by caller — keep it (covers explicit chat/buddy/curator/MCP).
+    return rawMetadata ?? null;
+  }
+  parsed.connector = inferConnectorFromKind(kind, parsed);
+  return JSON.stringify(parsed);
+}
+
+function inferConnectorFromKind(
+  kind: CreateQueueCandidate['kind'],
+  hints: Record<string, unknown>,
+): string {
+  // `external-feed` carries a legacy `source` hint from F39's buddy path.
+  if (kind === 'external-feed') {
+    const src = typeof hints.source === 'string' ? hints.source : null;
+    if (src === 'buddy') return 'buddy';
+    return 'api';
+  }
+  if (kind === 'chat-answer') return 'chat';
+  if (kind === 'user-correction') return 'curator';
+  if (kind === 'ingest-summary' || kind === 'ingest-page-update') return 'upload';
+  if (kind === 'cross-ref-suggestion' || kind === 'contradiction-alert' || kind === 'gap-detection' || kind === 'reader-feedback') return 'lint';
+  if (kind === 'source-retraction' || kind === 'scheduled-recompile' || kind === 'version-conflict') return 'pipeline';
+  return 'api';
+}
+
 // ── Read-side API ──────────────────────────────────────────────────
 
 export async function listCandidates(
@@ -1260,6 +1312,8 @@ export async function listCandidates(
   }
   if (query.kind) filters.push(eq(queueCandidates.kind, query.kind));
   if (query.status) filters.push(eq(queueCandidates.status, query.status));
+  const connectorFilter = connectorFilterClause(query.connector);
+  if (connectorFilter) filters.push(connectorFilter);
 
   const rows = await trail.db
     .select()
@@ -1269,6 +1323,32 @@ export async function listCandidates(
     .limit(query.limit)
     .all();
   return rows.map(hydrate);
+}
+
+/**
+ * Build a WHERE clause matching connectors inside the metadata JSON
+ * blob. Accepts a comma-separated string (`"upload,buddy"`) and OR's
+ * them. No-op (returns null) when the filter is missing or empty so
+ * callers can push-if-present without branching.
+ *
+ * Uses `metadata LIKE '%"connector":"X"%'` — cheap, no JSON1 extension
+ * dependency. Each value is shape-checked in the shared layer before
+ * reaching SQL, so injection via the connector field is not possible:
+ * we explicitly strip quotes and backslashes before interpolating.
+ */
+function connectorFilterClause(raw: string | undefined): SQL | null {
+  if (!raw) return null;
+  const ids = raw
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((s) => s.replace(/["'\\]/g, ''));
+  if (ids.length === 0) return null;
+  const clauses = ids.map((id) =>
+    like(queueCandidates.metadata, `%"connector":"${id}"%`),
+  );
+  if (clauses.length === 1) return clauses[0]!;
+  return or(...clauses) ?? null;
 }
 
 /**
@@ -1288,6 +1368,8 @@ export async function countCandidates(
   }
   if (query.kind) filters.push(eq(queueCandidates.kind, query.kind));
   if (query.status) filters.push(eq(queueCandidates.status, query.status));
+  const connectorFilter = connectorFilterClause(query.connector);
+  if (connectorFilter) filters.push(connectorFilter);
 
   const row = await trail.db
     .select({ n: sql<number>`COUNT(*)`.as('n') })
@@ -1337,7 +1419,11 @@ export async function reopenCandidate(
   }
 
   const previousReason = candidate.rejectionReason;
-  await trail.db
+  // Status guard inside the UPDATE WHERE so two concurrent reopens can't
+  // both "succeed" — whichever request lands first flips rejected→pending,
+  // the second finds zero matching rows and throws. The read-then-write
+  // pattern above is racy on its own; this is the atomic check-and-set.
+  const result = await trail.db
     .update(queueCandidates)
     .set({
       status: 'pending',
@@ -1350,9 +1436,19 @@ export async function reopenCandidate(
       and(
         eq(queueCandidates.id, candidateId),
         eq(queueCandidates.tenantId, tenantId),
+        eq(queueCandidates.status, 'rejected'),
       ),
     )
     .run();
+
+  // libSQL driver returns rowsAffected on the run() result. Zero means
+  // another request beat us here — treat that the same as the up-front
+  // "not rejected" check.
+  if ((result as { rowsAffected?: number }).rowsAffected === 0) {
+    throw new Error(
+      `Candidate ${candidateId} was no longer rejected when reopen reached the database`,
+    );
+  }
 
   // No wiki_event emitted: nothing about the wiki changed, we just
   // walked a decision back. The audit trail lives in the candidate's
@@ -1375,28 +1471,50 @@ export async function persistCandidateTranslation(
   locale: string,
   fields: { title?: string; content?: string },
 ): Promise<void> {
-  const candidate = await getCandidate(trail, tenantId, candidateId);
-  if (!candidate) return;
-  const prev = candidate.translations ?? {};
-  const existingForLocale = prev[locale] ?? {};
-  const next = {
-    ...prev,
-    [locale]: {
-      ...existingForLocale,
-      ...(fields.title !== undefined ? { title: fields.title } : {}),
-      ...(fields.content !== undefined ? { content: fields.content } : {}),
-    },
-  };
-  await trail.db
-    .update(queueCandidates)
-    .set({ translations: JSON.stringify(next) })
-    .where(
-      and(
-        eq(queueCandidates.id, candidateId),
-        eq(queueCandidates.tenantId, tenantId),
-      ),
-    )
-    .run();
+  // Wrapped in a transaction so the read-modify-write sequence is
+  // isolated: two parallel translate-views for different locales on
+  // the same candidate can't clobber each other's cache entry. The
+  // per-process inFlight cache in translation.ts prevents most
+  // parallel duplicates inside a single engine process, but multi-
+  // process setups (future horizontal scaling) would race without
+  // this. Acquire the row inside the tx so SQLite's write-lock
+  // serializes concurrent persisters on the same candidate id.
+  await trail.db.transaction(async (tx) => {
+    const row = await tx
+      .select({ translations: queueCandidates.translations })
+      .from(queueCandidates)
+      .where(
+        and(
+          eq(queueCandidates.id, candidateId),
+          eq(queueCandidates.tenantId, tenantId),
+        ),
+      )
+      .get();
+    if (!row) return;
+    const prev =
+      (typeof row.translations === 'string'
+        ? safeParseTranslations(row.translations)
+        : (row.translations as QueueCandidate['translations'])) ?? {};
+    const existingForLocale = prev[locale] ?? {};
+    const next = {
+      ...prev,
+      [locale]: {
+        ...existingForLocale,
+        ...(fields.title !== undefined ? { title: fields.title } : {}),
+        ...(fields.content !== undefined ? { content: fields.content } : {}),
+      },
+    };
+    await tx
+      .update(queueCandidates)
+      .set({ translations: JSON.stringify(next) })
+      .where(
+        and(
+          eq(queueCandidates.id, candidateId),
+          eq(queueCandidates.tenantId, tenantId),
+        ),
+      )
+      .run();
+  });
 }
 
 /**
@@ -1413,26 +1531,48 @@ export async function persistActionTranslation(
   locale: 'en' | 'da' | (string & {}),
   translated: { label?: string; explanation?: string },
 ): Promise<void> {
-  const candidate = await getCandidate(trail, tenantId, candidateId);
-  if (!candidate?.actions) return;
-  const next = candidate.actions.map((a) => {
-    if (a.id !== actionId) return a;
-    return {
-      ...a,
-      label: translated.label ? { ...a.label, [locale]: translated.label } : a.label,
-      explanation: translated.explanation
-        ? { ...a.explanation, [locale]: translated.explanation }
-        : a.explanation,
-    };
+  // Same rationale as persistCandidateTranslation: wrap the read-
+  // modify-write in a transaction so parallel persisters on the same
+  // candidate+action can't lose each other's updates. The candidate
+  // actions array is stored as a single JSON blob; without isolation
+  // two concurrent writers would both read, both compute, second
+  // wins silently.
+  await trail.db.transaction(async (tx) => {
+    const row = await tx
+      .select({ actions: queueCandidates.actions })
+      .from(queueCandidates)
+      .where(
+        and(
+          eq(queueCandidates.id, candidateId),
+          eq(queueCandidates.tenantId, tenantId),
+        ),
+      )
+      .get();
+    if (!row) return;
+    const parsed =
+      typeof row.actions === 'string'
+        ? safeParseActions(row.actions)
+        : (row.actions as CandidateAction[] | null);
+    if (!parsed) return;
+    const next = parsed.map((a) => {
+      if (a.id !== actionId) return a;
+      return {
+        ...a,
+        label: translated.label ? { ...a.label, [locale]: translated.label } : a.label,
+        explanation: translated.explanation
+          ? { ...a.explanation, [locale]: translated.explanation }
+          : a.explanation,
+      };
+    });
+    await tx
+      .update(queueCandidates)
+      .set({ actions: JSON.stringify(next) })
+      .where(
+        and(
+          eq(queueCandidates.id, candidateId),
+          eq(queueCandidates.tenantId, tenantId),
+        ),
+      )
+      .run();
   });
-  await trail.db
-    .update(queueCandidates)
-    .set({ actions: JSON.stringify(next) })
-    .where(
-      and(
-        eq(queueCandidates.id, candidateId),
-        eq(queueCandidates.tenantId, tenantId),
-      ),
-    )
-    .run();
 }

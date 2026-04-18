@@ -25,6 +25,7 @@ export function SettingsTrailPanel() {
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
 
+  const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [language, setLanguage] = useState<string>('da');
   const [lintPolicy, setLintPolicy] = useState<'trusting' | 'strict'>('trusting');
@@ -35,6 +36,7 @@ export function SettingsTrailPanel() {
         const match = list.find((k) => k.id === kbId) ?? null;
         setKb(match);
         if (match) {
+          setName(match.name);
           setDescription(match.description ?? '');
           setLanguage(match.language ?? 'da');
           setLintPolicy(match.lintPolicy ?? 'trusting');
@@ -49,17 +51,22 @@ export function SettingsTrailPanel() {
     return () => clearTimeout(timer);
   }, [toast]);
 
+  const trimmedName = name.trim();
+  const nameChanged = kb !== null && trimmedName !== kb.name;
+  const nameValid = trimmedName.length >= 1 && trimmedName.length <= 100;
   const dirty =
     kb !== null &&
-    ((kb.description ?? '') !== description ||
+    (nameChanged ||
+      (kb.description ?? '') !== description ||
       (kb.language ?? 'da') !== language ||
       (kb.lintPolicy ?? 'trusting') !== lintPolicy);
 
   const onSave = async () => {
-    if (!kb || busy || !dirty) return;
+    if (!kb || busy || !dirty || !nameValid) return;
     setBusy(true);
     try {
       const updated = await updateKnowledgeBase(kb.id, {
+        ...(nameChanged ? { name: trimmedName } : {}),
         description: description.trim() === '' ? null : description,
         language,
         lintPolicy,
@@ -106,6 +113,27 @@ export function SettingsTrailPanel() {
       </header>
 
       <div class="space-y-8 max-w-2xl">
+        <section>
+          <label class="block mb-2">
+            <span class="text-sm font-medium">{t('settings.trail.nameLabel')}</span>
+          </label>
+          <input
+            type="text"
+            value={name}
+            onInput={(e) => setName((e.target as HTMLInputElement).value)}
+            maxLength={100}
+            class={
+              'w-full px-3 py-2 rounded-md border bg-transparent text-sm ' +
+              (nameValid
+                ? 'border-[color:var(--color-border)]'
+                : 'border-[color:var(--color-danger)]')
+            }
+          />
+          <p class="mt-1.5 text-[11px] text-[color:var(--color-fg-subtle)]">
+            {t('settings.trail.nameHint')}
+          </p>
+        </section>
+
         <section>
           <label class="block mb-2">
             <span class="text-sm font-medium">{t('settings.trail.descriptionLabel')}</span>

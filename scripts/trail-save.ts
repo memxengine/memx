@@ -30,6 +30,7 @@ import { homedir } from 'node:os';
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { slugify } from '@trail/shared';
 
 interface Options {
   title: string;
@@ -136,13 +137,6 @@ function gitContext(): string {
 function run(cmd: string, args: string[]): string {
   const r = spawnSync(cmd, args, { cwd: process.cwd(), encoding: 'utf8' });
   return r.stdout.trim();
-}
-
-function slugify(t: string): string {
-  return t.toLowerCase()
-    .replace(/[^\p{L}\p{N}]+/gu, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 60);
 }
 
 async function resolveKb(engine: string, token: string, slugOrId: string): Promise<string> {

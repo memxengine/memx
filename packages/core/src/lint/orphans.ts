@@ -1,9 +1,12 @@
 import {
   documents,
   documentReferences,
+  wikiEvents,
+  queueCandidates,
   type TrailDatabase,
 } from '@trail/db';
-import { and, eq, notInArray, sql } from 'drizzle-orm';
+import { and, asc, eq, notInArray, sql } from 'drizzle-orm';
+import { isExternalConnector } from '@trail/shared';
 import type { LintFinding, LintOptions } from './types.js';
 
 const DEFAULT_HUB_PAGES = ['overview.md', 'log.md'];
@@ -72,6 +75,23 @@ export async function detectOrphans(
 
   for (const w of wikiRows) {
     if (w.refCount > 0) continue;
+    // F98 — skip Neurons whose provenance tells us citations aren't
+    // expected. Two signals, OR'd:
+    //
+    //  (a) Originating candidate's connector is external (buddy, MCP,
+    //      chat, api) — the Neuron came from a cc session, tool call,
+    //      or conversation; no Source in KB to link.
+    //  (b) Neuron lives under an external-reserved path (/neurons/
+    //      sessions/, /neurons/queries/) — catches historical data
+    //      ported via scripts that used the wrong candidate kind but
+    //      correct path, where signal (a) misreports.
+    //
+    // Either signal is enough. Flagging would generate unsolvable
+    // queue work: the auto-link inferer can't find matches that don't
+    // exist.
+    if (isExternalPath(w.path)) continue;
+    const originatingConnector = await resolveOriginatingConnector(trail, tenantId, w.id);
+    if (isExternalConnector(originatingConnector)) continue;
     const label = w.title ?? w.filename;
     findings.push({
       kind: 'cross-ref-suggestion',
@@ -130,7 +150,7 @@ export async function detectOrphans(
           id: 'archive-neuron',
           effect: 'retire-neuron',
           args: { documentId: w.id },
-          label: { en: `Archive "${label}"` },
+          label: { en: 'Archive' },
           explanation: {
             en:
               `Archive [[${stripMd(w.filename)}|${label}]]. Pick this when the Neuron's claims ` +
@@ -234,7 +254,7 @@ export async function detectOrphans(
           id: 'archive-source',
           effect: 'retire-neuron',
           args: { documentId: s.id },
-          label: { en: `Archive "${label}"` },
+          label: { en: 'Archive' },
           explanation: {
             en:
               `Archive "${label}". Pick this when the Source turned out to be irrelevant or ` +
@@ -258,4 +278,72 @@ export async function detectOrphans(
   }
 
   return { scanned: wikiRows.length + sourceRows.length, findings };
+}
+
+/**
+ * F98 — walk back through `wiki_events` to the Neuron's creation event,
+ * then to the candidate that caused it, and return its `metadata.connector`.
+ *
+ * Returns null when any link in the chain is missing (legacy docs
+ * without a tracked creation event, broken candidate refs, malformed
+ * metadata JSON). A null return falls through to the default flagging
+ * behaviour — we only SKIP flagging when we're confident the Neuron
+ * came from an external connector. "Unknown provenance" gets the
+ * pre-F98 treatment.
+ */
+async function resolveOriginatingConnector(
+  trail: TrailDatabase,
+  tenantId: string,
+  docId: string,
+): Promise<string | null> {
+  const event = await trail.db
+    .select({ sourceCandidateId: wikiEvents.sourceCandidateId })
+    .from(wikiEvents)
+    .where(
+      and(
+        eq(wikiEvents.tenantId, tenantId),
+        eq(wikiEvents.documentId, docId),
+        eq(wikiEvents.eventType, 'created'),
+      ),
+    )
+    .orderBy(asc(wikiEvents.createdAt))
+    .limit(1)
+    .get();
+  if (!event?.sourceCandidateId) return null;
+
+  const candidate = await trail.db
+    .select({ metadata: queueCandidates.metadata })
+    .from(queueCandidates)
+    .where(
+      and(
+        eq(queueCandidates.id, event.sourceCandidateId),
+        eq(queueCandidates.tenantId, tenantId),
+      ),
+    )
+    .get();
+  if (!candidate?.metadata) return null;
+
+  try {
+    const parsed = JSON.parse(candidate.metadata) as { connector?: unknown };
+    return typeof parsed.connector === 'string' ? parsed.connector : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * F98 — path-based external-origin signal. Covers Neurons whose
+ * `documents.path` is a known external-reserved namespace:
+ *   - /neurons/sessions/ — cc-session artifacts (buddy, MCP-authored,
+ *     session summaries). Provenance is outside Trail's KB.
+ *   - /neurons/queries/ — chat-saved answers. Their "source" is the
+ *     conversation, not an uploaded document.
+ *
+ * Independent of connector-metadata (which some historical rows have
+ * mis-stamped via legacy port scripts — path is the cleaner signal for
+ * those). Either signal is enough to skip orphan-flagging.
+ */
+export function isExternalPath(path: string | null | undefined): boolean {
+  if (!path) return false;
+  return path.startsWith('/neurons/sessions/') || path.startsWith('/neurons/queries/');
 }

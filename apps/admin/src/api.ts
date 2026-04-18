@@ -7,6 +7,7 @@ import type {
   KnowledgeBase,
   Document,
 } from '@trail/shared';
+import { slugify } from '@trail/shared';
 
 /**
  * Typed fetch wrapper.
@@ -83,7 +84,33 @@ export interface QueueFilter {
   knowledgeBaseId?: string;
   kind?: QueueCandidateKind;
   status?: QueueCandidateStatus;
+  /**
+   * Filter by connector — comma-separated (e.g. `"upload,buddy,lint"`).
+   * Matches against metadata.connector. Multiple values OR together.
+   */
+  connector?: string;
   limit?: number;
+}
+
+export interface NeuronProvenance {
+  documentId: string;
+  connector: string | null;
+  candidateId: string | null;
+  /**
+   * 0-1 confidence the emitting candidate carried. `null` for curator-
+   * authored candidates (they don't have a confidence signal; the
+   * curator saying "save this" is the signal). Reflects the INITIAL
+   * compile — a Neuron edited later via a new candidate keeps the
+   * original confidence here; per-version history lives in wiki_events.
+   */
+  confidence: number | null;
+  createdAt: string;
+  actorKind: 'user' | 'llm' | 'system' | null;
+  actorId: string | null;
+}
+
+export function getNeuronProvenance(docId: string): Promise<NeuronProvenance> {
+  return api(`/api/v1/documents/${encodeURIComponent(docId)}/provenance`);
 }
 
 export function listQueue(filter: QueueFilter = {}): Promise<QueueListResponse> {
@@ -172,11 +199,27 @@ export function bulkQueue(args: {
   });
 }
 
+/**
+ * Bulk-execute each candidate's LLM-recommended action (F96). Skips
+ * candidates that don't have a recommendation yet, or whose
+ * recommendation is a reject-effect (those need a reason prompt).
+ */
+export function bulkAcceptRecommendations(ids: string[]): Promise<BulkQueueResult> {
+  return api(`/api/v1/queue/bulk-accept-recommendations`, {
+    method: 'POST',
+    body: JSON.stringify({ ids }),
+  });
+}
+
 // ── Documents (wiki + source) ────────────────────────────────────
 
+export type WikiSortOrder = 'newest' | 'oldest' | 'title';
+
 /** List wiki pages in a KB (kind='wiki', non-archived). */
-export function listWikiPages(kbId: string): Promise<Document[]> {
-  return api(`/api/v1/knowledge-bases/${encodeURIComponent(kbId)}/documents?kind=wiki`);
+export function listWikiPages(kbId: string, sort: WikiSortOrder = 'newest'): Promise<Document[]> {
+  return api(
+    `/api/v1/knowledge-bases/${encodeURIComponent(kbId)}/documents?kind=wiki&sort=${sort}`,
+  );
 }
 
 /**
@@ -397,6 +440,7 @@ export function saveChatAsNeuron(args: {
     filename: `${slug}.md`,
     path: '/neurons/queries/',
     source: 'chat',
+    connector: 'chat',
     sourceCitations: args.citations.map((c) => c.documentId),
   });
   const content = [
@@ -424,14 +468,6 @@ export function saveChatAsNeuron(args: {
       confidence: args.confidence ?? 0.6,
     }),
   });
-}
-
-function slugify(t: string): string {
-  return t
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}]+/gu, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 60);
 }
 
 /**

@@ -8,6 +8,7 @@ import {
   resolveCandidate,
   reopenCandidate,
   bulkQueue,
+  bulkAcceptRecommendations,
   ApiError,
   type QueueListResponse,
 } from '../api';
@@ -17,8 +18,18 @@ import { displayPath } from '../lib/display-path';
 import { Modal, ModalButton } from '../components/modal';
 import { DynamicActionButtons } from '../components/dynamic-actions';
 import { CopyId } from '../components/copy-id';
+import { CenteredLoader } from '../components/centered-loader';
+import { NeuronLoader } from '../components/neuron-loader';
+import { ConnectorBadge } from '../components/connector-badge';
+import { ConfidencePill } from '../components/confidence-pill';
+import {
+  CONNECTORS,
+  LIVE_CONNECTORS,
+  ROADMAP_CONNECTORS,
+  type ConnectorId,
+} from '@trail/shared';
 import { useEvents, onStreamOpen, onFocusRefresh, debounce } from '../lib/event-stream';
-import { t, useLocale } from '../lib/i18n';
+import { t, useLocale, bilingual } from '../lib/i18n';
 import { useCandidateBundle } from '../lib/translate-candidate';
 
 type FilterStatus = QueueCandidateStatus | 'all';
@@ -47,6 +58,16 @@ interface CandidateOpMeta {
   filename?: string;
   path?: string;
   tags?: string | null;
+  /** F95 — which ingestion connector produced this candidate. */
+  connector?: string;
+  /** F96 — LLM-generated action recommendation. Arrives async a few
+   *  seconds after candidate creation (via candidate_created re-emit). */
+  recommendation?: {
+    recommendedActionId: string;
+    confidence: number;
+    reasoning: string;
+    generatedAt: string;
+  };
   // Lint-finding shapes carry the affected Neuron id under different keys
   // depending on the detector. The deep-link resolver falls back through
   // these so orphan/stale/contradiction candidates all get an Open-editor
@@ -72,13 +93,35 @@ export function QueuePanel() {
   // active language.
   useLocale();
   const [status, setStatus] = useState<FilterStatus>('pending');
+  // Set of connector ids currently included in the filter. Empty set =
+  // "show all". Multi-select (OR logic on server side).
+  const [selectedConnectors, setSelectedConnectors] = useState<Set<ConnectorId>>(new Set());
+  // Chip row is collapsed by default — 14 chips take vertical real
+  // estate most curators don't need on every page load. Click the
+  // "Kilde:" label to toggle. Auto-open when any filter is active so
+  // the curator can see what they've selected.
+  const [connectorFilterOpen, setConnectorFilterOpen] = useState(false);
   const [data, setData] = useState<QueueListResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [actingOn, setActingOn] = useState<string | null>(null);
-  // Which specific actionId is currently in-flight on `actingOn`. Scopes
-  // the NeuronLoader animation to the clicked button rather than every
-  // action in the row.
-  const [actingActionId, setActingActionId] = useState<string | null>(null);
+  // Per-candidate in-flight tracking. Multiple rows can be resolving
+  // in parallel (curator clicking Accept rapidly on several rows), so
+  // every bit of "row is busy" state lives in a Map keyed by
+  // candidate id. Single-slot state would race: clicking B while A's
+  // promise is mid-flight would clobber A's overlay + button
+  // animation. Map entries are cleared independently as each resolve
+  // settles.
+  interface ActingEntry {
+    actionId: string;
+    viaRecommendation: boolean;
+  }
+  const [acting, setActing] = useState<Map<string, ActingEntry>>(new Map());
+  // Candidate ids whose recommendation-Accept click failed in this
+  // session. When a row's id is here, its action column auto-expands
+  // the alternatives so the curator isn't stuck with a dead badge
+  // and no visible next step. Session-local on purpose — once the
+  // curator resolves the row via any action, it leaves the queue
+  // and the id no longer matters.
+  const [failedRecommendations, setFailedRecommendations] = useState<Set<string>>(new Set());
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [toast, setToast] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
   const [rejectTarget, setRejectTarget] = useState<QueueCandidate | null>(null);
@@ -98,14 +141,18 @@ export function QueuePanel() {
 
   const reload = useCallback(() => {
     setError(null);
+    const connectorCsv = selectedConnectors.size > 0
+      ? Array.from(selectedConnectors).join(',')
+      : undefined;
     listQueue({
       knowledgeBaseId: kbId,
       status: status === 'all' ? undefined : status,
+      connector: connectorCsv,
       limit: 100,
     })
       .then(setData)
       .catch((err: ApiError) => setError(err.message));
-  }, [kbId, status]);
+  }, [kbId, status, selectedConnectors]);
   const reloadDebounced = useCallback(debounce(reload, 100), [reload]);
 
   useEffect(reload, [reload]);
@@ -158,6 +205,16 @@ export function QueuePanel() {
     });
   }, []);
 
+  const toggleConnector = useCallback((id: ConnectorId) => {
+    setSelectedConnectors((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+    setSelected(new Set()); // filter change wipes bulk-selection
+  }, []);
+
   const toggleSelected = useCallback((id: string) => {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -186,6 +243,20 @@ export function QueuePanel() {
   // on rich, 'reject' on legacy).
   const selectedItems = (data?.items ?? []).filter((c) => selected.has(c.id));
   const anySelectedHasRichActions = selectedItems.some((c) => c.actions !== null);
+  // Hide the plain "Approve N" bulk button entirely when every
+  // selected row has rich actions — the button is meaningless for
+  // them (they don't expose an 'approve' action id), and showing it
+  // disabled is visual clutter next to the recommendation-accept
+  // button that DOES do useful work for the same selection.
+  const allSelectedHaveRichActions =
+    selectedItems.length > 0 && selectedItems.every((c) => c.actions !== null);
+  // F96 — how many selected candidates have a ready recommendation.
+  // Used to enable/disable the "Accept recommendation" bulk button
+  // and to show the count on its label.
+  const selectedWithRecommendation = selectedItems.filter((c) => {
+    const meta = parseMetadata(c.metadata);
+    return !!meta?.recommendation?.recommendedActionId;
+  });
 
   async function onBulkApprove() {
     const ids = Array.from(selected);
@@ -197,6 +268,34 @@ export function QueuePanel() {
         kind: r.failed.length === 0 ? 'success' : 'error',
         text:
           t('queue.bulk.approvedToast', { ok: r.succeeded.length, total: r.requested }) +
+          (r.failed.length ? t('queue.bulk.failureSuffix', { n: r.failed.length }) : ''),
+      });
+      clearSelection();
+      reload();
+    } catch (err) {
+      setToast({ kind: 'error', text: err instanceof Error ? err.message : t('common.error') });
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  /**
+   * F96 — accept-recommendation bulk. Each selected candidate's LLM-
+   * recommended action is executed; candidates without a recommendation
+   * (still being computed) or with a reject-recommendation are skipped
+   * and surfaced in the failure-summary so the curator knows to handle
+   * them manually.
+   */
+  async function onBulkAcceptRecommendations() {
+    const ids = selectedWithRecommendation.map((c) => c.id);
+    if (ids.length === 0) return;
+    setBulkBusy(true);
+    try {
+      const r = await bulkAcceptRecommendations(ids);
+      setToast({
+        kind: r.failed.length === 0 ? 'success' : 'error',
+        text:
+          t('queue.bulk.acceptedRecommendationsToast', { ok: r.succeeded.length, total: r.requested }) +
           (r.failed.length ? t('queue.bulk.failureSuffix', { n: r.failed.length }) : ''),
       });
       clearSelection();
@@ -244,22 +343,32 @@ export function QueuePanel() {
    * modal so the curator can type a reason first; everything else is a
    * one-click commit.
    */
-  async function onResolve(c: QueueCandidate, action: CandidateAction) {
-    if (action.effect === 'reject') {
-      // Open the modal, pre-populated with the pending action id so the
-      // confirm handler knows which action-id to POST (not always 'reject').
+  async function onResolve(
+    c: QueueCandidate,
+    action: CandidateAction,
+    opts: { prefilledReason?: string; viaRecommendation?: boolean } = {},
+  ) {
+    // Reject/dismiss normally opens a modal so the curator can type a
+    // reason. But when called via "Accept recommendation" the LLM's
+    // reasoning is already visible in the badge — skip the modal and
+    // fire directly with that reasoning as the reject reason.
+    if (action.effect === 'reject' && !opts.prefilledReason) {
       setRejectTarget(c);
       setRejectTargetActionId(action.id);
       setRejectReason('');
       return;
     }
 
-    setActingOn(c.id);
-    setActingActionId(action.id);
+    setActing((prev) => {
+      const next = new Map(prev);
+      next.set(c.id, { actionId: action.id, viaRecommendation: !!opts.viaRecommendation });
+      return next;
+    });
     try {
       const result = await resolveCandidate(c.id, {
         actionId: action.id,
         args: action.args,
+        ...(opts.prefilledReason ? { reason: opts.prefilledReason } : {}),
       });
       const sources = (result as { inferredSources?: unknown }).inferredSources;
       if (action.id === 'auto-link-sources' && Array.isArray(sources) && sources.length > 0) {
@@ -283,12 +392,18 @@ export function QueuePanel() {
       // The LLM inferer returns 422 when it can't find any plausible
       // Source for an orphan Neuron. Surface a localised, actionable
       // message so the curator knows to link manually instead of
-      // retrying the same button.
+      // retrying the same button — also auto-expand the options row
+      // below the failed badge so the next-best choices are visible.
       if (
         err instanceof ApiError &&
         err.status === 422 &&
         action.id === 'auto-link-sources'
       ) {
+        setFailedRecommendations((prev) => {
+          const next = new Set(prev);
+          next.add(c.id);
+          return next;
+        });
         setToast({ kind: 'error', text: t('queue.item.autoLinkNoSources') });
       } else {
         setToast({
@@ -297,8 +412,12 @@ export function QueuePanel() {
         });
       }
     } finally {
-      setActingOn(null);
-      setActingActionId(null);
+      setActing((prev) => {
+        if (!prev.has(c.id)) return prev;
+        const next = new Map(prev);
+        next.delete(c.id);
+        return next;
+      });
     }
   }
 
@@ -307,7 +426,11 @@ export function QueuePanel() {
     if (!c) return;
     const reason = rejectReason.trim();
     const actionId = rejectTargetActionId ?? 'reject';
-    setActingOn(c.id);
+    setActing((prev) => {
+      const next = new Map(prev);
+      next.set(c.id, { actionId, viaRecommendation: false });
+      return next;
+    });
     setRejectTarget(null);
     setRejectTargetActionId(null);
     try {
@@ -317,7 +440,12 @@ export function QueuePanel() {
     } catch (err) {
       setToast({ kind: 'error', text: err instanceof Error ? err.message : t('common.error') });
     } finally {
-      setActingOn(null);
+      setActing((prev) => {
+        if (!prev.has(c.id)) return prev;
+        const next = new Map(prev);
+        next.delete(c.id);
+        return next;
+      });
     }
   }
 
@@ -327,7 +455,11 @@ export function QueuePanel() {
    * so the badge + other panels update live.
    */
   async function onReopen(c: QueueCandidate) {
-    setActingOn(c.id);
+    setActing((prev) => {
+      const next = new Map(prev);
+      next.set(c.id, { actionId: 'reopen', viaRecommendation: false });
+      return next;
+    });
     try {
       await reopenCandidate(c.id);
       setToast({ kind: 'success', text: t('queue.item.reopenSuccess') });
@@ -335,7 +467,12 @@ export function QueuePanel() {
     } catch (err) {
       setToast({ kind: 'error', text: err instanceof Error ? err.message : t('common.error') });
     } finally {
-      setActingOn(null);
+      setActing((prev) => {
+        if (!prev.has(c.id)) return prev;
+        const next = new Map(prev);
+        next.delete(c.id);
+        return next;
+      });
     }
   }
 
@@ -354,6 +491,55 @@ export function QueuePanel() {
           )}
         </p>
       </header>
+
+      <div class="mb-3">
+        <div class="flex items-center gap-2 mb-2">
+          <button
+            onClick={() => setConnectorFilterOpen((v) => !v)}
+            class="inline-flex items-center gap-1 text-[10px] font-mono uppercase tracking-wider text-[color:var(--color-fg-subtle)] hover:text-[color:var(--color-fg)] transition cursor-pointer"
+            aria-expanded={connectorFilterOpen || selectedConnectors.size > 0}
+          >
+            <span>{connectorFilterOpen || selectedConnectors.size > 0 ? '▼' : '▶'}</span>
+            <span>{t('queue.connectorFilterLabel')}</span>
+            {selectedConnectors.size > 0 ? (
+              <span class="normal-case text-[color:var(--color-accent)]">
+                · {selectedConnectors.size}
+              </span>
+            ) : null}
+          </button>
+          {selectedConnectors.size > 0 ? (
+            <button
+              onClick={() => setSelectedConnectors(new Set())}
+              class="text-[10px] font-mono text-[color:var(--color-fg-subtle)] hover:text-[color:var(--color-fg)] transition"
+            >
+              {t('queue.connectorFilterClear')}
+            </button>
+          ) : null}
+        </div>
+        {connectorFilterOpen || selectedConnectors.size > 0 ? (
+          <div class="flex flex-wrap gap-2">
+            {LIVE_CONNECTORS.map((id) => (
+              <ConnectorBadge
+                key={id}
+                variant="chip"
+                connector={id}
+                active={selectedConnectors.has(id)}
+                onClick={() => toggleConnector(id)}
+              />
+            ))}
+            {ROADMAP_CONNECTORS.map((id) => (
+              <ConnectorBadge
+                key={id}
+                variant="chip"
+                connector={id}
+                active={false}
+                disabled
+                onClick={() => {}}
+              />
+            ))}
+          </div>
+        ) : null}
+      </div>
 
       <nav class="flex gap-1 mb-5 border-b border-[color:var(--color-border)]">
         {STATUS_TABS.map((tab) => (
@@ -377,6 +563,8 @@ export function QueuePanel() {
           {error}
         </div>
       ) : null}
+
+      {!data && !error ? <CenteredLoader /> : null}
 
       {data && data.items.length === 0 ? (
         <div class="text-center py-16 text-[color:var(--color-fg-subtle)]">
@@ -414,7 +602,25 @@ export function QueuePanel() {
           </div>
           {selected.size > 0 ? (
             <div class="flex items-center gap-2">
-              {status === 'pending' ? (
+              {status === 'pending' && selectedWithRecommendation.length > 0 ? (
+                <button
+                  disabled={bulkBusy}
+                  onClick={onBulkAcceptRecommendations}
+                  title={t('queue.bulk.acceptRecommendationsHint', {
+                    ready: selectedWithRecommendation.length,
+                    total: selected.size,
+                  })}
+                  class="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] rounded-md bg-[color:var(--color-accent)] text-[color:var(--color-accent-fg)] font-medium hover:bg-[color:var(--color-accent)]/90 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                >
+                  <span>💡</span>
+                  <span>
+                    {t('queue.bulk.acceptRecommendations', {
+                      n: selectedWithRecommendation.length,
+                    })}
+                  </span>
+                </button>
+              ) : null}
+              {status === 'pending' && !allSelectedHaveRichActions ? (
                 <button
                   disabled={bulkBusy || anySelectedHasRichActions}
                   onClick={onBulkApprove}
@@ -451,8 +657,10 @@ export function QueuePanel() {
             slugByDocId={slugByDocId}
             isExpanded={expanded.has(c.id)}
             onToggle={() => toggleExpanded(c.id)}
-            busy={actingOn === c.id}
-            busyActionId={actingOn === c.id ? actingActionId : null}
+            busy={acting.has(c.id)}
+            busyActionId={acting.get(c.id)?.actionId ?? null}
+            recommendationFailed={failedRecommendations.has(c.id)}
+            showRecommendationOverlay={acting.get(c.id)?.viaRecommendation === true}
             onResolve={onResolve}
             onReopen={onReopen}
             selected={selected.has(c.id)}
@@ -465,7 +673,7 @@ export function QueuePanel() {
       {toast ? (
         <div
           class={
-            'fixed bottom-6 right-6 max-w-md px-4 py-3 rounded-md border text-sm shadow-lg backdrop-blur-md ' +
+            'fixed bottom-6 right-6 z-50 max-w-md px-4 py-3 rounded-md border text-sm shadow-lg backdrop-blur-md ' +
             (toast.kind === 'success'
               ? 'border-[color:var(--color-success)]/60 bg-[color:var(--color-success)]/25 text-[color:var(--color-fg)]'
               : 'border-[color:var(--color-danger)]/60 bg-[color:var(--color-danger)]/25 text-[color:var(--color-fg)]')
@@ -596,7 +804,15 @@ interface RowProps {
   busy: boolean;
   /** Which actionId is in-flight on this row (null when idle). */
   busyActionId: string | null;
-  onResolve: (c: QueueCandidate, action: CandidateAction) => void;
+  /** Session-local flag: an earlier Accept on this row's recommendation
+   *  failed. Used to force-expand the alternatives column so the
+   *  curator sees the next-best options. */
+  recommendationFailed: boolean;
+  /** Recommendation-accept is in flight — render the big animation
+   *  overlay across the whole card. Cleared when the resolve promise
+   *  settles (success or failure). */
+  showRecommendationOverlay: boolean;
+  onResolve: (c: QueueCandidate, action: CandidateAction, opts?: { prefilledReason?: string; viaRecommendation?: boolean }) => void;
   onReopen: (c: QueueCandidate) => void;
   selected: boolean;
   onToggleSelected: () => void;
@@ -611,6 +827,8 @@ function CandidateRow({
   onToggle,
   busy,
   busyActionId,
+  recommendationFailed,
+  showRecommendationOverlay,
   onResolve,
   onReopen,
   selected,
@@ -644,12 +862,24 @@ function CandidateRow({
   return (
     <li
       class={
-        'border rounded-md bg-[color:var(--color-bg-card)] transition ' +
+        'relative border rounded-md bg-[color:var(--color-bg-card)] transition ' +
         (selected
           ? 'border-[color:var(--color-accent)] bg-[color:var(--color-accent)]/5'
           : 'border-[color:var(--color-border)] hover:border-[color:var(--color-border-strong)]')
       }
     >
+      {showRecommendationOverlay ? (
+        <div
+          class="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 rounded-md bg-[color:var(--color-bg-card)]/85 backdrop-blur-sm text-[color:var(--color-accent)]"
+          aria-live="polite"
+          aria-busy="true"
+        >
+          <NeuronLoader size={180} />
+          <div class="text-[11px] font-mono uppercase tracking-wider text-[color:var(--color-fg-muted)]">
+            {t('queue.recommended')} · {t('queue.acceptRecommendation')}…
+          </div>
+        </div>
+      ) : null}
       <div class="p-4 flex items-start gap-4">
         {showCheckbox ? (
           <label class="pt-1 cursor-pointer select-none" onClick={(e) => e.stopPropagation()}>
@@ -664,20 +894,25 @@ function CandidateRow({
         ) : null}
         <div class="flex-1 min-w-0">
           <div class="flex items-center gap-2 mb-1">
-            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono uppercase tracking-wider bg-[color:var(--color-bg)] border border-[color:var(--color-border)] text-[color:var(--color-fg-muted)]">
+            {meta?.connector ? (
+              <ConnectorBadge variant="tag" connector={meta.connector} />
+            ) : null}
+            <span
+              title={t(`queue.kindHints.${c.kind}`)}
+              class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono uppercase tracking-wider bg-[color:var(--color-bg)] border border-[color:var(--color-border)] text-[color:var(--color-fg-muted)]"
+            >
               {t(`queue.kinds.${c.kind}`)}
             </span>
             <StatusBadge status={c.status} auto={!!c.autoApprovedAt} />
             {meta?.op ? (
-              <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono uppercase tracking-wider bg-[color:var(--color-accent)]/10 text-[color:var(--color-accent)]">
+              <span
+                title={t(`queue.opHints.${meta.op}`)}
+                class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono uppercase tracking-wider bg-[color:var(--color-accent)]/10 text-[color:var(--color-accent)]"
+              >
                 {t('queue.op.label')}: {t(`queue.op.${meta.op}`)}
               </span>
             ) : null}
-            {c.confidence !== null ? (
-              <span class="text-[10px] font-mono text-[color:var(--color-fg-subtle)]">
-                {t('queue.conf', { n: c.confidence.toFixed(2) })}
-              </span>
-            ) : null}
+            <ConfidencePill confidence={c.confidence} />
           </div>
           <div class="font-medium">{bundle.title}</div>
           {!isExpanded ? (
@@ -702,14 +937,28 @@ function CandidateRow({
           </div>
         </div>
         {c.status === 'pending' ? (
-          <DynamicActionButtons
-            candidate={c}
-            kbId={kbId}
-            localisedActions={bundle.actions}
-            busy={busy}
-            busyActionId={busyActionId}
-            onResolve={(action) => onResolve(c, action)}
-          />
+          <div class="flex flex-col gap-2 shrink-0 w-[280px]">
+            {meta?.recommendation ? (
+              <RecommendationBadge
+                recommendation={meta.recommendation}
+                actions={bundle.actions ?? c.actions}
+                onAccept={(action, prefilledReason) =>
+                  onResolve(c, action, { prefilledReason, viaRecommendation: true })
+                }
+                disabled={busy}
+                failed={recommendationFailed}
+              />
+            ) : null}
+            <DynamicActionButtons
+              candidate={c}
+              kbId={kbId}
+              localisedActions={bundle.actions}
+              busy={busy}
+              busyActionId={busyActionId}
+              onResolve={(action) => onResolve(c, action)}
+              hideable={!!meta?.recommendation && !recommendationFailed}
+            />
+          </div>
         ) : c.status === 'rejected' ? (
           <div class="flex flex-col gap-1 shrink-0 items-end">
             <button
@@ -807,8 +1056,10 @@ function ExpandedContent({
 }
 
 function StatusBadge({ status, auto }: { status: QueueCandidateStatus; auto: boolean }) {
-  const label = t(
-    status === 'approved' && auto ? 'queue.status.autoApproved' : `queue.status.${status}`,
+  const labelKey = status === 'approved' && auto ? 'queue.status.autoApproved' : `queue.status.${status}`;
+  const label = t(labelKey);
+  const hint = t(
+    status === 'approved' && auto ? 'queue.statusHints.autoApproved' : `queue.statusHints.${status}`,
   );
   const tone =
     status === 'approved'
@@ -818,6 +1069,7 @@ function StatusBadge({ status, auto }: { status: QueueCandidateStatus; auto: boo
       : 'bg-[color:var(--color-accent)]/15 text-[color:var(--color-accent)]';
   return (
     <span
+      title={hint}
       class={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono uppercase tracking-wider ${tone}`}
     >
       {label}
@@ -831,4 +1083,67 @@ function formatTs(iso: string): string {
   } catch {
     return iso;
   }
+}
+
+/**
+ * F96 — "💡 Anbefalet: X" card that lives between the candidate body
+ * and the action button column. Renders the LLM's recommended action
+ * label + a 1-3 sentence reasoning + a direct Accept button that
+ * dispatches the matching action. Confidence score rides as a pill.
+ * Disabled entirely when the matched action is a reject-effect —
+ * those need the reason-modal flow, not one-click.
+ */
+function RecommendationBadge({
+  recommendation,
+  actions,
+  onAccept,
+  disabled,
+  failed,
+}: {
+  recommendation: NonNullable<CandidateOpMeta['recommendation']>;
+  actions: CandidateAction[] | null;
+  onAccept: (action: CandidateAction, prefilledReason?: string) => void;
+  disabled: boolean;
+  /** Earlier Accept click on this recommendation failed (LLM inferer
+   *  came up empty, etc.). Render the card in a muted state + guide
+   *  the curator down to the alternatives below. */
+  failed?: boolean;
+}) {
+  const matched = (actions ?? []).find((a) => a.id === recommendation.recommendedActionId);
+  if (!matched) return null;
+  const locale = useLocale();
+  // For reject-effect recommendations, pass the LLM's reasoning as the
+  // prefilled rejection reason so onResolve skips the modal round-trip.
+  const acceptArg = matched.effect === 'reject' ? recommendation.reasoning : undefined;
+  // Vertical stack: lives inside the 280px action column. Header row
+  // (badge + pill), then label, then reasoning, then accept button.
+  // Accept works for ALL effect kinds — dismiss/reject recommendations
+  // fire with the LLM's reasoning as the rejection reason so the curator
+  // still gets a record without the modal round-trip.
+  return (
+    <div class="rounded-md border border-[color:var(--color-accent)]/40 bg-[color:var(--color-accent)]/10 px-3 py-2 flex flex-col gap-1.5">
+      <div class="flex items-center justify-between gap-2">
+        <span class="text-[10px] font-mono uppercase tracking-wider text-[color:var(--color-accent)]">
+          {t('queue.recommended')}
+        </span>
+        <ConfidencePill confidence={recommendation.confidence} />
+      </div>
+      <div class="text-[12px] font-medium leading-tight break-words">
+        {bilingual(matched.label, locale)}
+      </div>
+      <p class="text-[11px] text-[color:var(--color-fg-muted)] leading-snug break-words">
+        {recommendation.reasoning}
+      </p>
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          onAccept(matched, acceptArg);
+        }}
+        disabled={disabled}
+        class="w-full px-2.5 py-1.5 text-[11px] font-medium rounded-md bg-[color:var(--color-accent)] text-[color:var(--color-accent-fg)] hover:bg-[color:var(--color-accent)]/90 disabled:opacity-50 transition mt-1"
+      >
+        {t('queue.acceptRecommendation')}
+      </button>
+    </div>
+  );
 }

@@ -76,6 +76,15 @@ interface Props {
   /** Called when the curator clicks an action. Receives the whole action
    *  so the parent can reach into args (e.g. which Neuron to retire). */
   onResolve: (action: CandidateAction) => void;
+  /**
+   * When true (parent has a RecommendationBadge showing above), the
+   * action buttons start collapsed behind a "Show options" toggle. The
+   * curator can trust the recommendation without reading the full
+   * action list; click-to-expand reveals the original four buttons
+   * unchanged. Default false — legacy candidates without a
+   * recommendation always show the buttons up front.
+   */
+  hideable?: boolean;
 }
 
 export function DynamicActionButtons({
@@ -85,10 +94,18 @@ export function DynamicActionButtons({
   busy,
   busyActionId,
   onResolve,
+  hideable = false,
 }: Props) {
   const locale = useLocale();
   const actions = localisedActions ?? candidate.actions;
   const [expanded, setExpanded] = useState<string | null>(null);
+  // When a recommendation is visible above the button column, start
+  // collapsed — the curator can trust the LLM and move on without
+  // reading every alternative. Click "Show options" to expand.
+  const [optionsOpen, setOptionsOpen] = useState(!hideable);
+  useEffect(() => {
+    setOptionsOpen(!hideable);
+  }, [hideable, candidate.id]);
   // Re-parse explanation wiki-links only when locale or candidate shifts;
   // the expansion is a lightweight regex walk but useMemo guarantees a
   // stable VNode list across re-renders for Preact's diffing.
@@ -150,8 +167,31 @@ export function DynamicActionButtons({
   // the curator was about to click jumps away. Fixed width trades a tiny
   // bit of text wrapping (fine: labels are ≤4 words by design) for a
   // stable layout that never "chases" the mouse.
+  // Collapsed state: a single toggle instead of the 4-button list.
+  // Curator trusts the recommendation above → single-click accept
+  // path stays dominant. Expanding the options is one more click
+  // when the curator wants to override or dismiss.
+  if (hideable && !optionsOpen) {
+    return (
+      <button
+        onClick={() => setOptionsOpen(true)}
+        class="w-full px-3 py-1.5 text-[11px] font-mono uppercase tracking-wider rounded-md border border-dashed border-[color:var(--color-border)] text-[color:var(--color-fg-subtle)] hover:border-[color:var(--color-border-strong)] hover:text-[color:var(--color-fg-muted)] transition"
+      >
+        ▼ {t('queue.item.showOptions', { n: actions.length })}
+      </button>
+    );
+  }
+
   return (
     <div class="flex flex-col gap-1.5 shrink-0 w-[280px]">
+      {hideable ? (
+        <button
+          onClick={() => setOptionsOpen(false)}
+          class="w-full text-[10px] font-mono uppercase tracking-wider text-[color:var(--color-fg-subtle)] hover:text-[color:var(--color-fg-muted)] transition text-left px-1 py-0.5"
+        >
+          ▲ {t('queue.item.hideOptions')}
+        </button>
+      ) : null}
       {actions.map((action, i) => {
         const isPrimary = i === 0;
         const isExpanded = expanded === action.id;

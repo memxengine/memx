@@ -17,6 +17,7 @@ import { ProcessingIndicator } from '../components/processing-indicator';
 import { Modal, ModalButton } from '../components/modal';
 import { useEvents, onStreamOpen, onFocusRefresh, debounce } from '../lib/event-stream';
 import { t, useLocale } from '../lib/i18n';
+import { CenteredLoader } from '../components/centered-loader';
 
 /**
  * Sources panel — the original documents uploaded into a Trail. Sources
@@ -234,6 +235,8 @@ export function SourcesPanel() {
           {error}
         </div>
       ) : null}
+
+      {!docs && !error ? <CenteredLoader /> : null}
 
       {docs && docs.length === 0 ? (
         <div class="text-center py-16 text-[color:var(--color-fg-subtle)]">

@@ -14,6 +14,7 @@ import { displayPath } from '../lib/display-path';
 import { t } from '../lib/i18n';
 import { TagChips, parseTags, serializeTags } from '../components/tag-chips';
 import { Modal, ModalButton } from '../components/modal';
+import { CenteredLoader } from '../components/centered-loader';
 
 /**
  * F91 — Neuron editor. Split-view markdown editor for Neurons, lifted
@@ -204,9 +205,7 @@ export function NeuronEditorPanel() {
   if (!d || originalContent === null) {
     return (
       <div class="page-shell">
-        <div class="loading-delayed text-[color:var(--color-fg-muted)] text-sm">
-          {t('common.loading')}
-        </div>
+        <CenteredLoader />
       </div>
     );
   }

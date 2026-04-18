@@ -14,8 +14,8 @@
       "id": "neuron",
       "label": { "en": "Neuron", "da": "Neuron" },
       "definition": {
-        "en": "A compiled wiki page inside a Trail — a short, claim-dense markdown document generated from one or more Sources. Neurons link to each other with [[wiki-links]] and cite Sources via frontmatter.",
-        "da": "En kompileret wiki-side i en Trail — et kort, påstands-tæt markdown-dokument genereret fra en eller flere Kilder. Neuroner linker til hinanden med [[wiki-links]] og citerer Kilder via frontmatter."
+        "en": "A compiled page inside a Trail — a short, claim-dense markdown document generated from one or more Sources. Neurons link to each other with [[Neuron-links]] and cite Sources via frontmatter.",
+        "da": "En kompileret side i en Trail — et kort, påstands-tæt markdown-dokument genereret fra en eller flere Kilder. Neuroner linker til hinanden med [[Neuron-links]] og citerer Kilder via frontmatter."
       },
       "relatedTerms": ["trail", "source", "backlink"]
     },
@@ -149,8 +149,8 @@
       "id": "reference",
       "label": { "en": "Reference", "da": "Reference" },
       "definition": {
-        "en": "A tracked citation from a Neuron to a Source (provenance — \"this claim came from this document\") OR a [[wiki-link]] from a Neuron to another Neuron (navigation — \"see also\"). Lives in the document_references and wiki_backlinks tables respectively.",
-        "da": "En sporet citation fra en Neuron til en Kilde (herkomst — \"denne påstand kom fra dette dokument\") ELLER et [[wiki-link]] fra en Neuron til en anden Neuron (navigation — \"se også\"). Lever i tabellerne document_references og wiki_backlinks."
+        "en": "A tracked citation from a Neuron to a Source (provenance — \"this claim came from this document\") OR a [[Neuron-link]] from a Neuron to another Neuron (navigation — \"see also\"). Two separate graphs; the Curator sees both as one interconnected whole.",
+        "da": "En sporet citation fra en Neuron til en Kilde (herkomst — \"denne påstand kom fra dette dokument\") ELLER et [[Neuron-link]] fra en Neuron til en anden Neuron (navigation — \"se også\"). To separate grafer; Kuratoren ser begge som én sammenhængende helhed."
       },
       "relatedTerms": ["neuron", "source", "backlink", "frontmatter"]
     },
@@ -167,8 +167,8 @@
       "id": "backlink",
       "label": { "en": "Backlink", "da": "Baglink" },
       "definition": {
-        "en": "The inverse of a wiki-link. If Neuron A contains [[B]], then B has a backlink FROM A. Shown on the Neuron reader as \"N pages link here\" — lets the Curator see how interconnected a Neuron is.",
-        "da": "Det omvendte af et wiki-link. Hvis Neuron A indeholder [[B]], så har B et baglink FRA A. Vist på Neuron-læseren som \"N sider linker hertil\" — lader Kuratoren se hvor forbundet en Neuron er."
+        "en": "The inverse of a Neuron-link. If Neuron A contains [[B]], then B has a backlink FROM A. Shown on the Neuron reader as \"N Neurons link here\" — lets the Curator see how interconnected a Neuron is.",
+        "da": "Det omvendte af et Neuron-link. Hvis Neuron A indeholder [[B]], så har B et baglink FRA A. Vist på Neuron-læseren som \"N Neuroner linker hertil\" — lader Kuratoren se hvor forbundet en Neuron er."
       },
       "relatedTerms": ["neuron", "reference"]
     },
@@ -198,6 +198,51 @@
         "da": "Ét-klik-handling på et Forældreløs-Neuron-fund. LLM'en læser Neuronens indhold, gennemgår de tættest matchende Kilder i samme Trail (forhåndsfiltreret på nøgleords-overlap) og foreslår de 1-3 Kilder som Neuronens påstande mest sandsynligt kom fra. Er den sikker, patcher den Neuronens frontmatter `sources: [...]` og forældreløs-advarslen forsvinder. Finder den ikke et tydeligt match, beder den Kuratoren linke manuelt. Bruger Claude Haiku for forudsigelige omkostninger."
       },
       "relatedTerms": ["orphan-neuron", "frontmatter", "source", "reference", "llm"]
+    },
+    {
+      "id": "approve",
+      "label": { "en": "Approve", "da": "Godkend" },
+      "definition": {
+        "en": "The primary \"yes, commit this\" action on a Candidate. Triggers the effect behind the Action (create Neuron, update Neuron, archive, etc.) and logs a wiki_event with the Curator as actor. Every Candidate has at least one approve-effect action; contradiction and orphan findings replace it with more specific affirmative actions like Reconcile or Auto-link sources.",
+        "da": "Den primære \"ja, udfør dette\"-handling på en Kandidat. Udløser effekten bag Handlingen (opret Neuron, opdatér Neuron, arkivér, osv.) og logger et wiki_event med Kuratoren som afsender. Hver Kandidat har mindst én godkend-effekt-handling; modsigelses- og forældreløs-fund erstatter den med mere specifikke bekræftende handlinger som Forlig eller Auto-link kilder."
+      },
+      "relatedTerms": ["candidate", "action", "effect", "curator"]
+    },
+    {
+      "id": "dismiss",
+      "label": { "en": "Dismiss", "da": "Afvis" },
+      "definition": {
+        "en": "Discard a Candidate without committing its change. Used when a lint finding is a false alarm, a chat-answer turned out to be wrong, or the Curator disagrees with a compiler-proposed update. Leaves the target Neuron unchanged. Under the default Trusting Lint Policy, dismissed lint findings don't re-fire — under Strict, they may re-qualify on the next run.",
+        "da": "Kasser en Kandidat uden at commit'e dens ændring. Bruges når et lint-fund er falsk alarm, et chat-svar viste sig forkert, eller Kuratoren er uenig med en compiler-foreslået opdatering. Lader mål-Neuronen være uændret. Under standard Tillidsfuld Lint-politik dukker afviste lint-fund ikke op igen — under Streng kan de kvalificere sig igen ved næste kørsel."
+      },
+      "relatedTerms": ["candidate", "false-positive", "lint-policy"]
+    },
+    {
+      "id": "archive",
+      "label": { "en": "Archive", "da": "Arkivér" },
+      "definition": {
+        "en": "Soft-delete a Neuron or Source. The document stays in the database (its data, metadata, and history are preserved) but disappears from the active lists. Reversible at any time from the Archived tab. Different from hard-deletion: Archive preserves the audit trail, links pointing to the archived Neuron become broken links until cleaned up, and the file on disk stays intact for Sources.",
+        "da": "Blød-sletning af en Neuron eller Kilde. Dokumentet bliver i databasen (dets data, metadata og historik bevares), men forsvinder fra de aktive lister. Kan altid gendannes fra Arkiveret-fanen. Forskellig fra hård sletning: Arkivér bevarer audit-sporet, links der peger på den arkiverede Neuron bliver brudte links indtil de ryddes op, og selve filen på disken forbliver intakt for Kilders vedkommende."
+      },
+      "relatedTerms": ["neuron", "source", "effect"]
+    },
+    {
+      "id": "retire",
+      "label": { "en": "Retire", "da": "Arkivér" },
+      "definition": {
+        "en": "A contradiction-specific variant of Archive. When two Neurons contradict each other, the Curator picks which one to retire — effectively the same action as Archive, but scoped to the contradiction resolution so the audit trail records WHY the Neuron was taken out of circulation. Canonical Danish translation: Arkivér (not \"Pensionér\" — that sounds like a person retiring from work, misleading here).",
+        "da": "En modsigelses-specifik variant af Arkivér. Når to Neuroner modsiger hinanden, vælger Kuratoren hvilken der skal arkiveres — i praksis samme handling som Arkivér, men scopet til modsigelsens afvikling så audit-sporet dokumenterer HVORFOR Neuronen blev taget ud af cirkulation. Korrekt dansk oversættelse: Arkivér (ikke \"Pensionér\" — det lyder som et menneske der går på pension, misvisende her)."
+      },
+      "relatedTerms": ["archive", "contradiction", "neuron"]
+    },
+    {
+      "id": "reconcile",
+      "label": { "en": "Reconcile", "da": "Forlig" },
+      "definition": {
+        "en": "A contradiction-resolution path that doesn't archive either Neuron. The Curator opens both in the editor and writes a new, merged Neuron that honors both sources' claims — e.g. \"under condition X, A is true; under condition Y, B is true.\" Both original Neurons then get Archive'd or rewritten to reference the reconciled version. Canonical Danish: Forlig (not \"Afstem\" or \"Forene\" — those suggest voting or simple concatenation, which this isn't).",
+        "da": "En modsigelses-afklaring der ikke arkiverer nogen af Neuronerne. Kuratoren åbner begge i editoren og skriver en ny, sammensmeltet Neuron der respekterer begge kilders påstande — fx \"under betingelse X er A sand; under betingelse Y er B sand.\" Begge oprindelige Neuroner bliver derefter arkiveret eller omskrevet til at referere til den samlede version. Korrekt dansk: Forlig (ikke \"Afstem\" eller \"Forene\" — de antyder afstemning eller simpel sammenføjning, hvilket det ikke er)."
+      },
+      "relatedTerms": ["contradiction", "neuron", "curator", "archive"]
     },
     {
       "id": "llm",

@@ -31,10 +31,11 @@ export async function detectStale(
   const cutoffMs = Date.now() - staleDays * 24 * 60 * 60 * 1000;
   const cutoffIso = new Date(cutoffMs).toISOString();
 
-  // Bulk scan — a plain `updatedAt < cutoff` comparison on ISO-8601 strings
-  // works because the engine writes all timestamps in Zulu/UTC with the
-  // same offset, so lexicographic order matches chronological order.
-  const all = await trail.db
+  // ISO-8601 with a fixed offset sorts lexicographically the same as it
+  // sorts chronologically; pushing the `updatedAt < cutoff` check into SQL
+  // means the engine never ships fresh docs over the wire just to throw
+  // them out in JS — relevant once a KB has thousands of Neurons.
+  const stale = await trail.db
     .select({
       id: documents.id,
       filename: documents.filename,
@@ -51,12 +52,12 @@ export async function detectStale(
         eq(documents.tenantId, tenantId),
         eq(documents.archived, false),
         notInArray(documents.filename, hubPages),
+        lt(documents.updatedAt, cutoffIso),
       ),
     )
     .all();
 
   const findings: LintFinding[] = [];
-  const stale = all.filter((d) => d.updatedAt < cutoffIso);
 
   for (const d of stale) {
     const ageDays = Math.floor((Date.now() - new Date(d.updatedAt).getTime()) / (24 * 60 * 60 * 1000));
@@ -107,7 +108,7 @@ export async function detectStale(
           id: 'archive-neuron',
           effect: 'retire-neuron',
           args: { documentId: d.id },
-          label: { en: `Archive "${label}"` },
+          label: { en: 'Archive' },
           explanation: {
             en:
               `Archive [[${d.filename.replace(/\.md$/i, '')}|${label}]]. Pick this when the ` +
@@ -132,5 +133,5 @@ export async function detectStale(
     });
   }
 
-  return { scanned: all.length, findings };
+  return { scanned: stale.length, findings };
 }

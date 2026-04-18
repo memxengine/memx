@@ -283,7 +283,7 @@ function orphanNeuronActions(docId: string, d: DocLabel): CandidateAction[] {
       id: 'archive-neuron',
       effect: 'retire-neuron',
       args: { documentId: docId },
-      label: { en: `Archive "${d.label}"` },
+      label: { en: 'Archive' },
       explanation: {
         en:
           `Archive ${link}. Pick this when the Neuron's claims cannot be defended — ` +
@@ -325,7 +325,7 @@ function orphanSourceActions(docId: string, label: string): CandidateAction[] {
       id: 'archive-source',
       effect: 'retire-neuron',
       args: { documentId: docId },
-      label: { en: `Archive "${label}"` },
+      label: { en: 'Archive' },
       explanation: {
         en:
           `Archive "${label}". Pick this when the Source turned out to be irrelevant or ` +
@@ -366,7 +366,7 @@ function staleNeuronActions(docId: string, d: DocLabel): CandidateAction[] {
       id: 'archive-neuron',
       effect: 'retire-neuron',
       args: { documentId: docId },
-      label: { en: `Archive "${d.label}"` },
+      label: { en: 'Archive' },
       explanation: {
         en:
           `Archive ${link}. Pick this when the topic is obsolete — the Source it ` +
@@ -402,7 +402,7 @@ function contradictionActions(
       id: 'retire-a',
       effect: 'retire-neuron',
       args: { documentId: newId },
-      label: { en: `Retire "${n.label}"` },
+      label: { en: 'Retire new' },
       explanation: {
         en:
           `Archive ${linkNew} and keep ${linkExisting}. Pick this if the existing page was ` +
@@ -415,7 +415,7 @@ function contradictionActions(
       id: 'retire-b',
       effect: 'retire-neuron',
       args: { documentId: existingId },
-      label: { en: `Retire "${e.label}"` },
+      label: { en: 'Retire existing' },
       explanation: {
         en:
           `Archive ${linkExisting} and keep ${linkNew}. Pick this if the new claim supersedes ` +

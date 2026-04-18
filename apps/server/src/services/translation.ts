@@ -239,8 +239,18 @@ Hard rules:
   - "Auto-link sources" → "Auto-link kilder" (never "Auto-forbind")
   - "Link manually" → "Link manuelt" (never "Forbind manuelt")
   - "false positive" → "falsk alarm" (plain-language, never "falskt positiv")
-  - "Dismiss" → "Afvis"
+  - "Approve" → "Godkend"
+  - "Dismiss" / "Reject" → "Afvis"
   - "Archive" → "Arkivér"
+  - "Retire" (as in retire a Neuron from circulation) → "Arkivér" (NEVER "Pensionér"
+    — that sounds like a person retiring from work, misleading)
+  - "Retire new" → "Arkivér ny"
+  - "Retire existing" → "Arkivér eksisterende"
+  - "Reconcile" (as in resolve a contradiction by writing a merged Neuron) →
+    "Forlig" (NEVER "Afstem" or "Forene" — those suggest voting or simple concat)
+  - "Merge into new" → "Sammenfat i ny"
+  - "Flag source" → "Markér kilde"
+  - "Mark still relevant" → "Bekræft stadig gældende"
 
 Return ONLY a JSON object with the same keys as the input. For actions,
 return them as an array in the same order:

@@ -148,6 +148,10 @@ IMPORTANT RULES:
         TRAIL_USER_ID: job.userId,
         TRAIL_KNOWLEDGE_BASE_ID: job.kbId,
         TRAIL_DATA_DIR: DATA_DIR,
+        // Tag candidates emitted by this ingest run with connector=upload
+        // so the admin Queue filter shows them grouped with other upload-
+        // originated work (as distinct from mcp:claude-code, buddy, etc.).
+        TRAIL_CONNECTOR: 'upload',
       },
     });
 

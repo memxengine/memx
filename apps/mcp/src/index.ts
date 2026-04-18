@@ -39,6 +39,14 @@ const server = new McpServer({
 const TENANT_ID = process.env.TRAIL_TENANT_ID ?? '';
 const DEFAULT_KB_ID = process.env.TRAIL_KNOWLEDGE_BASE_ID ?? '';
 const ACTOR_USER_ID = process.env.TRAIL_USER_ID ?? '';
+// Each candidate emitted via this MCP server is tagged with a connector
+// id in metadata — surfaces in the admin Queue filter and Neuron
+// attribution panel. Set by the client's .mcp.json env config:
+//   Claude Code → TRAIL_CONNECTOR=mcp:claude-code
+//   Cursor      → TRAIL_CONNECTOR=mcp:cursor
+//   apps/server ingest subprocess → TRAIL_CONNECTOR=upload
+//   unset       → 'mcp' (generic fallback)
+const CONNECTOR_ID = process.env.TRAIL_CONNECTOR ?? 'mcp';
 
 interface ResolvedContext {
   tenantId: string;
@@ -395,7 +403,7 @@ server.tool(
           kind: 'ingest-summary',
           title,
           content: fullContent,
-          metadata: JSON.stringify({ op: 'create', filename, path, tags: tags ?? null }),
+          metadata: JSON.stringify({ op: 'create', filename, path, tags: tags ?? null, connector: CONNECTOR_ID }),
           confidence: 1,
         },
         LLM_ACTOR(ctx.userId),
@@ -487,7 +495,7 @@ server.tool(
           kind: 'ingest-page-update',
           title: doc.title ?? doc.filename,
           content: updated,
-          metadata: JSON.stringify({ op: 'update', targetDocumentId: doc.id }),
+          metadata: JSON.stringify({ op: 'update', targetDocumentId: doc.id, connector: CONNECTOR_ID }),
           confidence: 1,
         },
         LLM_ACTOR(ctx.userId),
@@ -549,7 +557,7 @@ server.tool(
           kind: 'ingest-page-update',
           title: doc.title ?? doc.filename,
           content: updated,
-          metadata: JSON.stringify({ op: 'update', targetDocumentId: doc.id }),
+          metadata: JSON.stringify({ op: 'update', targetDocumentId: doc.id, connector: CONNECTOR_ID }),
           confidence: 1,
         },
         LLM_ACTOR(ctx.userId),
@@ -630,7 +638,7 @@ server.tool(
         kind: 'source-retraction',
         title: doc.title ?? doc.filename,
         content: `Archived via MCP: ${docPath}`,
-        metadata: JSON.stringify({ op: 'archive', targetDocumentId: doc.id }),
+        metadata: JSON.stringify({ op: 'archive', targetDocumentId: doc.id, connector: CONNECTOR_ID }),
         confidence: 1,
       },
       LLM_ACTOR(ctx.userId),

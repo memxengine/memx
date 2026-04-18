@@ -137,7 +137,7 @@ function buildContradictionActions(
       id: 'retire-a',
       effect: 'retire-neuron',
       args: { documentId: neuron.documentId },
-      label: { en: `Retire "${labelNew}"` },
+      label: { en: 'Retire new' },
       explanation: {
         en:
           `Archive ${linkNew} and keep ${linkExisting}. Pick this if the existing page was ` +
@@ -150,7 +150,7 @@ function buildContradictionActions(
       id: 'retire-b',
       effect: 'retire-neuron',
       args: { documentId: cand.documentId },
-      label: { en: `Retire "${labelExisting}"` },
+      label: { en: 'Retire existing' },
       explanation: {
         en:
           `Archive ${linkExisting} and keep ${linkNew}. Pick this if the new claim supersedes ` +

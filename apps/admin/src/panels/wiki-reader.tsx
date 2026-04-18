@@ -2,12 +2,21 @@ import { useEffect, useMemo, useState } from 'preact/hooks';
 import { useRoute } from 'preact-iso';
 import { marked } from 'marked';
 import type { Document } from '@trail/shared';
-import { listWikiPages, getDocumentContent, ApiError } from '../api';
+import {
+  listWikiPages,
+  getDocumentContent,
+  getNeuronProvenance,
+  ApiError,
+  type NeuronProvenance,
+} from '../api';
 import { rewriteWikiLinks } from '../lib/wiki-links';
 import { displayPath } from '../lib/display-path';
 import { t } from '../lib/i18n';
 import { NeuronEditorPanel } from './neuron-editor';
 import { TagChips, parseTags } from '../components/tag-chips';
+import { CenteredLoader } from '../components/centered-loader';
+import { ConnectorBadge } from '../components/connector-badge';
+import { ConfidencePill } from '../components/confidence-pill';
 
 /**
  * Single-Neuron panel. Routes between the read-only reader and the F91
@@ -25,6 +34,7 @@ function ReaderView() {
   const slug = decodeURIComponent(route.params.slug ?? '');
   const [pages, setPages] = useState<Document[] | null>(null);
   const [content, setContent] = useState<string | null>(null);
+  const [provenance, setProvenance] = useState<NeuronProvenance | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -47,11 +57,16 @@ function ReaderView() {
   useEffect(() => {
     if (!doc) {
       setContent(null);
+      setProvenance(null);
       return;
     }
     getDocumentContent(doc.id)
       .then((r) => setContent(r.content ?? ''))
       .catch((err: ApiError) => setError(err.message));
+    // Provenance lookup is independent of content — fire in parallel.
+    // Silent on failure; the panel just doesn't render the "Created via"
+    // line if the lookup 404s or throws.
+    getNeuronProvenance(doc.id).then(setProvenance).catch(() => setProvenance(null));
   }, [doc]);
 
   const html = useMemo(() => {
@@ -60,7 +75,7 @@ function ReaderView() {
     return marked.parse(preprocessed, { async: false }) as string;
   }, [content, kbId]);
 
-  const d = doc as (Document & { filename: string; title: string | null; version: number; path?: string; tags?: string | null }) | null;
+  const d = doc as (Document & { filename: string; title: string | null; version: number; path?: string; tags?: string | null; createdAt?: string; updatedAt?: string }) | null;
   const editHref = d ? `/kb/${kbId}/neurons/${encodeURIComponent(slug)}?edit=1` : null;
   const readerTags = d ? parseTags(d.tags) : [];
 
@@ -88,6 +103,8 @@ function ReaderView() {
           {error}
         </div>
       ) : null}
+
+      {!pages && !error ? <CenteredLoader /> : null}
 
       {pages && !d ? (
         <div class="text-center py-16">
@@ -117,10 +134,25 @@ function ReaderView() {
               <span class="text-[11px] font-mono text-[color:var(--color-fg-subtle)]">
                 v{d.version}
               </span>
+              {d.updatedAt || d.createdAt ? (
+                <span
+                  class="text-[11px] font-mono text-[color:var(--color-fg-subtle)]"
+                  title={d.updatedAt ?? d.createdAt ?? ''}
+                >
+                  {formatAbsolute(d.updatedAt ?? d.createdAt ?? '')}
+                </span>
+              ) : null}
               {readerTags.length > 0 ? (
                 <TagChips tags={readerTags} />
               ) : null}
             </div>
+            {provenance?.connector ? (
+              <div class="mt-3 flex items-center gap-2 text-[11px] font-mono text-[color:var(--color-fg-subtle)] flex-wrap">
+                <span>{t('queue.createdVia')}</span>
+                <ConnectorBadge variant="tag" connector={provenance.connector} />
+                <ConfidencePill confidence={provenance.confidence} />
+              </div>
+            ) : null}
           </div>
           {content === null ? (
             <div class="loading-delayed text-[color:var(--color-fg-muted)] text-sm">
@@ -137,4 +169,24 @@ function ReaderView() {
       ) : null}
     </div>
   );
+}
+
+/**
+ * Absolute timestamp for the Neuron reader header — short, readable,
+ * no guessing what "3d" means. SQLite stamps are UTC without a
+ * timezone marker; we treat them as UTC and let the browser localise.
+ */
+function formatAbsolute(iso: string): string {
+  try {
+    const d = new Date(iso.replace(' ', 'T') + (iso.includes('Z') || iso.includes('+') ? '' : 'Z'));
+    if (Number.isNaN(d.getTime())) return iso;
+    const dd = String(d.getDate()).padStart(2, '0');
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const yyyy = d.getFullYear();
+    const hh = String(d.getHours()).padStart(2, '0');
+    const min = String(d.getMinutes()).padStart(2, '0');
+    return `${dd}/${mm}/${yyyy} ${hh}:${min}`;
+  } catch {
+    return iso;
+  }
 }

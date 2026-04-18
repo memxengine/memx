@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { documents, knowledgeBases, documentChunks } from '@trail/db';
+import { documents, knowledgeBases, documentChunks, wikiEvents, queueCandidates } from '@trail/db';
 import {
   CreateNoteSchema,
   UpdateDocumentSchema,
@@ -7,13 +7,33 @@ import {
   BulkDeleteSchema,
   DocumentKindEnum,
 } from '@trail/shared';
-import { eq, and, inArray } from 'drizzle-orm';
+import { eq, and, inArray, asc, desc, type SQL } from 'drizzle-orm';
 import { submitCuratorEdit, VersionConflictError } from '@trail/core';
 import { requireAuth, getUser, getTenant, getTrail } from '../middleware/auth.js';
 import { chunkText, storeChunks } from '../services/chunker.js';
 import { processPdfAsync, processDocxAsync } from './uploads.js';
 import { triggerIngest } from '../services/ingest.js';
 import { storage, sourcePath } from '../lib/storage.js';
+
+/**
+ * Order-clause builder for the documents list. Keeps the route handler
+ * readable and the sort vocabulary centralized — if a new option ships,
+ * it lands here and the API query param picks it up without further
+ * plumbing. Falls back to `newest` when the client passes an unknown
+ * value rather than erroring: unknown input = reasonable default.
+ */
+function orderClauseFor(sort: string): SQL[] {
+  switch (sort) {
+    case 'oldest':
+      return [asc(documents.createdAt)];
+    case 'title':
+      return [asc(documents.title), asc(documents.createdAt)];
+    case 'updated':
+    case 'newest':
+    default:
+      return [desc(documents.updatedAt), desc(documents.createdAt)];
+  }
+}
 
 export const documentRoutes = new Hono();
 
@@ -26,6 +46,11 @@ documentRoutes.get('/knowledge-bases/:kbId/documents', async (c) => {
   const path = c.req.query('path');
   const kindParam = c.req.query('kind');
   const archivedParam = c.req.query('archived'); // 'true' | 'false' | 'all'
+  // Sort preference. Default 'newest' (updatedAt DESC) — the most
+  // useful order for a living knowledge base is "what changed most
+  // recently". `oldest` keeps the previous default behaviour for
+  // callers that want it; `title` is alphabetical by title.
+  const sortParam = c.req.query('sort') ?? 'newest';
 
   const conditions = [
     eq(documents.tenantId, tenant.id),
@@ -74,7 +99,7 @@ documentRoutes.get('/knowledge-bases/:kbId/documents', async (c) => {
     })
     .from(documents)
     .where(and(...conditions))
-    .orderBy(documents.sortOrder, documents.createdAt)
+    .orderBy(...orderClauseFor(sortParam))
     .all();
 
   return c.json(rows);
@@ -93,6 +118,88 @@ documentRoutes.get('/documents/:docId', async (c) => {
 
   if (!doc) return c.json({ error: 'Not found' }, 404);
   return c.json(doc);
+});
+
+/**
+ * F95 — Neuron provenance lookup. Returns the ingestion connector that
+ * produced this Neuron, plus the first candidate + creation timestamp.
+ * Walks `wiki_events` back to the initial `created` event, reads its
+ * `sourceCandidateId`, then reads that candidate's metadata.connector.
+ *
+ * Surfaces in the admin's Neuron reader as a "Created via" panel under
+ * the tag row. Missing data (e.g. legacy Neurons without a source
+ * candidate) degrades to `connector: null` rather than erroring.
+ */
+documentRoutes.get('/documents/:docId/provenance', async (c) => {
+  const trail = getTrail(c);
+  const tenant = getTenant(c);
+  const docId = c.req.param('docId');
+
+  const doc = await trail.db
+    .select({ id: documents.id, createdAt: documents.createdAt, userId: documents.userId })
+    .from(documents)
+    .where(and(eq(documents.id, docId), eq(documents.tenantId, tenant.id)))
+    .get();
+  if (!doc) return c.json({ error: 'Not found' }, 404);
+
+  const firstEvent = await trail.db
+    .select({
+      sourceCandidateId: wikiEvents.sourceCandidateId,
+      actorKind: wikiEvents.actorKind,
+      actorId: wikiEvents.actorId,
+      createdAt: wikiEvents.createdAt,
+    })
+    .from(wikiEvents)
+    .where(
+      and(
+        eq(wikiEvents.tenantId, tenant.id),
+        eq(wikiEvents.documentId, docId),
+        eq(wikiEvents.eventType, 'created'),
+      ),
+    )
+    .orderBy(asc(wikiEvents.createdAt))
+    .limit(1)
+    .get();
+
+  let connector: string | null = null;
+  let candidateId: string | null = null;
+  let confidence: number | null = null;
+
+  if (firstEvent?.sourceCandidateId) {
+    candidateId = firstEvent.sourceCandidateId;
+    const candidate = await trail.db
+      .select({
+        metadata: queueCandidates.metadata,
+        confidence: queueCandidates.confidence,
+      })
+      .from(queueCandidates)
+      .where(
+        and(
+          eq(queueCandidates.id, firstEvent.sourceCandidateId),
+          eq(queueCandidates.tenantId, tenant.id),
+        ),
+      )
+      .get();
+    if (candidate?.metadata) {
+      try {
+        const parsed = JSON.parse(candidate.metadata) as { connector?: unknown };
+        if (typeof parsed.connector === 'string') connector = parsed.connector;
+      } catch {
+        // fall through — connector stays null
+      }
+    }
+    confidence = candidate?.confidence ?? null;
+  }
+
+  return c.json({
+    documentId: doc.id,
+    connector,
+    candidateId,
+    confidence,
+    createdAt: firstEvent?.createdAt ?? doc.createdAt,
+    actorKind: firstEvent?.actorKind ?? null,
+    actorId: firstEvent?.actorId ?? doc.userId,
+  });
 });
 
 documentRoutes.get('/documents/:docId/content', async (c) => {
