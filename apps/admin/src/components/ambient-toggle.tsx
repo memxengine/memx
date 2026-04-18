@@ -4,7 +4,7 @@
  * volume slider. Mirrors ThemeToggle in size, border treatment, and active
  * scale so the header row reads as one cohesive control cluster.
  */
-import { useState } from 'preact/hooks';
+import { useRef, useState } from 'preact/hooks';
 import { ambientEnabled, ambientVolume } from '../lib/ambient-store';
 import { t } from '../lib/i18n';
 
@@ -12,14 +12,36 @@ export function AmbientToggle() {
   const enabled = ambientEnabled.value;
   const volume = ambientVolume.value;
   const [open, setOpen] = useState(false);
+  // Grace-period close: schedule setOpen(false) 180ms after the mouse
+  // leaves the wrapper. Any mouseenter inside the subtree cancels the
+  // pending close. This covers hover races the hover-bridge alone
+  // can't — e.g. when moving the mouse between subpixel boundaries or
+  // past slider edges during a drag. Standard dropdown pattern.
+  const closeTimer = useRef<number | null>(null);
+  const scheduleClose = () => {
+    if (closeTimer.current !== null) window.clearTimeout(closeTimer.current);
+    closeTimer.current = window.setTimeout(() => {
+      setOpen(false);
+      closeTimer.current = null;
+    }, 180);
+  };
+  const cancelClose = () => {
+    if (closeTimer.current !== null) {
+      window.clearTimeout(closeTimer.current);
+      closeTimer.current = null;
+    }
+  };
 
   const label = enabled ? t('nav.ambient.off') : t('nav.ambient.on');
 
   return (
     <div
       class="relative inline-flex items-center"
-      onMouseEnter={() => enabled && setOpen(true)}
-      onMouseLeave={() => setOpen(false)}
+      onMouseEnter={() => {
+        cancelClose();
+        if (enabled) setOpen(true);
+      }}
+      onMouseLeave={scheduleClose}
     >
       <button
         type="button"
@@ -57,7 +79,7 @@ export function AmbientToggle() {
         // outside the wrapper's layout).
         <div
           class="absolute top-full right-0 z-20 pt-1.5"
-          onMouseEnter={() => setOpen(true)}
+          onMouseEnter={cancelClose}
         >
           <div class="flex items-center gap-2 px-3 py-2 rounded-md border border-[color:var(--color-border-strong)] bg-[color:var(--color-bg-card)] shadow-lg">
             <span class="font-mono text-[10px] uppercase tracking-wider text-[color:var(--color-fg-subtle)]">
