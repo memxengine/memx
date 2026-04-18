@@ -28,7 +28,8 @@ export type SoundVariant = 'neutral' | 'success' | 'danger';
 
 export interface SoundPref {
   enabled: boolean;
-  // 'unset' = honour prefers-reduced-motion; 'on'/'off' = explicit user choice
+  // 'unset' = no explicit choice yet (default derived from prefers-reduced-motion)
+  // 'user'  = user has toggled at least once; their choice in `enabled` wins
   source: 'unset' | 'user';
 }
 

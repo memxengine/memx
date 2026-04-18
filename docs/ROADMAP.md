@@ -83,7 +83,7 @@ The remaining Phase 1 scope, ordered by leverage and dependency.
 | F23 | Wiki-Link Parser (`[[]]`, `[[kb:]]`, `[[ext:]]`) | F07 | Small |
 | F30 | Chat Citations Render | F12, F23 | Small |
 | F32 | Lint Pass (Orphans/Gaps/Contradictions) | F15, F17 | Medium |
-| F93 | Button Sound Feedback (Opt-In, Web Audio) | F18, F87 | Small |
+| F94 | Ambient Audio System (Per-Route Loops) | F18 | Small |
 
 ### Pipelines + Adapters — widen the ingest surface
 
