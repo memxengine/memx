@@ -13,7 +13,12 @@
       "light": "Light",
       "dark": "Dark"
     },
-    "language": "Language"
+    "language": "Language",
+    "ambient": {
+      "on": "Turn ambient sound on",
+      "off": "Turn ambient sound off",
+      "volume": "Ambient volume"
+    }
   },
   "common": {
     "loading": "Loading…",
@@ -116,7 +121,9 @@
       "whatDoesThisMean": "What does this mean?",
       "reopen": "Re-open",
       "reopenSuccess": "Re-opened — back in Pending.",
-      "reopenHint": "Puts this candidate back in the Pending queue so you can decide again."
+      "reopenHint": "Puts this candidate back in the Pending queue so you can decide again.",
+      "autoLinkSuccess": "Linked to: {sources}. Resolves on next lint run.",
+      "autoLinkNoSources": "The LLM couldn't identify any plausible Sources for this Neuron. Open the editor and link them manually."
     }
   },
   "sources": {

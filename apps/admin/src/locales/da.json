@@ -13,7 +13,12 @@
       "light": "Lys",
       "dark": "Mørk"
     },
-    "language": "Sprog"
+    "language": "Sprog",
+    "ambient": {
+      "on": "Slå ambient lyd til",
+      "off": "Slå ambient lyd fra",
+      "volume": "Ambient lydstyrke"
+    }
   },
   "common": {
     "loading": "Henter…",
@@ -116,7 +121,9 @@
       "whatDoesThisMean": "Hvad betyder det her?",
       "reopen": "Genåbn",
       "reopenSuccess": "Genåbnet — tilbage i Afventer.",
-      "reopenHint": "Sætter kandidaten tilbage i Afventer-køen så du kan vælge igen."
+      "reopenHint": "Sætter kandidaten tilbage i Afventer-køen så du kan vælge igen.",
+      "autoLinkSuccess": "Linket til: {sources}. Bliver ryddet ved næste lint-kørsel.",
+      "autoLinkNoSources": "LLM'en kunne ikke finde nogen sandsynlige Kilder til denne Neuron. Åbn editoren og link dem manuelt."
     }
   },
   "sources": {
@@ -181,7 +188,7 @@
       "trusting": "tillidsfuld",
       "strict": "streng",
       "trustingHint": "Tillidsfuld: afviste lint-fund undertrykkes permanent. Ingen nag-løkke på afviste fund.",
-      "strictHint": "Streng: afviste lint-fund må dukke op igen på næste lint-pass. Fanger fejlagtige afvisninger på bekostning af mere støj.",
+      "strictHint": "Streng: afviste lint-fund må dukke op igen ved næste lint-kørsel. Fanger fejlagtige afvisninger på bekostning af mere støj.",
       "saveFailed": "Kunne ikke gemme lint-politik — {error}. Henter nuværende tilstand."
     }
   },

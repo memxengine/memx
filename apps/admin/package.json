@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@preact/signals": "^2.9.0",
     "@trail/shared": "workspace:*",
     "marked": "^15.0.0",
     "preact": "^10.23.0",

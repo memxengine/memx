@@ -5,6 +5,10 @@ import { api } from './api';
 import { getTheme, onThemeChange, toggleTheme, type Theme } from './theme';
 import { mountConstellation } from './lib/constellation';
 import { TrailNav } from './components/trail-nav';
+import { AmbientProvider } from './components/ambient-provider';
+import { AmbientToggle } from './components/ambient-toggle';
+import { ambientRoute } from './lib/ambient-store';
+import { routeFromPath } from './lib/route-to-ambient';
 import { useKb } from './lib/kb-cache';
 import { t, useLocale, setLocale, SUPPORTED_LOCALES, type Locale } from './lib/i18n';
 
@@ -27,6 +31,12 @@ export function App({ children }: { children: ComponentChildren }) {
   const kb = useKb(kbId ?? '');
 
   useEffect(() => onThemeChange(setTheme), []);
+
+  // Sync the current pathname into the ambient route signal so
+  // <AmbientProvider /> can swap loops on navigation.
+  useEffect(() => {
+    ambientRoute.value = routeFromPath(path);
+  }, [path]);
 
   // Reflect the current Trail (or the admin home) in the browser tab. Makes
   // "which Trail am I in?" visible even when the tab is backgrounded, and
@@ -88,6 +98,7 @@ export function App({ children }: { children: ComponentChildren }) {
                 <span class="text-[color:var(--color-fg-muted)]">{displayName(me)}</span>
               ) : null}
               <LanguageSwitcher />
+              <AmbientToggle />
               <ThemeToggle theme={theme} />
             </div>
           </div>
@@ -95,6 +106,7 @@ export function App({ children }: { children: ComponentChildren }) {
         </div>
       </header>
       <main class="relative z-10 flex-1">{me ? children : null}</main>
+      <AmbientProvider />
     </div>
   );
 }
