@@ -1,120 +1,43 @@
 /**
  * F94 — Ambient audio toggle. Sits next to the theme toggle in the admin
- * header. Click toggles the master enable; hover/focus reveals an inline
- * volume slider. Mirrors ThemeToggle in size, border treatment, and active
- * scale so the header row reads as one cohesive control cluster.
+ * header. Click toggles the master enable. Mirrors ThemeToggle in size,
+ * border treatment, and active scale so the header row reads as one
+ * cohesive control cluster.
+ *
+ * The hover-popover volume slider was removed: the hover-bridge + grace-
+ * period + pointer-capture stack still raced badly enough that the slider
+ * was un-grabbable in practice. A header-mounted slider is the wrong
+ * pattern for a control that's used rarely; revive it as a settings-panel
+ * row when one exists. Volume defaults to 0.6 in `lib/ambient-store.ts`
+ * and persists per-device via localStorage — adjust there or via a future
+ * settings UI, not in the header.
  */
-import { useRef, useState } from 'preact/hooks';
-import { ambientEnabled, ambientVolume } from '../lib/ambient-store';
+import { ambientEnabled } from '../lib/ambient-store';
 import { t } from '../lib/i18n';
 
 export function AmbientToggle() {
   const enabled = ambientEnabled.value;
-  const volume = ambientVolume.value;
-  const [open, setOpen] = useState(false);
-  // Grace-period close: schedule setOpen(false) 180ms after the mouse
-  // leaves the wrapper. Any mouseenter inside the subtree cancels the
-  // pending close. This covers hover races the hover-bridge alone
-  // can't — e.g. when moving the mouse between subpixel boundaries or
-  // past slider edges during a drag. Standard dropdown pattern.
-  const closeTimer = useRef<number | null>(null);
-  const scheduleClose = () => {
-    if (closeTimer.current !== null) window.clearTimeout(closeTimer.current);
-    closeTimer.current = window.setTimeout(() => {
-      setOpen(false);
-      closeTimer.current = null;
-    }, 180);
-  };
-  const cancelClose = () => {
-    if (closeTimer.current !== null) {
-      window.clearTimeout(closeTimer.current);
-      closeTimer.current = null;
-    }
-  };
-
   const label = enabled ? t('nav.ambient.off') : t('nav.ambient.on');
 
   return (
-    <div
-      class="relative inline-flex items-center"
-      onMouseEnter={() => {
-        cancelClose();
-        if (enabled) setOpen(true);
+    <button
+      type="button"
+      role="switch"
+      aria-checked={enabled}
+      aria-label={label}
+      title={label}
+      onClick={() => {
+        ambientEnabled.value = !enabled;
       }}
-      onMouseLeave={scheduleClose}
+      class={
+        'inline-flex items-center justify-center w-8 h-8 rounded-md border active:scale-95 transition ' +
+        (enabled
+          ? 'ambient-on border-[color:var(--color-accent)] text-[color:var(--color-accent)] hover:bg-[color:var(--color-bg-card)]'
+          : 'border-[color:var(--color-border)] text-[color:var(--color-fg-muted)] hover:border-[color:var(--color-border-strong)] hover:bg-[color:var(--color-bg-card)] hover:text-[color:var(--color-fg)]')
+      }
     >
-      <button
-        type="button"
-        role="switch"
-        aria-checked={enabled}
-        aria-label={label}
-        title={label}
-        onClick={() => {
-          ambientEnabled.value = !enabled;
-        }}
-        onFocus={() => enabled && setOpen(true)}
-        onBlur={(e) => {
-          // Keep open while focus moves to the slider inside the same wrapper.
-          const next = e.relatedTarget as Node | null;
-          if (!next || !(e.currentTarget.parentElement?.contains(next))) {
-            setOpen(false);
-          }
-        }}
-        class={
-          'inline-flex items-center justify-center w-8 h-8 rounded-md border active:scale-95 transition ' +
-          (enabled
-            ? 'ambient-on border-[color:var(--color-accent)] text-[color:var(--color-accent)] hover:bg-[color:var(--color-bg-card)]'
-            : 'border-[color:var(--color-border)] text-[color:var(--color-fg-muted)] hover:border-[color:var(--color-border-strong)] hover:bg-[color:var(--color-bg-card)] hover:text-[color:var(--color-fg)]')
-        }
-      >
-        {enabled ? <SpeakerOnIcon /> : <SpeakerOffIcon />}
-      </button>
-      {open ? (
-        // Two-div structure on purpose: the outer absolute div is the
-        // hover "bridge". Its `pt-1.5` creates visual breathing space
-        // above the visible card WITHOUT introducing a DOM gap — so the
-        // mouse travelling from the button down to the slider stays
-        // inside the wrapper's subtree and mouseleave doesn't fire mid-
-        // traverse. Margin-top would break this (the gap would be
-        // outside the wrapper's layout).
-        <div
-          class="absolute top-full right-0 z-20 pt-1.5"
-          onMouseEnter={cancelClose}
-        >
-          <div class="flex items-center gap-2 px-3 py-2 rounded-md border border-[color:var(--color-border-strong)] bg-[color:var(--color-bg-card)] shadow-lg">
-            <span class="font-mono text-[10px] uppercase tracking-wider text-[color:var(--color-fg-subtle)]">
-              {Math.round(volume * 100)}
-            </span>
-            <input
-              type="range"
-              min={0}
-              max={100}
-              step={1}
-              value={Math.round(volume * 100)}
-              aria-label={t('nav.ambient.volume')}
-              onInput={(e) => {
-                const v = Number((e.currentTarget as HTMLInputElement).value);
-                ambientVolume.value = Math.max(0, Math.min(1, v / 100));
-              }}
-              // Holding pointer-capture across the wrapper keeps the
-              // slider open while the user drags, even if they overshoot
-              // the wrapper's bounds — otherwise a fast drag closes the
-              // popover mid-scrub.
-              onPointerDown={(e) => {
-                (e.currentTarget as HTMLInputElement).setPointerCapture(e.pointerId);
-              }}
-              onBlur={(e) => {
-                const next = e.relatedTarget as Node | null;
-                if (!next || !(e.currentTarget.parentElement?.parentElement?.parentElement?.contains(next))) {
-                  setOpen(false);
-                }
-              }}
-              class="w-24 accent-[color:var(--color-accent)]"
-            />
-          </div>
-        </div>
-      ) : null}
-    </div>
+      {enabled ? <SpeakerOnIcon /> : <SpeakerOffIcon />}
+    </button>
   );
 }
 
