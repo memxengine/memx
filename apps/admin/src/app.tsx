@@ -40,9 +40,18 @@ export function App({ children }: { children: ComponentChildren }) {
   useEffect(() => onThemeChange(setTheme), []);
 
   // Sync the current pathname into the ambient route signal so
-  // <AmbientProvider /> can swap loops on navigation.
+  // <AmbientProvider /> can swap loops on navigation. Belt-and-suspenders:
+  // peek() before assigning so navigations *within* the same RouteKey
+  // (e.g. /kb/<id>/neurons → /kb/<id>/neurons/<slug>) skip the signal
+  // write entirely. Preact signals already no-op same-primitive writes,
+  // but reading the user-visible intent off the line — "don't even touch
+  // the audio engine when the loop is the same" — beats relying on a
+  // library-internal optimisation.
   useEffect(() => {
-    ambientRoute.value = routeFromPath(path);
+    const next = routeFromPath(path);
+    if (ambientRoute.peek() !== next) {
+      ambientRoute.value = next;
+    }
   }, [path]);
 
   // Reflect the current Trail (or the admin home) in the browser tab. Makes
