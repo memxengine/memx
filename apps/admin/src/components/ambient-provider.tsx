@@ -160,6 +160,14 @@ export function AmbientProvider() {
     document.addEventListener('visibilitychange', onVisibility);
 
     const stopEnabled = effect(() => {
+      // ONLY ambientEnabled is read via .value — that's the signal whose
+      // change is supposed to re-run this effect. Volume + route are read
+      // via .peek() so they don't form deps; their own effects
+      // (stopVolume, stopRoute) own those reactions. Without peek(), a
+      // volume slide re-fires this effect AND stopVolume — both ramping
+      // the same GainNode to the same target, double-work + race window.
+      // Same for a route change: stopRoute would already swapTo, but
+      // tracking ambientRoute here makes stopEnabled call swapTo too.
       const enabled = ambientEnabled.value;
       if (enabled) {
         if (!ensureContext(r) || !r.ctx || !r.master) return;
@@ -167,12 +175,12 @@ export function AmbientProvider() {
         const now = r.ctx.currentTime;
         r.master.gain.cancelScheduledValues(now);
         r.master.gain.setValueAtTime(r.master.gain.value, now);
-        r.master.gain.linearRampToValueAtTime(ambientVolume.value, now + RAMP_SEC);
+        r.master.gain.linearRampToValueAtTime(ambientVolume.peek(), now + RAMP_SEC);
         if (r.ctx.state === 'suspended') {
           r.pendingGestureSwap = true;
           r.ctx.resume().catch(() => undefined);
         } else {
-          void swapTo(r, ambientRoute.value);
+          void swapTo(r, ambientRoute.peek());
         }
       } else if (r.ctx && r.master) {
         const now = r.ctx.currentTime;
@@ -186,23 +194,28 @@ export function AmbientProvider() {
           r.ctx?.suspend().catch(() => undefined);
           // Reset gain back to user volume so the next enable doesn't start at 0.
           if (r.ctx && targetMaster) {
-            targetMaster.gain.setValueAtTime(ambientVolume.value, r.ctx.currentTime);
+            targetMaster.gain.setValueAtTime(ambientVolume.peek(), r.ctx.currentTime);
           }
         }, delay);
       }
     });
 
     const stopRoute = effect(() => {
+      // Only ambientRoute is tracked — enabled is peeked so a toggle of
+      // enabled doesn't re-fire this effect (stopEnabled handles that).
       const key = ambientRoute.value;
-      if (!ambientEnabled.value) return;
+      if (!ambientEnabled.peek()) return;
       if (!r.ctx || r.ctx.state !== 'running') return;
       void swapTo(r, key);
     });
 
     const stopVolume = effect(() => {
+      // Only ambientVolume is tracked — enabled is peeked so a toggle of
+      // enabled doesn't re-fire this effect (stopEnabled handles the
+      // gain ramp to/from 0 itself).
       const v = ambientVolume.value;
       if (!r.ctx || !r.master) return;
-      if (!ambientEnabled.value) return;
+      if (!ambientEnabled.peek()) return;
       const now = r.ctx.currentTime;
       r.master.gain.cancelScheduledValues(now);
       r.master.gain.setValueAtTime(r.master.gain.value, now);
