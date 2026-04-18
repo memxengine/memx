@@ -12,6 +12,7 @@ import { submitCuratorEdit, VersionConflictError } from '@trail/core';
 import { requireAuth, getUser, getTenant, getTrail } from '../middleware/auth.js';
 import { chunkText, storeChunks } from '../services/chunker.js';
 import { processPdfAsync, processDocxAsync } from './uploads.js';
+import { triggerIngest } from '../services/ingest.js';
 import { storage, sourcePath } from '../lib/storage.js';
 
 export const documentRoutes = new Hono();
@@ -367,6 +368,65 @@ documentRoutes.post('/documents/:docId/reprocess', async (c) => {
       400,
     );
   }
+
+  return c.json({ id: doc.id, status: 'processing' }, 202);
+});
+
+/**
+ * Re-run ONLY the ingest step — the LLM-compile-to-wiki phase — without
+ * re-running the file-format extract pipeline. Useful when extract
+ * already produced good markdown (status was 'ready' at some point) but
+ * wiki-compile failed or was interrupted (MCP entry missing, LLM rate
+ * limit, engine restart mid-job, etc.). Re-extracting a big PDF when
+ * only the ingest leg failed is wasted time + vision-API budget.
+ *
+ * Sibling of `/reprocess`. Same auth, same eventing. Differs in that
+ * it doesn't touch `content`, `page_count`, or `file_size` — those
+ * reflect the existing extract. Status flips to 'processing' while
+ * triggerIngest runs async.
+ */
+documentRoutes.post('/documents/:docId/reingest', async (c) => {
+  const trail = getTrail(c);
+  const tenant = getTenant(c);
+  const user = getUser(c);
+  const docId = c.req.param('docId');
+
+  const doc = await trail.db
+    .select()
+    .from(documents)
+    .where(and(eq(documents.id, docId), eq(documents.tenantId, tenant.id)))
+    .get();
+
+  if (!doc) return c.json({ error: 'Document not found' }, 404);
+  if (doc.kind !== 'source') {
+    return c.json({ error: 'Only source documents can be reingested' }, 400);
+  }
+  if (!doc.content || !doc.content.trim()) {
+    return c.json(
+      { error: 'No extracted content to ingest — run /reprocess first' },
+      400,
+    );
+  }
+  // Idempotency — if a pipeline is already in flight for this source,
+  // don't spawn a second. Rapid clicks on the "reingest" button would
+  // otherwise double the LLM work + race on wiki writes.
+  if (doc.status === 'processing') {
+    return c.json({ id: doc.id, status: 'processing', alreadyRunning: true }, 202);
+  }
+
+  await trail.db
+    .update(documents)
+    .set({ status: 'processing', errorMessage: null, updatedAt: new Date().toISOString() })
+    .where(eq(documents.id, doc.id))
+    .run();
+
+  triggerIngest({
+    trail,
+    docId: doc.id,
+    kbId: doc.knowledgeBaseId,
+    tenantId: doc.tenantId,
+    userId: user.id,
+  });
 
   return c.json({ id: doc.id, status: 'processing' }, 202);
 });

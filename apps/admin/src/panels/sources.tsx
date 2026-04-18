@@ -7,6 +7,7 @@ import {
   archiveDocument,
   restoreDocument,
   retryDocument,
+  reingestDocument,
   getDocumentContent,
   ApiError,
 } from '../api';
@@ -143,6 +144,23 @@ export function SourcesPanel() {
     }
   }, []);
 
+  const onReingest = useCallback(async (doc: Document) => {
+    try {
+      const result = await reingestDocument(doc.id);
+      if (!result.alreadyRunning) {
+        setDocs((prev) =>
+          prev
+            ? prev.map((d) =>
+                d.id === doc.id ? { ...d, status: 'processing', errorMessage: null } : d,
+              )
+            : prev,
+        );
+      }
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : String(err));
+    }
+  }, []);
+
   const toggleExpanded = useCallback((id: string) => {
     setExpanded((prev) => {
       const next = new Set(prev);
@@ -211,6 +229,7 @@ export function SourcesPanel() {
             onArchive={onArchive}
             onRestore={onRestore}
             onRetry={onRetry}
+            onReingest={onReingest}
           />
         ))}
       </ul>
@@ -255,9 +274,18 @@ interface RowProps {
   onArchive: (d: Document) => void;
   onRestore: (d: Document) => void;
   onRetry: (d: Document) => void;
+  onReingest: (d: Document) => void;
 }
 
-function SourceRow({ doc, isExpanded, onToggle, onArchive, onRestore, onRetry }: RowProps) {
+function SourceRow({
+  doc,
+  isExpanded,
+  onToggle,
+  onArchive,
+  onRestore,
+  onRetry,
+  onReingest,
+}: RowProps) {
   const canExpand = doc.status === 'ready' || doc.status === 'failed' || doc.archived;
   const isArchived = doc.archived;
   return (
@@ -302,9 +330,12 @@ function SourceRow({ doc, isExpanded, onToggle, onArchive, onRestore, onRetry }:
         </div>
         {/* Row actions. Logic by state:
             - Archived rows → Restore only (one-click undo, no modal).
-            - Failed rows → Retry (when binary) + Archive.
-            - Ready rows → Archive.
-            - Processing/pending → no actions (no races during ingest). */}
+            - Failed rows → Retry (when binary) + Reingest + Archive.
+            - Ready rows → Reingest + Archive.
+            - Processing/pending → no actions (no races during ingest).
+            Reingest skips the file-format extract step and re-runs only
+            the LLM wiki-compile — cheap alternative to full reprocess
+            when extract already produced good markdown. */}
         {isArchived ? (
           <div class="flex items-center gap-3 shrink-0">
             <button
@@ -324,6 +355,19 @@ function SourceRow({ doc, isExpanded, onToggle, onArchive, onRestore, onRetry }:
                 title={t('sources.retryHint')}
               >
                 {t('sources.retry').toLowerCase()}
+              </button>
+            ) : null}
+            {(doc.fileType === 'pdf' ||
+              doc.fileType === 'docx' ||
+              doc.fileType === 'md' ||
+              doc.fileType === 'txt' ||
+              doc.fileType === 'html') ? (
+              <button
+                onClick={() => onReingest(doc)}
+                class="text-[11px] font-mono text-[color:var(--color-accent)] hover:text-[color:var(--color-fg)] transition"
+                title={t('sources.reingestHint')}
+              >
+                {t('sources.reingest').toLowerCase()}
               </button>
             ) : null}
             <button

@@ -286,6 +286,16 @@ export function retryDocument(docId: string): Promise<{ id: string; status: stri
   return api(`/api/v1/documents/${encodeURIComponent(docId)}/reprocess`, { method: 'POST' });
 }
 
+/**
+ * Re-run ONLY the wiki-compile (LLM ingest) step. Skips file-format extract.
+ * Use when extract produced good markdown but wiki-compile failed or stalled.
+ */
+export function reingestDocument(
+  docId: string,
+): Promise<{ id: string; status: string; alreadyRunning?: boolean }> {
+  return api(`/api/v1/documents/${encodeURIComponent(docId)}/reingest`, { method: 'POST' });
+}
+
 // ── Search ───────────────────────────────────────────────────────
 
 export interface DocumentSearchHit {
