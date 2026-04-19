@@ -14,38 +14,25 @@ Ship `infra/fly/` with a reference `fly.toml` + secrets recipe + volume setup fo
 
 ### Fly app shape
 
-```toml
-# infra/fly/fly.toml
-app = "trail-engine"
-primary_region = "arn"
+Shipped artifacts live at `infra/fly/` — `fly.toml`, `Dockerfile`,
+`deploy.sh`, and a walkthrough README. Key choices:
 
-[build]
-  dockerfile = "infra/fly/Dockerfile"
-
-[env]
-  PORT = "3031"
-  TRAIL_DATA_DIR = "/data"
-  TRAIL_DB_PATH = "/data/trail.db"
-  TRAIL_UPLOADS_DIR = "/data/uploads"
-  APP_URL = "https://admin.trail.broberg.ai"
-  API_URL = "https://api.trail.broberg.ai"
-  CHAT_MODEL = "claude-haiku-4-5-20251001"
-
-[[mounts]]
-  source = "trail_data"
-  destination = "/data"
-
-[http_service]
-  internal_port = 3031
-  force_https = true
-  auto_stop_machines = "stop"
-  auto_start_machines = true
-  min_machines_running = 1
-```
+- **Runtime: Bun on Fly too.** The server runs `bun run src/index.ts` in
+  dev (see `apps/server/package.json`); we keep that in production via
+  `oven/bun:1.2-alpine` so there's zero transpile drift between envs.
+  Node 22 was the original plan — we deviate because Bun is already the
+  stack's canonical runtime and an extra build step buys us nothing.
+- **Domain: `api.trailmem.com`.** Phase 1 engine endpoint on the CF-
+  registered `trailmem.com` zone. Phase 2 SaaS moves to
+  `app.trailmem.com` (F40.2/F41) sharing this codebase.
+- **Volume: 10 GB `trail_data` mount at `/data`.** DB + uploads.
 
 ### Dockerfile
 
-Node 22 base (production runtime). Install deps with pnpm, copy `apps/server` + `packages/*`, build, `CMD ["node", "apps/server/dist/index.js"]`.
+`oven/bun:1.2-alpine` base. Copy monorepo manifests first for layer
+caching, `pnpm install --frozen-lockfile --filter @trail/server...` to
+pull only the server subgraph's deps, then copy source and run as the
+unprivileged `bun` user. Entry: `bun run apps/server/src/index.ts`.
 
 ### Secrets
 
@@ -66,23 +53,29 @@ Holds SQLite DB + uploaded source files. Backup policy: `fly volumes snapshots c
 ### Domain + TLS
 
 ```
-fly certs create api.trail.broberg.ai -a trail-engine
+fly certs create api.trailmem.com -a trail-engine
 ```
 
-DNS: CNAME `api.trail.broberg.ai` → `trail-engine.fly.dev`. Covers admin via F34.
+DNS at Cloudflare (zone `trailmem.com` already registered there):
+`CNAME api.trailmem.com → trail-engine.fly.dev` with the CF proxy
+OFF so Fly terminates TLS directly. Landing (F34) stays on `trailmem.com` /
+`www.trailmem.com`; engine on `api.trailmem.com`.
 
 ### Healthcheck
 
-Add `GET /api/v1/health` to `apps/server` returning `{ ok: true, version, db: "ok" }`. Fly healthcheck config: `[[services.checks]] interval = "10s" grace_period = "30s" method = "get" path = "/api/v1/health"`.
+`GET /api/health` (mounted at `/api`, not `/api/v1`, so Fly checks land
+on a zero-auth path). Returns `{ status, service, db, version }` with
+a 503 when the DB ping fails — a broken volume mount surfaces as
+unhealthy instead of a green check on a dead engine. Fly config:
+`interval=15s timeout=5s grace_period=30s`.
 
 ## Impact Analysis
 
 ### Files affected
 
-- **Create:** `infra/fly/{fly.toml, Dockerfile, deploy.sh, README.md}`
-- **Create:** `apps/server/src/routes/health.ts`
-- **Modify:** `apps/server/src/index.ts` (mount health route, listen on `PORT`)
-- **Modify:** root `README.md` (deploy section)
+- **Create:** `infra/fly/{fly.toml, Dockerfile, deploy.sh, README.md}` ✅ landed
+- **Modify:** `apps/server/src/routes/health.ts` (was a 1-liner stub; now DB-pings + returns version) ✅ landed
+- **Unchanged:** `apps/server/src/app.ts` already mounts `healthRoutes` at `/api` — no edit needed.
 
 ### Downstream dependents
 
@@ -95,7 +88,10 @@ Deploy can't break local dev. The main risk is volume-backed SQLite — must ver
 
 ### Breaking changes
 
-None to code. Operational: MCP stdio entrypoint (`TRAIL_MCP_ENTRY`) currently resolves relative to the local monorepo layout — on Fly.io it needs to resolve to the packaged `/app/apps/mcp/dist/index.js`. Dockerfile must bake this path.
+None to code. Operational: MCP stdio entrypoint (`TRAIL_MCP_ENTRY`)
+currently resolves relative to the local monorepo layout — on Fly.io it
+resolves to `/app/apps/mcp/src/index.ts` (Bun runs TS directly, no
+`dist/` build). Set via `fly secrets` when ingest needs it.
 
 ### Test plan
 
@@ -108,15 +104,21 @@ None to code. Operational: MCP stdio entrypoint (`TRAIL_MCP_ENTRY`) currently re
 
 ## Implementation Steps
 
-1. Write `infra/fly/Dockerfile` that builds the monorepo to a production image.
-2. Write `fly.toml` with all env, mounts, healthchecks.
-3. Add `/api/v1/health` endpoint.
-4. Create Fly app (`fly apps create trail-engine --org broberg-ai`).
-5. Create volume + attach.
-6. Set secrets.
-7. Deploy + smoke test.
-8. Add `deploy.sh` wrapping the release + migration step (`bun run db:push` or similar).
-9. Document the flow in `infra/fly/README.md`.
+Artifacts landed (code-side):
+
+1. ✅ `infra/fly/Dockerfile` — Bun 1.2-alpine + pnpm, layer-cached install.
+2. ✅ `infra/fly/fly.toml` — env, volume mount, `[[http_service.checks]]`.
+3. ✅ `apps/server/src/routes/health.ts` — DB ping + version.
+4. ✅ `infra/fly/deploy.sh` — `--first-time` bootstrap + idempotent re-run.
+5. ✅ `infra/fly/README.md` — full walkthrough.
+
+Operational steps (require `flyctl` auth + human approval on secrets):
+
+6. ⏭ `infra/fly/deploy.sh --first-time` → creates app + volume + lists missing secrets.
+7. ⏭ `fly secrets set GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET ANTHROPIC_API_KEY SESSION_SECRET`.
+8. ⏭ `infra/fly/deploy.sh` (second run) → builds + rolls out.
+9. ⏭ `fly certs create api.trailmem.com --app trail-engine` + CF DNS record.
+10. ⏭ Smoke test the Test Plan below against `https://api.trailmem.com`.
 
 ## Dependencies
 

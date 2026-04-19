@@ -84,6 +84,7 @@ The remaining Phase 1 scope, ordered by leverage and dependency.
 | F30 | Chat Citations Render | F12, F23 | Small |
 | F32 | Lint Pass (Orphans/Gaps/Contradictions) | F15, F17 | Medium |
 | F94 | Ambient Audio System (Per-Route Loops) | F18 | Small |
+| F99 | Obsidian-style Neuron Graph (Sigma + compile-time FA2) | F15, F18 | Medium |
 
 ### Pipelines + Adapters — widen the ingest surface
 
