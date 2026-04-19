@@ -1,4 +1,5 @@
 import { documentChunks, type TrailDatabase } from '@trail/db';
+import { eq } from 'drizzle-orm';
 
 const CHUNK_SIZE = 512;
 const CHUNK_OVERLAP = 128;
@@ -97,6 +98,17 @@ export function chunkText(
   return chunks;
 }
 
+/**
+ * Replace the chunk set for a document. Always deletes existing rows
+ * for `documentId` first, then inserts the new chunks — both in one
+ * transaction so a re-chunk is atomic. Idempotent: callers like
+ * `/reprocess` and `/reingest` can run this repeatedly without
+ * tripping the unique index on (document_id, chunk_index).
+ *
+ * A caller passing zero chunks still clears prior rows — useful when
+ * an empty or unparseable re-extract should drop the old chunks
+ * instead of silently keeping them.
+ */
 export async function storeChunks(
   trail: TrailDatabase,
   documentId: string,
@@ -104,8 +116,8 @@ export async function storeChunks(
   kbId: string,
   chunks: Chunk[],
 ): Promise<void> {
-  if (chunks.length === 0) return;
   await trail.db.transaction(async (tx) => {
+    await tx.delete(documentChunks).where(eq(documentChunks.documentId, documentId)).run();
     for (const chunk of chunks) {
       await tx
         .insert(documentChunks)
