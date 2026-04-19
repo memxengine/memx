@@ -1,228 +1,269 @@
-# Trail som docs-backend
+# Trail som chat-motor for @webhouse/cms docs
 
-*Tillæg til prissætnings-planen. Skrevet 2026-04-19. Besvarer: hvordan kan Trail drive docs.webhouse.app (og senere kunders docs), og hvilken model gør det uden at ødelægge hvad der allerede virker.*
+*Tillæg til prissætnings-planen. Skrevet 2026-04-19, revideret samme dag efter scope-afklaring. Besvarer: hvordan bruger vi Trail som chat-engine bag docs.webhouse.app (og trail.broberg.dk) uden at @webhouse/cms behøver bygge sin egen RAG.*
 
-## Udgangspunkt
+## Scope-afklaring
 
-`docs.webhouse.app` kører p.t. på @webhouse/cms (dogfood). Metrik:
+**Trail driver ikke docs-sitet.** @webhouse/cms fortsætter som rendering-laget (SSG, CDN, custom theme, i18n, public access) — det virker, det er hurtigt, det er public. Ingen grund til at røre ved det.
 
-| Metrik | Værdi |
-|---|---|
-| Dokumenter | 89 EN + 84 DA = 173 |
-| Ord-volumen | ~15-25k ord totalt |
-| Struktur | Feature-hierarchy (intro → core → advanced → changelog) |
-| Features | FTS-søgning, i18n toggle, HelpCards in-app, v0.2.13 semantic versioning |
-| Rendering | Static-first, custom theme, CDN |
-| Mangler | Comments, chat-Q&A, cross-doc contradiction-detection |
+**Trail er chat-motor bag kulissen.** I @webhouse/cms admin tilføjes et chat-panel. Brugeren (kurator / content-editor) kan stille spørgsmål til hele docs-korpussen og få svar med citations. Chat-panelet kalder Trail's `POST /api/v1/chat` med bearer-auth. Trail holder en synkroniseret kopi af alle docs og genererer svarene.
 
-Dagen i dag er @webhouse/cms **god nok** til selve rendering-laget. Diskussionen er ikke "erstatte", men "hvad kan Trail tilføje".
+**Trail's core-værdi her:**
+- FTS5-søgning er færdig (ingen need to build)
+- Chat-API med citations og [[wiki-links]] er færdig
+- Contradiction-lint fanger modsigelser på tværs af docs (fx når to docs siger forskellige ting om samme API)
+- Curation-queue lader kurator kontrollere hvad der indekseres
 
-## Tre modeller, sammenlignet
+**@webhouse/cms slipper for:** at bygge embedding-pipeline, vector-DB-drift, chunking-strategier, RAG-prompt engineering, citation-logic. Estimeret besparelse: 2-4 ugers arbejde + løbende vedligehold.
 
-### Model 1 — Trail som AI-lag oven på eksisterende CMS
+## Arkitektur
 
-- @webhouse/cms fortsætter uændret som rendering + SSG + public reader
-- Trail tilføjes som backend for **chat-Q&A** + **contradiction-lint** + **LLM-search**
-- Integration via webhook: docs-page gem → POST til Trail → auto-ingest som source → Neuron-compile
-- Docs-siten får "Spørg AI"-knap der kalder `POST /api/v1/chat` mod docs-Trail
-
-**Effort:** ~1 uges arbejde.
-**Tier til Trail-siden:** Starter $20/mdr (173 sources → ~270 compiled Neurons, under 500-cap).
-**Værdi:** AI-chat + modsigelses-detektion tilføjet, 0 risiko for eksisterende docs-setup.
-
-### Model 2 — Trail som eneste backend
-
-- Alle 173 docs flyttes til Trail som `kind='wiki'` Neurons (direkte-edit, skip ingest)
-- Ny public reader-app konsumerer Trail's read-API
-- Kræver 5 nye F-features (se nedenfor)
-
-**Effort:** 3-4 uger.
-**Tier:** Starter $20/mdr.
-**Værdi:** One platform, men vi bygger funktionalitet @webhouse/cms allerede har. Dårlig ROI medmindre "docs-platform" bliver del af Trail's pitch.
-
-### Model 3 — Docs som sources, AI-svar som Neurons (anbefalet hybrid)
-
-- Hver docs-markdown-fil uploads til Trail som `kind='source'`
-- LLM-compile → Neurons der besvarer "hvordan gør jeg X?"-spørgsmål på tværs af docs
-- Trail's chat bruger de **compilerede** Neurons, ikke rå docs
-- @webhouse/cms renderer fortsat siden, men `/docs/<page>` tilføjer "AI-svar-hits"-panel der viser relevante Neurons
-- Contradiction-lint fanger når to docs-versioner siger noget forskelligt om samme API
-
-**Effort:** 2-3 uger.
-**Tier:** Pro $75/mdr (kræver ugentlig sampling for contradiction-lint at give værdi på docs-versions-drift; plus LLM-compile på hver docs-update koster compute).
-**Værdi:** LLM fletter docs, finder modsigelser på tværs af versioner, AI-chat over struktureret viden — alt det Trail er designet til.
-
-## Anbefaling
-
-**Model 3.** Det er den eneste af de tre der **bruger Trail's kerne-primitiver** (ingest-compile, curation-queue, contradiction-lint). Model 1 og 2 ville være at betale for features vi ikke bruger.
-
-### Implementerings-flow
-
-1. **Git-sync-connector** (ny F-feature): webhook fra docs-repo → POST til Trail
-2. **Source-kind = 'docs-md'**: specifik kind så ingest-promptet behandler markdown-strukturerede docs anderledes end PDFs (preserver headers, bevar code-blocks eksakt, ekstrahér cross-references som backlinks)
-3. **Compile-target**: per docs-page → én `/neurons/docs/<slug>` Neuron der består af den LLM-komprimerede "hvad er pointen" + links til kildeplaceringen i rå markdown
-4. **Public chat-endpoint**: `POST /api/v1/public/chat/:docsKbId` — anonymt læse-only, rate-limited, CORS-enabled, returnerer svar + citations
-5. **Embedding på docs.webhouse.app**: iframe eller React-widget der kalder Trail's chat-API
-
-## llms.txt support (kritisk for LLM-tilgængelighed)
-
-**Hvorfor:** llms.txt er det emergent standard (llmstxt.org, 2024/2025) for at give LLM-klienter en markdown-struktureret oversigt over et sites indhold. Når en AI-agent (Claude Code, ChatGPT med browsing, Cursor, Windsurf) besøger et docs-site, tjekker den først for `/llms.txt` som index og `/llms-full.txt` som fuld korpus — hurtigere og mere præcist end at parse HTML.
-
-### Struktur af llms.txt
-
-Spec'ens format:
-
-```markdown
-# Webhouse CMS
-
-> @webhouse/cms er et AI-native headless CMS der compiler indhold
-> gennem LLM-pipelines, med statisk-first rendering og Next.js +
-> Astro adapters.
-
-## Docs
-
-- [Quick Start](https://docs.webhouse.app/quick-start): Kom i gang på 5 minutter
-- [cms.config.ts reference](https://docs.webhouse.app/config): Alle konfigurationsmuligheder
-- [AI Lock System](https://docs.webhouse.app/ai-lock): Sådan beskyttes indhold mod LLM-drift
-- [Visibility Scoring](https://docs.webhouse.app/visibility-score): F37 scoring-algoritmen
-...
-
-## Adapters
-
-- [Next.js](https://docs.webhouse.app/adapters/nextjs): App router + static export
-- [Astro](https://docs.webhouse.app/adapters/astro): SSG-native integration
-
-## Optional
-
-- [Changelog](https://docs.webhouse.app/changelog): Release history
-- [Migration guides](https://docs.webhouse.app/migrate/v01-to-v02)
-```
-
-Dertil `/llms-full.txt` som er **hele docs-korpus** concateneret til ét markdown-dokument. For 173 docs à ~150 ord = ~25.000 ord = ~35.000 tokens. Passer indenfor Claude 200k-context og langt under Haiku 4.5's 200k cap.
-
-### Trail's rolle
-
-Trail skal **generere og servere** llms.txt + llms-full.txt:
-
-**Nye endpoints:**
+### Flow-diagram
 
 ```
-GET /api/v1/public/kb/:kbId/llms.txt         — index (markdown)
-GET /api/v1/public/kb/:kbId/llms-full.txt    — fuld korpus (markdown)
+┌──────────────────────┐                    ┌──────────────────────┐
+│ @webhouse/cms admin  │                    │       Trail          │
+│                      │                    │                      │
+│  [Doc-editor]        │                    │  ┌────────────────┐  │
+│       │              │                    │  │ webhouse-docs  │  │
+│       ▼              │                    │  │  -en KB        │  │
+│  [Save] ─────────────┼──POST /documents───┼─▶│                │  │
+│                      │   (bearer)         │  │ 89 sources     │  │
+│                      │                    │  │ → compile      │  │
+│                      │                    │  │ → N Neurons    │  │
+│                      │                    │  │                │  │
+│  [Chat panel] ───────┼──POST /chat────────┼─▶│ FTS + LLM      │  │
+│       ▲              │   (bearer)         │  │                │  │
+│       └──────────────┼──answer + cites────┼──│                │  │
+│                      │                    │  └────────────────┘  │
+│                      │                    │  ┌────────────────┐  │
+│                      │                    │  │ webhouse-docs  │  │
+│                      │                    │  │  -da KB        │  │
+│                      │                    │  │ 84 sources ... │  │
+│                      │                    │  └────────────────┘  │
+└──────────────────────┘                    └──────────────────────┘
 ```
 
-**llms.txt-generering:**
-- Header: `# <KB-navn>` + blockquote med `kb.description`
-- Sektioner: grupperet efter `documents.path` (fx `/neurons/adapters/` → "## Adapters")
-- Hvert link: `- [<title>](<public-url>): <first-paragraph-of-content>` (trimmed til 200 chars)
-- Sortering: alfabetisk per sektion, undtagen "## Optional"-sektioner (changelog, migration guides) som lander sidst
+### Sync-sti (CMS → Trail)
 
-**llms-full.txt-generering:**
-- Iteration over alle `kind='wiki'` Neurons, ikke-arkiveret, sorteret per `path` → `filename`
-- Hver Neuron indsættes som:
-  ```
-  ## <title>
-  
-  _Path: <path>_
-  _Updated: <ISO-date>_
-  
-  <content uden frontmatter>
-  ```
-- Separator `\n---\n` mellem Neurons
-- Cache-Control: `public, max-age=300` (5 min — frisk nok til at AI-agents får opdateringer, cached nok til at CDN ikke druknes)
+Ved hvert doc-save i @webhouse/cms trigger en async POST til Trail:
 
-**Mini-kolonne på documents:**
-```sql
-ALTER TABLE documents ADD COLUMN public_visibility TEXT
-  CHECK(public_visibility IN ('public', 'internal', 'hidden'))
-  NOT NULL DEFAULT 'internal';
+```
+POST https://trail.broberg.dk/api/v1/knowledge-bases/{kbId}/documents/upload
+Authorization: Bearer $TRAIL_INGEST_TOKEN
+Content-Type: multipart/form-data
+
+file: <doc.md som binary>
+path: /docs/<slug>
 ```
 
-- `public`: inkluderes i `/llms.txt` + `/llms-full.txt` + public-read
-- `internal`: kun for authenticated curatorer (default for alle eksisterende rækker)
-- `hidden`: vis ikke engang for curator-browsing (draft, archived-pending)
+Trail's eksisterende upload-route (`apps/server/src/routes/uploads.ts`) accepterer markdown-filer (text-ext → status='ready' direkte, ingen PDF-pipeline). Derpå fires `triggerIngest` der spawner en claude-subprocess med ingest-prompten — output er en source-summary + 2-5 koncept-Neurons pr. dokument.
 
-Kurator-UI tilføjer en "Publiceret / Intern / Skjult" switch pr. Neuron i Neuron-editoren.
+**Idempotens via sti:** når samme doc gemmes igen, matcher Trail på `(kbId, path, filename)` og enten:
+- Opdaterer eksisterende source (via ny re-ingest-endpoint landet for nylig), eller
+- Opretter som ny version (via wiki_events-chain der bibeholder historikken)
 
-### llms.txt for Trail selv (dogfood!)
+Alternativ i stedet for upload-endpoint: en dedikeret POST til `queue/candidates` med `kind='external-feed'` og markdown-body direkte. Vælges baseret på om vi vil have ingest-compile per doc eller ej — se næste sektion.
 
-Vi skal også generere `/llms.txt` på **Trail's egne docs** (F-feature-dokumentation under `docs/`). Betyder: når en cc-session eller Cursor-instans vil vide noget om Trail's API, starter den ikke med "søg i repo", men med `curl trail.broberg.dk/llms.txt`.
+### Chat-sti (CMS → Trail)
 
-Forslag til path:
-- `https://trail.broberg.dk/llms.txt` — public index
-- `https://trail.broberg.dk/llms-full.txt` — alle F-feature-specs + ROADMAP + CLAUDE.md concateneret
+Brugeren skriver et spørgsmål i admin-chat-panelet:
 
-Genereres af en simpel bun-script `scripts/build-llms-txt.ts` der læser `docs/FEATURES.md` + alle filer i `docs/features/*.md` og bygger den. Kan køres pre-commit hook eller som del af CI.
+```
+POST https://trail.broberg.dk/api/v1/chat
+Authorization: Bearer $TRAIL_INGEST_TOKEN
+Content-Type: application/json
 
-## Kunde-features hvis Trail-som-docs-backend sælges
+{
+  "knowledgeBaseId": "kb_webhouse_docs_da",
+  "message": "Hvordan tilføjer jeg custom field-types?",
+  "locale": "da"
+}
+```
 
-Hvis vi går **Model 3**-vejen og tilbyder det til andre kunder, bliver disse nye SKUs relevante:
+Returnerer:
 
-| Feature | Del af | Pris-effekt |
-|---|---|---|
-| Public chat-widget (embed på kundens site) | Pro + | $20/mdr tilkøb ELLER inkluderet over Business |
-| llms.txt + llms-full.txt generering | Starter + | inkluderet — det er "gratis" ud fra eksisterende data |
-| Git-sync connector | Pro + | del af "Connector pack" eller +$15/mdr separat |
-| Named release-tags (v1.2.3 snapshots) | Pro + | inkluderet |
-| Version-contradiction-lint (docs X siger A i v1, B i v2) | Business + | del af Business-SLA, ikke splittet |
-| Custom domain for public reader (docs.kunden.dk) | Business + | inkluderet |
-| SSO gating på "internal" docs | Business + | inkluderet |
+```json
+{
+  "answer": "For at tilføje custom field-types registrerer du dem i cms.config.ts ...",
+  "citations": [
+    { "documentId": "doc_abc", "filename": "field-types-reference.md", "slug": "field-types-reference" },
+    { "documentId": "doc_xyz", "filename": "cms-config.md", "slug": "cms-config" }
+  ]
+}
+```
 
-## Prerequisites før docs-backend kan sælges
+Admin-panelet renderer svaret + clickable citations der linker tilbage til den relevante docs-side i @webhouse/cms.
 
-**Tekniske F-features der skal landes:**
+## LLM-compile (sources → Neurons) anbefales
 
-1. **F-docs-1 — Public read mode**: `documents.public_visibility` kolonne + anonyme `/api/v1/public/kb/:kbId/...` endpoints. Rate-limited, CORS-enabled. ~3 dage.
-2. **F-docs-2 — llms.txt + llms-full.txt generering**: de to nye endpoints beskrevet ovenfor. Cache-headers. ~1 dag.
-3. **F-docs-3 — Git-sync connector**: webhook-receiver + `kind='docs-md'` source-handling. Ingest-prompt tilpasset markdown-docs. ~5 dage.
-4. **F-docs-4 — Named release-tags**: ny tabel `knowledge_base_releases` med `(kbId, tag, createdAt, documentSnapshotIds[])`. Tag-switcher i public reader. ~3 dage.
-5. **F-docs-5 — Chat-widget JS-snippet**: standalone embed der kalder public chat-API, inkluderet i kundens docs-site med én script-tag. ~1 uge.
+**Valget:** indeks docs som `kind='source'` (med LLM-compile til Neurons) i stedet for `kind='wiki'` (direkte som færdige Neurons).
 
-**Total:** ~3 uger engineering.
+**Begrundelse** (pragmatisk mens vi er på Max-subscription):
+1. **Compile er "gratis"** på Max. Ingen marginal cost. Vi får LLM-analyse-værdien uden regning.
+2. **Contradiction-lint får rigtigt stof at arbejde med.** Når en docs-opdatering introducerer et begreb der modsiger en anden page, fyrer contradiction-alerten. Eksempel: v0.2 docs siger `useCms()` returnerer array, v0.3 docs siger det returnerer objekt — lint fanger det før kunde-support gør.
+3. **Neurons er sub-dokument-granuleret.** Ét 2000-ord docs-stykke kan compiles til 3-4 koncept-Neurons (fx "AI Lock System" + "Visibility Scoring" + "Build-pipeline"). Chat-svar bliver mere fokuserede fordi FTS kan ramme netop den Neuron der dækker spørgsmålet, ikke bare hele artiklen.
+4. **Cross-ref-backlinks bygges automatisk.** Reference-extractor + backlink-extractor kører allerede. Docs-korpussen får et kobberspind af `[[wiki-links]]` uden manuelt arbejde.
 
-## Unit economics for Webhouse's egne docs på Trail
+**Omvendt** (argumentet for `kind='wiki'` direkte):
+- Ingen compile-latency (Neurons klar øjeblikkeligt efter save, ikke 60-180s senere)
+- Ingen risk for LLM-destillation-fejl (hvad hvis compile forstår docs forkert?)
+- Simpelthen færre bevægelige dele
 
-**Antagelser:**
-- Trail-KB: 173 docs ingesteret → ~270 Neurons compiled (lavere ratio end Sanne fordi docs-struktur er mere "én source, én pointe")
-- Chat-forbrug: ~100 queries/dag på public docs-siden (anslået baseret på typisk docs-trafik × 5 % AI-chat-konverteringsrate)
-- LLM-compile køres på hver docs-update: ~10 updates/uge
+**Kompromis vi lander på:** `kind='source'` med compile, **men** compile-promptet tilpasses til markdown-docs-kilder (ikke PDF-papers). Ny kind-variant `source-kind: 'docs-md'` som en metadata-hint der styrer compile-prompten.
 
-**Cost breakdown:**
+**Compile-prompten for docs-md skal:**
+- Bevare originale kode-blokke eksakt (`\`\`\`ts ... \`\`\``) — disse er API-eksempler, ikke noget at omformulere
+- Respektere header-hierarkiet som eksisterende struktur
+- Compile-output er **højest 1-2 Neurons pr. docs-page** (mindre aggressiv splitting end for PDF-sources, fordi docs allerede har fornuftig struktur)
+- Ekstraher cross-references som `sources: [...]` frontmatter + `[[wiki-links]]` i body
+- Bevare versions-marker: "deprecated i v0.2", "ny i v0.3" — disse skal overleve compile
 
-| Post | Månedlig cost |
+### Når vi flytter til API (fremtidig beslutning)
+
+Når Trail migreres fra CLI til Anthropic API (estimated 2026Q2, se PRICING-PLAN.md): 
+
+- **Re-evaluér compile-compile-værdi vs. cost.** Hver docs-save koster så penge. Ved 40 opdateringer/måned × $0,25 pr. compile = $10/mdr. Stadig minimal, behold compile.
+- **Eller skift til `kind='wiki'` direkte** hvis API-kosten er mærkbar og contradiction-værdi er lav. Begge modeller kan sameksistere via `source-kind`-hint.
+
+Nu på Max er valget enkelt: compile alt.
+
+## Multi-KB: to separate KBs for EN og DA
+
+To KBs: `webhouse-docs-en` + `webhouse-docs-da`. Chat-panelet respekterer brugerens admin-locale.
+
+**Hvorfor ikke én KB med sprog-tags?**
+- Chat-LLM'en kan ende med at blande sprog i svar hvis begge er i samme FTS-pool
+- Contradiction-lint ville flagge "dansk siger A, engelsk siger A" som modsigelse fordi indholdet er forskelligt på overfladen men matcher semantisk
+- Search-ranking på FTS5 er sprogspecifik; blandet korpus giver degraderet ranking på begge sprog
+
+**Trade-off:**
+- Cross-sprog-konsistens er ikke automatisk. Hvis DA-docs aftter bagud for EN, opdager Trail det ikke. Håndteres i stedet via content-editor-workflow i @webhouse/cms.
+
+**Kvota-konsekvens:**
+- 89 EN-sources → ~150-180 Neurons efter compile
+- 84 DA-sources → ~140-170 Neurons
+- Total: ~290-350 Neurons fordelt på 2 KBs
+- På Starter $20 med **1 KB** limit passer det ikke. Skal på **Pro $75** (3 KBs, 5k Neurons cap).
+
+Pro-tierens ekstra værdi her er ugentlig sampling på contradiction-lint — hver uge scanner den hele korpussen for drift. Ved 300 Neurons tager det under 5 minutter og fanger docs-regressioner før kunden opdager dem.
+
+## Auth-model
+
+Bearer-token fra @webhouse/cms server til Trail. Admin-UI taler aldrig direkte med Trail — serveren proxier.
+
+**Setup:**
+
+1. Trail provisionerer en service-user for webhouse-tenant'en. Bearer token stored i `@webhouse/cms`-server-env:
+   ```
+   TRAIL_INGEST_TOKEN=<32-byte hex>
+   TRAIL_BASE_URL=https://trail.broberg.dk
+   TRAIL_KB_ID_EN=kb_...
+   TRAIL_KB_ID_DA=kb_...
+   ```
+
+2. @webhouse/cms admin-UI kalder sin egen backend:
+   ```
+   POST /api/chat
+   Cookie: session (fra eksisterende @webhouse/cms-auth)
+   Body: { message, locale }
+   ```
+
+3. @webhouse/cms-server proxier til Trail med bearer:
+   ```
+   POST trail.broberg.dk/api/v1/chat
+   Authorization: Bearer $TRAIL_INGEST_TOKEN
+   ```
+
+4. @webhouse/cms-server auditerer kaldet (hvem stillede hvilket spørgsmål hvornår) før det returnerer svaret til klienten.
+
+**Hvorfor ikke direkte UI → Trail?**
+- Token-rotation er nemmere når det kun er server-env der kender den
+- Rate-limiting kan ske i @webhouse/cms-layer
+- Audit-trail konsolideres i @webhouse/cms-DB i stedet for Trail (kunde-support-brugbart)
+- CORS undgås
+
+## llms.txt — stadig relevant, nu internt
+
+Selvom Trail ikke eksponerer docs-siten public, er **llms.txt-endpoint på Trail stadig værdifuldt** for cc-sessioner, Cursor, Windsurf m.fl. der arbejder med @webhouse/cms-kildekode og har brug for at slå docs op.
+
+**Scope:**
+- Trail eksponerer `GET /api/v1/kb/:kbId/llms.txt` + `llms-full.txt`
+- Authenticated endpoints (bearer-token) — ikke public
+- cc-sessions der har `TRAIL_INGEST_TOKEN` i deres .mcp.json kan kalde endpoint'et
+
+**Brugsscenarie:**
+
+```bash
+curl -H "Authorization: Bearer $TRAIL_INGEST_TOKEN" \
+  https://trail.broberg.dk/api/v1/kb/webhouse-docs-da/llms-full.txt \
+  > /tmp/docs-full.md
+```
+
+En cc-session i @webhouse/cms-repo der er i gang med at implementere en ny feature kan pipe hele docs-korpussen ind i context og bede LLM "check at din implementation er konsistent med det der står i docs" — før PR-submission.
+
+**Generering:** simpelt script der læser alle `kind='wiki'` Neurons i KB'en, sorterer per path, outputter markdown. Cache-TTL 5 min.
+
+## Implementerings-plan
+
+**Total: ~4 arbejdsdage** (én person, fuld fokus).
+
+### Dag 1 — Trail-siden
+
+1. Provision 2 KBs i Trail: `webhouse-docs-en`, `webhouse-docs-da`
+2. Opret service-user med bearer token for webhouse-tenant
+3. Tilføj `source-kind: 'docs-md'` metadata-hint i ingest-pipeline
+4. Tilpas ingest-prompt til docs-md (bevar code-blocks, mindre aggressive splitting)
+
+### Dag 2 — @webhouse/cms sync-sti
+
+1. Webhook på doc-save i @webhouse/cms → POST til Trail upload-endpoint
+2. Idempotens: match på `(kbId, path, filename)`, re-ingest eksisterende
+3. Initial backfill: script der iterer alle eksisterende 173 docs og POSTer dem én gang
+4. Monitoring: log sync-fejl til @webhouse/cms DB, retry med backoff
+
+### Dag 3 — Chat-panel i @webhouse/cms admin
+
+1. Ny route `POST /api/chat` på @webhouse/cms-server der proxier til Trail
+2. UI-komponent: chat-panel med input, svar-markdown, citations-liste
+3. Citations bliver `<a>` der åbner doc-siden i ny tab
+4. Locale-detection: hvis admin-UI er på `da`, kald `webhouse-docs-da` KB
+
+### Dag 4 — Polish + test
+
+1. Rate-limiting på @webhouse/cms-backend (10 q/min per admin-user)
+2. Audit-logging: gem spørgsmål + svar til intern analyse
+3. Contradiction-alerts-visning: når Trail emitter `candidate_created` med kind='contradiction-alert' → vis toast i @webhouse/cms-admin ("Modsigelse opdaget mellem docs/A og docs/B")
+4. E2E-test: gem doc, vent 3 min, stil spørgsmål der kun kan besvares med nyt indhold, verifikér citation
+
+## Cost (mens vi er på Max)
+
+Marginal compute-cost for Trail-siden: **~$0/mdr** (alt kører på Max-subscription). 
+
+| Trail-post | Marginal cost |
 |---|---:|
-| On-mutation contradiction-lint | $4 |
-| Ugentlig sampling (270 Neurons, 1 pass) | $3 |
-| Chat Q&A (100/dag × $0,01 gns.) | $30 |
-| LLM-compile på docs-updates (40/mdr × $0,25) | $10 |
-| llms.txt serving (ingen LLM, CDN cache) | $0,50 |
-| Infra-share | $2 |
-| **∑ Cost** | **~$50/mdr** |
+| 173 docs compile (initial backfill) | $0 |
+| 40 opdateringer/mdr × compile | $0 |
+| Chat-queries (20/dag) | $0 |
+| Contradiction-lint (on-mutation + ugentlig sampling) | $0 |
 
-Det matcher **Pro $75/mdr** med sund margin (33 %). Vi dogfooder produktet på os selv og betaler "intern pris" for at drive vores egne docs — symboliserer samtidig noget salg af produktet.
+Plan-tier-cost (det vi køber adgang til):
+- Pro $75/mdr for 2 KBs + 5k Neurons cap + ugentlig sampling
+- I 2026Q2 når API-migration lander: compute-cost stiger fra $0 til ca. $10-15/mdr — stadig godt inden for Pro's budget
 
-## Tidslinje-forslag
+**Total stack-cost:** $75/mdr Trail + eksisterende @webhouse/cms infra. Meget lavt for "vores docs får AI-chat + tværgående contradiction-detection".
 
-| Uge | Deliverable |
-|---|---|
-| 1 | F-docs-1 (public read) + F-docs-2 (llms.txt) — minimum viable for **Model 1** embed |
-| 2 | F-docs-3 (git-sync) — aktivér **Model 3** for docs.webhouse.app |
-| 3 | F-docs-5 (chat-widget) — embed på docs-siten |
-| 4 | F-docs-4 (release-tags) — hvis tidstilladelse, ellers skippes til Q3 |
-| 5 | Customer discovery: vis docs.webhouse.app's Trail-integration til 10 prospects, få feedback på om det er noget de vil have |
+## Decision log
 
-**Beslutnings-punkt efter uge 3:** hvis prospects er lunkne på "docs-backend" pitchen, saml F-docs-3/4/5 som "enterprise embed"-feature kun for Business + kunder. Hvis lun varme, pak det som eget produkt på Pro-tilkøbs-siden.
-
-## Marketing-narrative
-
-"**Vi bruger Trail til vores egne docs.** Besøg docs.webhouse.app og klik på 'Spørg AI' — den kører på Trail. Det samme kan du gøre for dine egne docs på 5 minutter med vores embed-widget."
-
-Det kobler **dogfooding** + **public credibility** + **salesfunnel** i én historie. @webhouse/cms-kunder er sandsynligvis også Trail-kandidater.
+- **Docs-sitet forbliver på @webhouse/cms** — ingen flyt til Trail. Kun chat-motoren delegeres.
+- **LLM-compile via `kind='source'`** — fordi Max gør det gratis + contradiction-lint får rigtigt stof at arbejde med. Flip-switch til `kind='wiki'` hvis API-cost bliver relevant.
+- **To KBs (EN + DA)**, ikke én med sprog-tag — bedre chat-kvalitet, bedre FTS-ranking, semantisk renere contradiction-lint.
+- **Bearer-auth via CMS-server proxy**, ikke direkte UI→Trail — enklere rotation, bedre rate-limiting, centraliseret audit.
+- **llms.txt på authenticated endpoint** — ikke public, men brugbart for cc/cursor-sessioner med token.
 
 ## Åbne spørgsmål
 
-1. **Skal Trail-docs-KB'en for webhouse.app være public læsbar for LLM-agents uden authentication?** (ja, det er hele pointen med llms.txt; men vi skal verificere at vi ikke utilsigtet eksponerer intern knowhow)
-2. **Skal git-sync køre mod hoveddocs-repo med auto-create af sources, eller skal der være en pre-commit "approve for Trail"-gate?** (default: auto-create, kurator-queue beslutter om Neuron-compile skal bruges)
-3. **llms-full.txt cache-TTL**: 5 min er konservativt. 1 time er rimeligere for de fleste docs-sites. Skal konfigureres per-KB.
-4. **Rate-limit på public chat**: hvad er en rimelig gratis-kvota før vi beder om sign-up? Foreslag: 10 queries/IP/time, 100/IP/dag.
-5. **Hvilken Trail-instans skal drive webhouse-docs — samme som trail-development KB, eller separat multi-tenant setup?** (anbefaling: separat — "webhouse-docs" tenant, ingen spill-over til trail-development)
+1. **Sync-timing**: skal sync være synkron (admin venter på Trail-respons før "gemt"-bekræftelse) eller async (vis "gemmer til søgeindex..." progress)? Anbefaling: async med optimistisk "gemt lokalt, indekseres nu"-feedback.
+2. **Sletning**: hvad sker når en docs-page slettes i @webhouse/cms? Send DELETE til Trail? Eller soft-archive så søgning returnerer "denne side er fjernet"? Anbefaling: soft-archive via Trail's eksisterende archive-flow, så chat-historik bevarer referencer.
+3. **Skal trail.broberg.dk selv også drives som webhouse-docs-en KB i Trail?** (meta-dogfood) Anbefaling: ja, efter F100-API-migration. Trail docs → Trail selv, eneste sted på nettet hvor dogfooding er fuldkommen.
+4. **Contradiction-lint alerts i @webhouse/cms admin**: skal de vises som system-notifikationer (invasive) eller kun i en dedikeret "Docs Quality"-dashboard-side? Anbefaling: dashboard + opt-in toast.
