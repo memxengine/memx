@@ -4,9 +4,32 @@
 
 ## Scope-afklaring
 
+**Trail leverer aldrig public visninger.** Det er en bevidst positionering: Trail er backend-infrastruktur for **admin-UIs, API-consumers, MCP-klienter og CMS'er**, ikke en publikumsrettet reader. Enhver public rendering af Trail-indhold sker via en anden platform der konsumerer Trail's API (i dette tilfælde @webhouse/cms).
+
+Konsekvensen er frigørende:
+- Ingen SEO, ingen CDN-strategi, ingen custom-theme, ingen public-auth-flow
+- Ingen rate-limits for anonyme brugere at bekymre sig om
+- Ingen markedsførings-side på trail.broberg.dk — kun admin + API-dokumentation
+- Security-posture er enklere: hver request har en autentisk identitet (session-cookie eller bearer)
+
 **Trail driver ikke docs-sitet.** @webhouse/cms fortsætter som rendering-laget (SSG, CDN, custom theme, i18n, public access) — det virker, det er hurtigt, det er public. Ingen grund til at røre ved det.
 
 **Trail er chat-motor bag kulissen.** I @webhouse/cms admin tilføjes et chat-panel. Brugeren (kurator / content-editor) kan stille spørgsmål til hele docs-korpussen og få svar med citations. Chat-panelet kalder Trail's `POST /api/v1/chat` med bearer-auth. Trail holder en synkroniseret kopi af alle docs og genererer svarene.
+
+### Trail's consumer-taksonomi
+
+| Consumer | Mekanisme | Example |
+|---|---|---|
+| **Admin-UI** | Session-cookie, UI på trail.broberg.dk | Kurator reviewer queue, editerer Neuron |
+| **MCP-klienter** | stdio MCP-protokol | Claude Code i cc-session, Cursor |
+| **API-consumers** | Bearer-token på REST-endpoints | cron-jobs, scripts, buddy F39 extractor |
+| **CMS-integrationer** | Bearer-token via CMS-server proxy | @webhouse/cms admin-chat (dette dokument) |
+
+Ingen anden consumer-type planlægges. Public reader er eksplicit **ikke** i roadmap.
+
+### @webhouse/cms som pilot for en reusable CMS-connector
+
+@webhouse/cms-integrationen er **prototypen** for et bredere mønster: CMS-platforme der vil lade deres kunder indeksere web-indhold i Trail og få chat + contradiction-lint oven på. Flere af Christians CMS-kunder har udtrykt interesse. Mønsteret bør formaliseres som en reusable connector-type fra starten — se `CMS-CONNECTOR.md` for den dedikerede plan.
 
 **Trail's core-værdi her:**
 - FTS5-søgning er færdig (ingen need to build)
