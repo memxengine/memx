@@ -326,15 +326,49 @@ function AnswerView({
             Useful? Promote it to a Neuron.
           </span>
         )}
-        <button
-          onClick={onSave}
-          disabled={!!turn.savedAs}
-          class="text-xs px-3 py-1.5 rounded-md border border-[color:var(--color-border-strong)] hover:bg-[color:var(--color-bg)] disabled:opacity-50 transition"
-        >
-          {turn.savedAs ? 'Saved' : 'Save as Neuron'}
-        </button>
+        <div class="flex items-center gap-2">
+          <CopyAnswer text={turn.answer ?? ''} />
+          <button
+            onClick={onSave}
+            disabled={!!turn.savedAs}
+            class="text-xs px-3 py-1.5 rounded-md border border-[color:var(--color-border-strong)] hover:bg-[color:var(--color-bg)] disabled:opacity-50 transition"
+          >
+            {turn.savedAs ? 'Saved' : 'Save as Neuron'}
+          </button>
+        </div>
       </div>
     </div>
+  );
+}
+
+function CopyAnswer({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  const onClick = async (): Promise<void> => {
+    if (!text || !navigator.clipboard) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    } catch {
+      // Silent — user can always drag-select the answer body above.
+    }
+  };
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={!text}
+      title={copied ? 'Copied' : 'Copy answer'}
+      class={
+        'text-xs px-3 py-1.5 rounded-md border transition ' +
+        (copied
+          ? 'border-[color:var(--color-success)]/40 text-[color:var(--color-success)]'
+          : 'border-[color:var(--color-border-strong)] hover:bg-[color:var(--color-bg)]') +
+        ' disabled:opacity-50'
+      }
+    >
+      {copied ? 'Copied' : 'Copy'}
+    </button>
   );
 }
 

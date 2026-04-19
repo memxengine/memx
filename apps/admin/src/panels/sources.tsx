@@ -18,6 +18,7 @@ import { Modal, ModalButton } from '../components/modal';
 import { useEvents, onStreamOpen, onFocusRefresh, debounce } from '../lib/event-stream';
 import { t, useLocale } from '../lib/i18n';
 import { CenteredLoader } from '../components/centered-loader';
+import { CopyId } from '../components/copy-id';
 
 /**
  * Sources panel — the original documents uploaded into a Trail. Sources
@@ -375,8 +376,11 @@ function SourceRow({
             {displayPath(doc.path)}{doc.filename}
           </div>
           {doc.status === 'failed' && doc.errorMessage ? (
-            <div class="mt-2 text-[11px] font-mono text-[color:var(--color-danger)] whitespace-pre-wrap break-words">
-              {doc.errorMessage}
+            <div class="mt-2 space-y-2">
+              <div class="text-[11px] font-mono text-[color:var(--color-danger)] whitespace-pre-wrap break-words">
+                {doc.errorMessage}
+              </div>
+              <CopyId id={doc.id} label="Copy ID" />
             </div>
           ) : null}
           {doc.status === 'processing' || doc.status === 'pending' ? (
