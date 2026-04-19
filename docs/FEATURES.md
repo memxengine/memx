@@ -110,6 +110,84 @@ Status reflects the engine (this repo). Landing-site and CMS-adapter work lives 
 | F97 | [Activity Log (Audit Timeline)](#f97-activity-log) | Planned | 2 | [features/F97-activity-log.md](features/F97-activity-log.md) |
 | F98 | [Orphan-lint Connector-Awareness](#f98-orphan-connector-awareness) | Done | 1 | [features/F98-orphan-connector-awareness.md](features/F98-orphan-connector-awareness.md) |
 
+### F100-F133 — Karpathy-parity + commercialization batch
+
+Ship'er Trail til "markedets bedste Karpathy-LLM-Wiki-killer" via ~34 features fra `docs/KARPATHY-ALIGNMENT.md`, `docs/KARPATHY-REPO-ADOPT.md`, `docs/SCALING-ANALYSIS.md`, `docs/PRICING-PLAN.md`, `docs/CMS-CONNECTOR.md`, `docs/TRAIL-AS-DOCS-BACKEND.md`. Alle planned. Grupperet efter tema. (F99 sprunget over — i produktion i Claude Desktop.)
+
+**Karpathy core-parity:**
+
+| # | Feature | Status | Phase | Plan |
+|---|---------|--------|-------|------|
+| F100 | [Obsidian Vault Export](features/F100-obsidian-vault-export.md) | Planned | 2 | [plan](features/F100-obsidian-vault-export.md) |
+| F101 | [`type:` Frontmatter Field](features/F101-type-frontmatter.md) | Planned | 2 | [plan](features/F101-type-frontmatter.md) |
+| F102 | [Auto-maintained Glossary Neuron](features/F102-auto-maintained-glossary.md) | Planned | 2 | [plan](features/F102-auto-maintained-glossary.md) |
+| F103 | [9-step Ingest Workflow Formalization](features/F103-9-step-ingest-workflow.md) | Planned | 2 | [plan](features/F103-9-step-ingest-workflow.md) |
+| F104 | [Per-KB Prompt Profiles](features/F104-per-kb-prompt-profiles.md) | Planned | 2 | [plan](features/F104-per-kb-prompt-profiles.md) |
+| F105 | [Proactive Save Suggestions in Chat](features/F105-proactive-save-suggestion.md) | Planned | 2 | [plan](features/F105-proactive-save-suggestion.md) |
+| F106 | [Solo Mode](features/F106-solo-mode.md) | Planned | 2 | [plan](features/F106-solo-mode.md) |
+
+**Output generation & new Neuron types:**
+
+| # | Feature | Status | Phase | Plan |
+|---|---------|--------|-------|------|
+| F107 | [Marp Slide Output](features/F107-marp-slide-output.md) | Planned | 2 | [plan](features/F107-marp-slide-output.md) |
+| F108 | [Chart & Visualization Generation](features/F108-chart-generation.md) | Planned | 2 | [plan](features/F108-chart-generation.md) |
+| F109 | [Synthesis Neuron Type](features/F109-synthesis-neuron-type.md) | Planned | 2 | [plan](features/F109-synthesis-neuron-type.md) |
+| F110 | [Comparison Neuron Type](features/F110-comparison-neuron-type.md) | Planned | 2 | [plan](features/F110-comparison-neuron-type.md) |
+
+**Input + UX:**
+
+| # | Feature | Status | Phase | Plan |
+|---|---------|--------|-------|------|
+| F111 | [Trail Web Clipper (Browser Extension)](features/F111-trail-web-clipper.md) | Planned | 2 | [plan](features/F111-trail-web-clipper.md) |
+| F112 | [User Notes / "Your Take" Field (Luhmann friction)](features/F112-user-notes-your-take.md) | Planned | 2 | [plan](features/F112-user-notes-your-take.md) |
+| F113 | [Auto-fix in Lint](features/F113-auto-fix-lint.md) | Planned | 2 | [plan](features/F113-auto-fix-lint.md) |
+| F114 | [Image Archiving for Web Content](features/F114-image-archiving.md) | Planned | 2 | [plan](features/F114-image-archiving.md) |
+
+**Marketing + data ownership:**
+
+| # | Feature | Status | Phase | Plan |
+|---|---------|--------|-------|------|
+| F115 | [Trail "Idea File" as Public Shareable Gist](features/F115-trail-idea-file-gist.md) | Planned | 2 | [plan](features/F115-trail-idea-file-gist.md) |
+| F116 | [Synthetic Training Data Export](features/F116-synthetic-training-data-export.md) | Planned | 3 | [plan](features/F116-synthetic-training-data-export.md) |
+| F117 | [Git-Versioning Export](features/F117-git-versioning-export.md) | Planned | 3 | [plan](features/F117-git-versioning-export.md) |
+
+**Scalability (contradiction-scan + LLM transport):**
+
+| # | Feature | Status | Phase | Plan |
+|---|---------|--------|-------|------|
+| F118 | [Contradiction-Scan Sampling](features/F118-contradiction-scan-sampling.md) | Planned | 2 | [plan](features/F118-contradiction-scan-sampling.md) |
+| F119 | [Parallel Contradiction-Scan Runner](features/F119-parallel-contradiction-runner.md) | Planned | 2 | [plan](features/F119-parallel-contradiction-runner.md) |
+| F120 | [Anthropic API Migration](features/F120-anthropic-api-migration.md) | Planned | 2 | [plan](features/F120-anthropic-api-migration.md) |
+
+**Commercialization (billing + plan limits):**
+
+| # | Feature | Status | Phase | Plan |
+|---|---------|--------|-------|------|
+| F121 | [Per-Tenant LLM Budget Tracking + Soft-cap](features/F121-per-tenant-budget-tracking.md) | Planned | 2 | [plan](features/F121-per-tenant-budget-tracking.md) |
+| F122 | [Plan Limits on `tenants` Table](features/F122-plan-limits-on-tenants.md) | Planned | 2 | [plan](features/F122-plan-limits-on-tenants.md) |
+| F123 | [Pro Modular Add-ons + Metered Billing (Stripe)](features/F123-pro-modular-addons-metered-billing.md) | Planned | 2 | [plan](features/F123-pro-modular-addons-metered-billing.md) |
+
+**CMS-connector (B2B infrastructure):**
+
+| # | Feature | Status | Phase | Plan |
+|---|---------|--------|-------|------|
+| F124 | [CMS Content-Sync Endpoint](features/F124-cms-content-sync-endpoint.md) | Planned | 2 | [plan](features/F124-cms-content-sync-endpoint.md) |
+| F125 | [CMS Chat-Proxy with Citation-Enriched Response](features/F125-cms-chat-proxy.md) | Planned | 2 | [plan](features/F125-cms-chat-proxy.md) |
+| F126 | [Contradiction Webhook to CMS](features/F126-contradiction-webhook-to-cms.md) | Planned | 2 | [plan](features/F126-contradiction-webhook-to-cms.md) |
+| F127 | [@trail/cms-connector-sdk NPM Package](features/F127-cms-connector-sdk.md) | Planned | 2 | [plan](features/F127-cms-connector-sdk.md) |
+| F128 | [Signed Webhook Payloads (HMAC-SHA256)](features/F128-signed-webhook-payloads.md) | Planned | 2 | [plan](features/F128-signed-webhook-payloads.md) |
+| F129 | [CMS Connector Registry Entries](features/F129-cms-connector-registry.md) | Planned | 2 | [plan](features/F129-cms-connector-registry.md) |
+
+**LLM-agent accessibility + schema:**
+
+| # | Feature | Status | Phase | Plan |
+|---|---------|--------|-------|------|
+| F130 | [llms.txt + llms-full.txt Authenticated Endpoints](features/F130-llms-txt-endpoints.md) | Planned | 2 | [plan](features/F130-llms-txt-endpoints.md) |
+| F131 | [`documents.public_visibility` Column](features/F131-public-visibility-column.md) | Planned | 2 | [plan](features/F131-public-visibility-column.md) |
+| F132 | [`source-kind` Variants for Ingest-Compile Tuning](features/F132-source-kind-variants.md) | Planned | 2 | [plan](features/F132-source-kind-variants.md) |
+| F133 | [Schema Integrity Improvements](features/F133-schema-integrity-improvements.md) | Planned | 2 | [plan](features/F133-schema-integrity-improvements.md) |
+
 ---
 
 ## Descriptions
