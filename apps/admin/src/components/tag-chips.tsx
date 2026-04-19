@@ -1,33 +1,17 @@
 import { useState, useRef } from 'preact/hooks';
 import { t } from '../lib/i18n';
+import { parseTags, serializeTags, canonicaliseTag } from '@trail/shared';
 
 /**
  * F91 + F92 — tag chips.
  *
- * `documents.tags` stores a flat comma-separated string. `parseTags` +
- * `serializeTags` are the wire format boundary: UI code works with a
- * deduped, trimmed `string[]`; the DB / API sees a canonical
- * comma-joined string. Empty / whitespace-only entries are dropped on
- * both sides so round-tripping is idempotent.
+ * The canonical parse/serialize/canonicalise helpers live in
+ * `@trail/shared` so the server-side write paths (submitCuratorEdit,
+ * approveUpdate, create-candidate) use the exact same rules as the
+ * editor. Re-exported here so existing admin call-sites that import
+ * from './tag-chips' don't break.
  */
-export function parseTags(raw: string | null | undefined): string[] {
-  if (!raw) return [];
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const part of raw.split(',')) {
-    const t = part.trim();
-    if (!t) continue;
-    const key = t.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(t);
-  }
-  return out;
-}
-
-export function serializeTags(tags: string[]): string {
-  return tags.join(', ');
-}
+export { parseTags, serializeTags, canonicaliseTag };
 
 interface ReadonlyProps {
   tags: string[];

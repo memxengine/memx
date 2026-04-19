@@ -3,6 +3,7 @@ import {
   CreateQueueCandidateSchema,
   ResolveCandidateSchema,
   ListQueueQuerySchema,
+  canonicaliseTagString,
 } from '@trail/shared';
 import { requireAuth, getTenant, getUser, getTrail } from '../middleware/auth.js';
 import {
@@ -20,12 +21,75 @@ import { INGEST_USER_ID } from '../bootstrap/ingest-user.js';
 import { broadcaster } from '../services/broadcast.js';
 import { ensureCandidateInLocale } from '../services/translation.js';
 import { proposeSourcesForOrphan } from '../services/source-inferer.js';
+import { suggestTagsForNeuron, isAutoTagEnabled } from '../services/tag-suggester.js';
 import { documents } from '@trail/db';
 import { and, eq } from 'drizzle-orm';
 
 export const queueRoutes = new Hono();
 
 queueRoutes.use('*', requireAuth);
+
+/**
+ * F92 — check whether an incoming candidate's metadata JSON already
+ * carries a non-empty `tags` field. Curator-supplied tags win over
+ * the auto-tagger's suggestion so we never overwrite intent.
+ */
+function metadataHasTags(raw: string | null | undefined): boolean {
+  if (!raw) return false;
+  try {
+    const parsed = JSON.parse(raw) as { tags?: unknown };
+    return typeof parsed.tags === 'string' && parsed.tags.trim().length > 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * F92 — inject a tags string into the candidate's metadata JSON,
+ * preserving all other fields (op, filename, path, connector, ...).
+ * The value is canonicalised one more time at the boundary so a
+ * stray bad suggestion can't bypass the rules enforced elsewhere.
+ */
+function mergeTagsIntoMetadata(raw: string | null, tags: string): string {
+  const canonical = canonicaliseTagString(tags);
+  if (!canonical) return raw ?? JSON.stringify({});
+  let parsed: Record<string, unknown> = {};
+  if (raw) {
+    try {
+      const candidate = JSON.parse(raw) as unknown;
+      if (candidate && typeof candidate === 'object') {
+        parsed = candidate as Record<string, unknown>;
+      }
+    } catch {
+      // fall through — replace malformed metadata with a fresh object
+    }
+  }
+  parsed.tags = canonical;
+  return JSON.stringify(parsed);
+}
+
+/**
+ * F92 — normalise a pre-existing metadata.tags value in-place. Leaves
+ * all other metadata fields untouched; drops the `tags` field entirely
+ * if none of the raw entries canonicalise to something valid (so a
+ * purely-invalid tag list doesn't persist garbage).
+ */
+function canonicaliseTagsInMetadata(raw: string): string {
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    if (!parsed || typeof parsed !== 'object') return raw;
+    if (typeof parsed.tags !== 'string') return raw;
+    const canonical = canonicaliseTagString(parsed.tags);
+    if (canonical === null) {
+      delete parsed.tags;
+    } else {
+      parsed.tags = canonical;
+    }
+    return JSON.stringify(parsed);
+  } catch {
+    return raw;
+  }
+}
 
 /**
  * Build the Actor for a candidate write. A curator clicking a resolution
@@ -84,8 +148,50 @@ queueRoutes.post('/queue/candidates', async (c) => {
   if (!parsed.success) return c.json({ error: parsed.error.flatten() }, 400);
 
   const tenant = getTenant(c);
+  // F92 — auto-tag chat-saved candidates. The save flow in the admin
+  // drafts a title + body from a chat turn; the LLM proposes 0-5 tags
+  // drawn from the KB's existing vocabulary before the candidate is
+  // enqueued. Toggleable via TRAIL_AUTO_TAG_CHAT_SAVES. Existing tags
+  // on the incoming metadata (if any) win — we never overwrite the
+  // curator's intent.
+  let payload = parsed.data;
+  // F92 — canonicalise any incoming metadata.tags string at the HTTP
+  // boundary so external POSTs (scripts, webhooks, the chat-save
+  // flow, buddy's trail_save) all store the same normalised shape.
+  // Ingest-path candidates that write tags via the compile prompt
+  // also flow through here.
+  if (payload.metadata && metadataHasTags(payload.metadata)) {
+    payload = {
+      ...payload,
+      metadata: canonicaliseTagsInMetadata(payload.metadata),
+    };
+  }
+  if (
+    isAutoTagEnabled() &&
+    payload.kind === 'chat-answer' &&
+    !metadataHasTags(payload.metadata)
+  ) {
+    try {
+      const suggested = await suggestTagsForNeuron(
+        getTrail(c),
+        tenant.id,
+        payload.knowledgeBaseId,
+        { title: payload.title, content: payload.content },
+      );
+      if (suggested) {
+        payload = {
+          ...payload,
+          metadata: mergeTagsIntoMetadata(payload.metadata ?? null, suggested),
+        };
+      }
+    } catch (err) {
+      // LLM hiccup shouldn't block the save — log-and-continue so the
+      // candidate still lands in the queue, just without auto-tags.
+      console.error('[queue] auto-tag suggestion failed:', err instanceof Error ? err.message : err);
+    }
+  }
   try {
-    const result = await createCandidate(getTrail(c), tenant.id, parsed.data, userActor(c));
+    const result = await createCandidate(getTrail(c), tenant.id, payload, userActor(c));
     broadcaster.emit({
       type: 'candidate_created',
       tenantId: tenant.id,

@@ -5,6 +5,7 @@ import { eq, and } from 'drizzle-orm';
 import { requireAuth, getUser, getTenant, getTrail } from '../middleware/auth.js';
 import { uniqueSlug, createCandidate } from '@trail/core';
 import { broadcaster } from '../services/broadcast.js';
+import { listKbTags } from '../services/tag-aggregate.js';
 
 export const kbRoutes = new Hono();
 
@@ -53,6 +54,35 @@ kbRoutes.get('/knowledge-bases/:id', async (c) => {
 
   if (!kb) return c.json({ error: 'Not found' }, 404);
   return c.json(kb);
+});
+
+/**
+ * F92 — per-KB tag aggregate. Returns every distinct tag present on
+ * non-archived Neurons + its Neuron count, descending by count. Used
+ * by the Queue + Neurons listing filter bars so the full vocabulary
+ * can render as chips before the user has picked anything.
+ *
+ * Result is cached per-KB (60s TTL) and busted on `candidate_approved`
+ * events — see services/tag-aggregate.ts for the cache implementation.
+ * SQL is a single SELECT + split-and-count in app code (SQLite's
+ * string-tokenising is awkward enough that a loop is cleaner than a
+ * trigger-maintained tag table at the current volume; revisit if a KB
+ * exceeds ~10k Neurons).
+ */
+kbRoutes.get('/knowledge-bases/:id/tags', async (c) => {
+  const trail = getTrail(c);
+  const tenant = getTenant(c);
+  const kbId = c.req.param('id');
+
+  const kb = await trail.db
+    .select({ id: knowledgeBases.id })
+    .from(knowledgeBases)
+    .where(and(eq(knowledgeBases.id, kbId), eq(knowledgeBases.tenantId, tenant.id)))
+    .get();
+  if (!kb) return c.json({ error: 'Not found' }, 404);
+
+  const tags = await listKbTags(trail, tenant.id, kbId);
+  return c.json(tags);
 });
 
 kbRoutes.post('/knowledge-bases', async (c) => {

@@ -127,6 +127,17 @@
     "conf": "sikkerhed {n}",
     "connectorFilterLabel": "Kilde:",
     "connectorFilterClear": "ryd",
+    "confidenceFilter": {
+      "label": "Tillid:",
+      "clear": "ryd",
+      "all": "Alle",
+      "high": "Høj ≥0.8",
+      "medium": "Medium 0.5–0.8",
+      "low": "Lav <0.5",
+      "none": "Ingen score"
+    },
+    "bulkDismissLowConfidence": "Afvis alle <0.5 ({n})",
+    "bulkDismissLowConfidenceReason": "Masse-afvist: lav tillid (<0.5)",
     "createdVia": "Skabt via",
     "recommended": "💡 Anbefalet",
     "acceptRecommendation": "Accepter",
@@ -226,7 +237,8 @@
     "lintDone": "Lint lavede {n} ny kandidat",
     "lintDonePlural": "Lint lavede {n} nye kandidater",
     "lintClean": "Intet at markere.",
-    "lintFailed": "Lint fejlede"
+    "lintFailed": "Lint fejlede",
+    "emptyFiltered": "Ingen Neuroner matcher de valgte tags. Ryd filteret for at se alt."
   },
   "chat": {
     "title": "Chat",
@@ -302,6 +314,10 @@
     "placeholder": "Tilføj tag — Enter eller komma",
     "placeholderMore": "Tilføj endnu et…",
     "remove": "Fjern tag {tag}"
+  },
+  "tagFilter": {
+    "label": "Tags:",
+    "clear": "ryd"
   },
   "settings": {
     "savedToast": "Gemt.",

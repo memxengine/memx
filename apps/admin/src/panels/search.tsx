@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import { useRoute } from 'preact-iso';
-import { searchKb, ApiError, type SearchResponse, type DocumentSearchHit, type ChunkSearchHit } from '../api';
+import { searchKb, listTags, ApiError, type SearchResponse, type DocumentSearchHit, type ChunkSearchHit, type TagCount } from '../api';
 import { displayPath } from '../lib/display-path';
+import { parseTags } from '../components/tag-chips';
+import { t } from '../lib/i18n';
 
 /**
  * FTS5 search across the current Trail. Reads/writes the `q=` query param so
@@ -16,30 +18,43 @@ export function SearchPanel() {
   const initialQ = typeof window !== 'undefined'
     ? new URLSearchParams(window.location.search).get('q') ?? ''
     : '';
+  const initialTags = typeof window !== 'undefined'
+    ? new URLSearchParams(window.location.search).getAll('tag')
+    : [];
   const [input, setInput] = useState(initialQ);
+  const [selectedTags, setSelectedTags] = useState<Set<string>>(
+    () => new Set(initialTags.map((t) => t.toLowerCase())),
+  );
+  const [allTags, setAllTags] = useState<TagCount[]>([]);
   const [results, setResults] = useState<SearchResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const reqSeq = useRef(0);
+
+  useEffect(() => {
+    if (!kbId) return;
+    listTags(kbId).then(setAllTags).catch(() => setAllTags([]));
+  }, [kbId]);
 
   // Debounce: wait 200ms after the user stops typing before firing. Also
   // bump a sequence counter so an older in-flight response can't overwrite
   // a newer one (FTS is fast, but rank-heavy queries can reorder).
   useEffect(() => {
     const q = input.trim();
+    const tags = Array.from(selectedTags);
     if (!q) {
       setResults(null);
       setError(null);
       setLoading(false);
-      syncUrl('');
+      syncUrl('', tags);
       return;
     }
     const seq = ++reqSeq.current;
     const handle = setTimeout(async () => {
       setLoading(true);
-      syncUrl(q);
+      syncUrl(q, tags);
       try {
-        const res = await searchKb(kbId, q, 20);
+        const res = await searchKb(kbId, q, { limit: 20, tags });
         if (seq !== reqSeq.current) return;
         setResults(res);
         setError(null);
@@ -51,7 +66,17 @@ export function SearchPanel() {
       }
     }, 200);
     return () => clearTimeout(handle);
-  }, [input, kbId]);
+  }, [input, kbId, selectedTags]);
+
+  const toggleTag = useCallback((tag: string) => {
+    const key = tag.toLowerCase();
+    setSelectedTags((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
 
   const onClear = useCallback(() => setInput(''), []);
 
@@ -84,6 +109,15 @@ export function SearchPanel() {
         ) : null}
       </div>
 
+      {allTags.length > 0 ? (
+        <TagFilterBar
+          tags={allTags}
+          selected={selectedTags}
+          onToggle={toggleTag}
+          onClear={() => setSelectedTags(new Set())}
+        />
+      ) : null}
+
       {error ? (
         <div class="border border-[color:var(--color-danger)]/30 bg-[color:var(--color-danger)]/5 rounded-md p-4 text-sm mb-4">
           {error}
@@ -98,6 +132,98 @@ export function SearchPanel() {
         <Results kbId={kbId} results={results} query={input.trim()} />
       ) : null}
     </div>
+  );
+}
+
+/**
+ * F92 — collapsible tag filter row. Shares the interaction model with
+ * the Queue's "Source:" connector filter: compact label toggle, chips
+ * hidden until expanded, active-count pill next to the label, a Clear
+ * link when any tag is selected. Keeps the page calm when the user
+ * isn't tagging — flipping one open, exploring, flipping it away is a
+ * familiar motion.
+ */
+function TagFilterBar({
+  tags,
+  selected,
+  onToggle,
+  onClear,
+}: {
+  tags: TagCount[];
+  selected: Set<string>;
+  onToggle: (tag: string) => void;
+  onClear: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const showChips = open || selected.size > 0;
+
+  return (
+    <div class="mb-4">
+      <div class="flex items-center gap-2 mb-2">
+        <button
+          onClick={() => setOpen((v) => !v)}
+          class="inline-flex items-center gap-1 text-[10px] font-mono uppercase tracking-wider text-[color:var(--color-fg-subtle)] hover:text-[color:var(--color-fg)] transition cursor-pointer"
+          aria-expanded={showChips}
+        >
+          <span>{showChips ? '▼' : '▶'}</span>
+          <span>{t('tagFilter.label')}</span>
+          {selected.size > 0 ? (
+            <span class="normal-case text-[color:var(--color-accent)]">· {selected.size}</span>
+          ) : null}
+        </button>
+        {selected.size > 0 ? (
+          <button
+            onClick={onClear}
+            class="text-[10px] font-mono text-[color:var(--color-fg-subtle)] hover:text-[color:var(--color-fg)] transition"
+          >
+            {t('tagFilter.clear')}
+          </button>
+        ) : null}
+      </div>
+      {showChips ? (
+        <div class="flex flex-wrap gap-2">
+          {tags.map(({ tag, count }) => (
+            <TagChip
+              key={tag}
+              tag={tag}
+              count={count}
+              active={selected.has(tag.toLowerCase())}
+              onClick={() => onToggle(tag)}
+            />
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function TagChip({
+  tag,
+  count,
+  active,
+  onClick,
+}: {
+  tag: string;
+  count?: number;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      class={
+        'inline-flex items-center gap-1 px-2 py-1 text-[11px] font-mono rounded-md border transition ' +
+        (active
+          ? 'border-[color:var(--color-accent)] bg-[color:var(--color-accent)]/15 text-[color:var(--color-fg)]'
+          : 'border-[color:var(--color-border)] text-[color:var(--color-fg-muted)] hover:text-[color:var(--color-fg)] hover:border-[color:var(--color-border-strong)]')
+      }
+    >
+      <span>{tag}</span>
+      {typeof count === 'number' ? (
+        <span class="opacity-60">· {count}</span>
+      ) : null}
+    </button>
   );
 }
 
@@ -170,6 +296,7 @@ function SectionHeader({ label, count }: { label: string; count: number }) {
 
 function NeuronHit({ hit, kbId }: { hit: DocumentSearchHit; kbId: string }) {
   const slug = hit.filename.replace(/\.md$/i, '');
+  const hitTags = parseTags(hit.tags ?? null);
   return (
     <li class="border border-[color:var(--color-border)] rounded-md bg-[color:var(--color-bg-card)]/80 hover:border-[color:var(--color-border-strong)] transition">
       <a
@@ -183,6 +310,18 @@ function NeuronHit({ hit, kbId }: { hit: DocumentSearchHit; kbId: string }) {
           </div>
         </div>
         <Snippet html={hit.highlight} />
+        {hitTags.length > 0 ? (
+          <div class="mt-2 flex flex-wrap gap-1.5">
+            {hitTags.map((tag) => (
+              <span
+                key={tag}
+                class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono bg-[color:var(--color-accent)]/10 border border-[color:var(--color-accent)]/25 text-[color:var(--color-accent)]"
+              >
+                {tag}
+              </span>
+            ))}
+          </div>
+        ) : null}
       </a>
     </li>
   );
@@ -240,10 +379,17 @@ function EmptyHint() {
   );
 }
 
-function syncUrl(q: string): void {
+function syncUrl(q: string, tags: string[]): void {
   if (typeof window === 'undefined') return;
   const url = new URL(window.location.href);
   if (q) url.searchParams.set('q', q);
   else url.searchParams.delete('q');
+  // Repeated ?tag= params — matches the F92 plan-doc URL shape
+  // (?q=sanne&tag=incident&tag=ops) so a bookmarked URL preserves
+  // both the search text AND the active facet selection.
+  url.searchParams.delete('tag');
+  for (const tag of tags) {
+    url.searchParams.append('tag', tag);
+  }
   window.history.replaceState({}, '', url);
 }

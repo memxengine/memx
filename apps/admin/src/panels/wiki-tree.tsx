@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'preact/hooks';
 import { useRoute } from 'preact-iso';
 import type { Document } from '@trail/shared';
-import { listWikiPages, runLint, ApiError, type WikiSortOrder } from '../api';
+import { listWikiPages, listTags, runLint, ApiError, type WikiSortOrder, type TagCount } from '../api';
 import { displayPath } from '../lib/display-path';
 import { useEvents, onStreamOpen, onFocusRefresh, debounce } from '../lib/event-stream';
 import { t, useLocale } from '../lib/i18n';
 import { CenteredLoader } from '../components/centered-loader';
+import { parseTags } from '../components/tag-chips';
 
 /**
  * Neurons tree — groups all compiled wiki pages in a KB by their
@@ -34,6 +35,28 @@ export function WikiTreePanel() {
     return 'newest';
   });
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
+  // F92 — active tag filter (case-insensitive keys), full tag list for
+  // the chip row, and an open/closed toggle that auto-opens when any
+  // filter is active. AND-semantics: a Neuron is visible only when
+  // every selected tag is on its tags column.
+  const [tagFilter, setTagFilter] = useState<Set<string>>(new Set());
+  const [allTags, setAllTags] = useState<TagCount[]>([]);
+  const [tagFilterOpen, setTagFilterOpen] = useState(false);
+
+  useEffect(() => {
+    if (!kbId) return;
+    listTags(kbId).then(setAllTags).catch(() => setAllTags([]));
+  }, [kbId]);
+
+  const toggleTag = useCallback((tag: string) => {
+    const key = tag.toLowerCase();
+    setTagFilter((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
   const setSortOrder = useCallback((next: WikiSortOrder) => {
     setSortOrderRaw(next);
     try {
@@ -83,20 +106,42 @@ export function WikiTreePanel() {
   // signal — perfect for a tree that only cares about existing pages.
   // candidate_resolved fires on every decision but the tree doesn't need
   // to redraw for rejects or for non-document actions. Debounced so bulk
-  // approves coalesce into one reload.
+  // approves coalesce into one reload. F92 — also re-fetch the tag
+  // aggregate so new tags from the approval show up in the chip row.
   useEvents((e) => {
     if (e.kbId !== kbId) return;
-    if (e.type === 'candidate_approved') reloadDebounced();
+    if (e.type === 'candidate_approved') {
+      reloadDebounced();
+      listTags(kbId).then(setAllTags).catch(() => {
+        // non-fatal — chip row just goes slightly stale until next focus
+      });
+    }
   });
   useEffect(() => onStreamOpen(reload), [reload]);
   useEffect(() => onFocusRefresh(reload), [reload]);
 
   const grouped = useMemo(() => {
     if (!pages) return null;
+    // F92 — apply the tag filter first so empty groups disappear
+    // instead of rendering an empty section header. AND-semantics:
+    // a Neuron is kept only when every selected tag is on its
+    // `tags` column (case-insensitive). The full list is already
+    // in memory so this is a pure client-side filter — no extra
+    // server round-trip.
+    const filtered = tagFilter.size === 0
+      ? pages
+      : pages.filter((p) => {
+          const raw = (p as { tags?: string | null }).tags ?? null;
+          const docTags = parseTags(raw).map((x) => x.toLowerCase());
+          for (const t of tagFilter) {
+            if (!docTags.includes(t)) return false;
+          }
+          return true;
+        });
     const groups = new Map<string, Document[]>();
     // Server already returns pages in the chosen order — preserve it
     // within each group by pushing in iteration order.
-    for (const p of pages) {
+    for (const p of filtered) {
       const key = (p as { path?: string }).path ?? '/';
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key)!.push(p);
@@ -131,7 +176,7 @@ export function WikiTreePanel() {
       entries.sort((a, b) => a[0].localeCompare(b[0]));
     }
     return entries;
-  }, [pages, sortOrder]);
+  }, [pages, sortOrder, tagFilter]);
 
   return (
     <div class="page-shell">
@@ -192,6 +237,55 @@ export function WikiTreePanel() {
         </div>
       </header>
 
+      {allTags.length > 0 ? (
+        <div class="mb-4">
+          <div class="flex items-center gap-2 mb-2">
+            <button
+              onClick={() => setTagFilterOpen((v) => !v)}
+              class="inline-flex items-center gap-1 text-[10px] font-mono uppercase tracking-wider text-[color:var(--color-fg-subtle)] hover:text-[color:var(--color-fg)] transition cursor-pointer"
+              aria-expanded={tagFilterOpen || tagFilter.size > 0}
+            >
+              <span>{tagFilterOpen || tagFilter.size > 0 ? '▼' : '▶'}</span>
+              <span>{t('tagFilter.label')}</span>
+              {tagFilter.size > 0 ? (
+                <span class="normal-case text-[color:var(--color-accent)]">· {tagFilter.size}</span>
+              ) : null}
+            </button>
+            {tagFilter.size > 0 ? (
+              <button
+                onClick={() => setTagFilter(new Set())}
+                class="text-[10px] font-mono text-[color:var(--color-fg-subtle)] hover:text-[color:var(--color-fg)] transition"
+              >
+                {t('tagFilter.clear')}
+              </button>
+            ) : null}
+          </div>
+          {tagFilterOpen || tagFilter.size > 0 ? (
+            <div class="flex flex-wrap gap-2">
+              {allTags.map(({ tag, count }) => {
+                const active = tagFilter.has(tag.toLowerCase());
+                return (
+                  <button
+                    key={tag}
+                    type="button"
+                    onClick={() => toggleTag(tag)}
+                    class={
+                      'inline-flex items-center gap-1 px-2 py-1 text-[11px] font-mono rounded-md border transition ' +
+                      (active
+                        ? 'border-[color:var(--color-accent)] bg-[color:var(--color-accent)]/15 text-[color:var(--color-fg)]'
+                        : 'border-[color:var(--color-border)] text-[color:var(--color-fg-muted)] hover:text-[color:var(--color-fg)] hover:border-[color:var(--color-border-strong)]')
+                    }
+                  >
+                    <span>{tag}</span>
+                    <span class="opacity-60">· {count}</span>
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
       {error ? (
         <div class="border border-[color:var(--color-danger)]/30 bg-[color:var(--color-danger)]/5 rounded-md p-4 text-sm">
           {error}
@@ -202,7 +296,9 @@ export function WikiTreePanel() {
 
       {grouped?.length === 0 ? (
         <div class="text-center py-16 text-[color:var(--color-fg-subtle)]">
-          No Neurons yet. Approve a candidate in the queue to grow this Trail.
+          {tagFilter.size > 0
+            ? t('wikiTree.emptyFiltered')
+            : 'No Neurons yet. Approve a candidate in the queue to grow this Trail.'}
         </div>
       ) : null}
 
@@ -214,13 +310,14 @@ export function WikiTreePanel() {
             </h2>
             <ul class="space-y-1">
               {docs.map((doc) => {
-                const d = doc as Document & { filename: string; title: string | null; path?: string; createdAt?: string; updatedAt?: string };
+                const d = doc as Document & { filename: string; title: string | null; path?: string; tags?: string | null; createdAt?: string; updatedAt?: string };
                 const slug = d.filename.replace(/\.md$/i, '');
                 const origin = classifyOrigin(d.path);
                 // Prefer updatedAt for the visible timestamp so
                 // recently-touched Neurons read as fresh. createdAt is
                 // the fallback for rows that have never been edited.
                 const ts = d.updatedAt ?? d.createdAt ?? null;
+                const docTags = parseTags(d.tags ?? null);
                 return (
                   <li key={doc.id}>
                     <a
@@ -242,7 +339,7 @@ export function WikiTreePanel() {
                           ) : null}
                           <span class="truncate">{d.title ?? slug}</span>
                         </div>
-                        <div class="text-[11px] font-mono text-[color:var(--color-fg-subtle)] truncate flex items-center gap-2">
+                        <div class="text-[11px] font-mono text-[color:var(--color-fg-subtle)] truncate flex items-center gap-2 flex-wrap">
                           <span class="truncate">{d.filename}</span>
                           {ts ? (
                             <>
@@ -250,6 +347,14 @@ export function WikiTreePanel() {
                               <span class="shrink-0" title={ts}>{formatRelative(ts)}</span>
                             </>
                           ) : null}
+                          {docTags.map((tag) => (
+                            <span
+                              key={tag}
+                              class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono bg-[color:var(--color-accent)]/10 border border-[color:var(--color-accent)]/25 text-[color:var(--color-accent)]"
+                            >
+                              {tag}
+                            </span>
+                          ))}
                         </div>
                       </div>
                       <span class="text-[color:var(--color-fg-subtle)] group-hover:text-[color:var(--color-accent)] transition">

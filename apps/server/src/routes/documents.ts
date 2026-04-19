@@ -6,6 +6,7 @@ import {
   UpdateContentSchema,
   BulkDeleteSchema,
   DocumentKindEnum,
+  canonicaliseTagString,
 } from '@trail/shared';
 import { eq, and, inArray, asc, desc, type SQL } from 'drizzle-orm';
 import { submitCuratorEdit, VersionConflictError } from '@trail/core';
@@ -278,6 +279,12 @@ documentRoutes.put('/documents/:docId/content', async (c) => {
   const body = UpdateContentSchema.parse(await c.req.json());
 
   try {
+    // F92 — canonicalise incoming tags at the write boundary so the
+    // DB never stores mixed-case / punctuated / unicode values from
+    // this point on. `body.tags === null` means "clear all tags" —
+    // preserve that semantic; `undefined` means "leave as-is".
+    const canonicalTags =
+      body.tags === undefined ? undefined : canonicaliseTagString(body.tags);
     const result = await submitCuratorEdit(
       trail,
       tenant.id,
@@ -285,7 +292,7 @@ documentRoutes.put('/documents/:docId/content', async (c) => {
       {
         content: body.content,
         title: body.title,
-        tags: body.tags,
+        tags: canonicalTags,
         expectedVersion: body.expectedVersion,
       },
       { id: user.id, kind: 'user' },
@@ -360,7 +367,10 @@ documentRoutes.patch('/documents/:docId', async (c) => {
   if (body.filename !== undefined) updates.filename = body.filename;
   if (body.path !== undefined) updates.path = body.path;
   if (body.title !== undefined) updates.title = body.title;
-  if (body.tags !== undefined) updates.tags = body.tags;
+  // F92 — canonicalise at the PATCH boundary too so any admin code
+  // path that updates tags benefits from the same rules as the
+  // curator-edit flow. `null` clears; `undefined` leaves as-is.
+  if (body.tags !== undefined) updates.tags = body.tags === null ? null : canonicaliseTagString(body.tags);
   if (body.date !== undefined) updates.date = body.date;
   if (body.metadata !== undefined) updates.metadata = body.metadata;
 

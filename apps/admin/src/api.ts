@@ -351,6 +351,13 @@ export interface DocumentSearchHit {
   /** HTML snippet with FTS5 `<mark>` tags around matches. */
   highlight: string;
   rank: number;
+  /**
+   * F92 — comma-separated tag string decorated server-side so the
+   * search UI can render chips per hit + so tag-facet filtering has
+   * something to match against. Null for sources without tags or
+   * when the server-side decoration is skipped.
+   */
+  tags?: string | null;
 }
 
 export interface ChunkSearchHit {
@@ -370,9 +377,36 @@ export interface SearchResponse {
 }
 
 /** FTS5 search across documents + chunks in a KB. Empty query returns empty. */
-export function searchKb(kbId: string, q: string, limit = 10): Promise<SearchResponse> {
-  const qs = new URLSearchParams({ q, limit: String(limit) });
+export function searchKb(
+  kbId: string,
+  q: string,
+  opts: { limit?: number; tags?: string[] } = {},
+): Promise<SearchResponse> {
+  const qs = new URLSearchParams({ q, limit: String(opts.limit ?? 10) });
+  // Repeated ?tag= params — matches the plan doc's URL shape
+  // (?q=sanne&tag=incident&tag=ops) so bookmarking hand-composed URLs
+  // works without a comma-separator convention.
+  for (const tag of opts.tags ?? []) {
+    qs.append('tag', tag);
+  }
   return api(`/api/v1/knowledge-bases/${encodeURIComponent(kbId)}/search?${qs.toString()}`);
+}
+
+// ── Tags (F92) ──────────────────────────────────────────────────
+
+export interface TagCount {
+  tag: string;
+  count: number;
+}
+
+/**
+ * Per-KB tag aggregate — every distinct tag on non-archived Neurons
+ * with its count. Used by the Queue + Neurons filter chip rows to
+ * render the full tag vocabulary up-front. Cached server-side (60s
+ * TTL, busted on candidate_approved).
+ */
+export function listTags(kbId: string): Promise<TagCount[]> {
+  return api(`/api/v1/knowledge-bases/${encodeURIComponent(kbId)}/tags`);
 }
 
 // ── Lint (F32) ──────────────────────────────────────────────────

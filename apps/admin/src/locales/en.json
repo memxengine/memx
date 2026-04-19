@@ -127,6 +127,17 @@
     "conf": "conf {n}",
     "connectorFilterLabel": "Source:",
     "connectorFilterClear": "clear",
+    "confidenceFilter": {
+      "label": "Confidence:",
+      "clear": "clear",
+      "all": "All",
+      "high": "High ≥0.8",
+      "medium": "Medium 0.5–0.8",
+      "low": "Low <0.5",
+      "none": "No score"
+    },
+    "bulkDismissLowConfidence": "Dismiss all <0.5 ({n})",
+    "bulkDismissLowConfidenceReason": "Bulk-dismissed: low confidence (<0.5)",
     "createdVia": "Created via",
     "recommended": "💡 Recommended",
     "acceptRecommendation": "Accept",
@@ -226,7 +237,8 @@
     "lintDone": "Lint emitted {n} new candidate",
     "lintDonePlural": "Lint emitted {n} new candidates",
     "lintClean": "Nothing to flag.",
-    "lintFailed": "Lint failed"
+    "lintFailed": "Lint failed",
+    "emptyFiltered": "No Neurons match the selected tags. Clear filters to see everything."
   },
   "chat": {
     "title": "Chat",
@@ -302,6 +314,10 @@
     "placeholder": "Add tag — Enter or comma",
     "placeholderMore": "Add another…",
     "remove": "Remove tag {tag}"
+  },
+  "tagFilter": {
+    "label": "Tags:",
+    "clear": "clear"
   },
   "settings": {
     "savedToast": "Saved.",

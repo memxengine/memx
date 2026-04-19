@@ -4,6 +4,7 @@ import { marked } from 'marked';
 import type { CandidateAction, QueueCandidate, QueueCandidateStatus } from '@trail/shared';
 import {
   listQueue,
+  listTags,
   listWikiPages,
   resolveCandidate,
   reopenCandidate,
@@ -11,7 +12,9 @@ import {
   bulkAcceptRecommendations,
   ApiError,
   type QueueListResponse,
+  type TagCount,
 } from '../api';
+import { parseTags } from '../components/tag-chips';
 import type { Document } from '@trail/shared';
 import { rewriteWikiLinks } from '../lib/wiki-links';
 import { displayPath } from '../lib/display-path';
@@ -86,6 +89,24 @@ function parseMetadata(raw: string | null): CandidateOpMeta | null {
   }
 }
 
+// F32.2 — thresholds match ConfidencePill's tiering (components/confidence-
+// pill.tsx). Keep these in sync with the pill's tier() function.
+const CONFIDENCE_LOW_MAX = 0.5;
+const CONFIDENCE_HIGH_MIN = 0.8;
+
+function passesConfidenceTier(
+  confidence: number | null,
+  tier: 'all' | 'high' | 'medium' | 'low' | 'none',
+): boolean {
+  if (tier === 'all') return true;
+  if (tier === 'none') return typeof confidence !== 'number';
+  if (typeof confidence !== 'number') return false;
+  const c = Math.max(0, Math.min(1, confidence));
+  if (tier === 'high') return c >= CONFIDENCE_HIGH_MIN;
+  if (tier === 'low') return c < CONFIDENCE_LOW_MAX;
+  return c >= CONFIDENCE_LOW_MAX && c < CONFIDENCE_HIGH_MIN;
+}
+
 export function QueuePanel() {
   const route = useRoute();
   const kbId = route.params.kbId ?? '';
@@ -101,6 +122,21 @@ export function QueuePanel() {
   // "Kilde:" label to toggle. Auto-open when any filter is active so
   // the curator can see what they've selected.
   const [connectorFilterOpen, setConnectorFilterOpen] = useState(false);
+  // F92 — tag filter (AND-semantics). Filters applied client-side:
+  // a candidate is kept only when every selected tag is on its
+  // metadata.tags (case-insensitive). Full tag vocabulary for the
+  // chip row comes from the per-KB tags aggregate endpoint.
+  const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
+  const [allTags, setAllTags] = useState<TagCount[]>([]);
+  const [tagFilterOpen, setTagFilterOpen] = useState(false);
+  // F32.2 — confidence-threshold filter. Mirrors the ConfidencePill
+  // tiering (≥0.8 high, 0.5-0.8 medium, <0.5 low) so the chip labels
+  // and the row-badge colours stay in sync. 'none' filters to the rows
+  // where confidence is null (curator-authored). Applied client-side
+  // on the already-loaded page — no /queue round-trip.
+  type ConfidenceTier = 'all' | 'high' | 'medium' | 'low' | 'none';
+  const [confidenceTier, setConfidenceTier] = useState<ConfidenceTier>('all');
+  const [confidenceFilterOpen, setConfidenceFilterOpen] = useState(false);
   const [data, setData] = useState<QueueListResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Per-candidate in-flight tracking. Multiple rows can be resolving
@@ -173,6 +209,24 @@ export function QueuePanel() {
       });
   }, [kbId]);
 
+  // F92 — tag vocabulary for the filter chip row. Refreshed on
+  // candidate_approved via the useEvents hook below.
+  useEffect(() => {
+    if (!kbId) return;
+    listTags(kbId).then(setAllTags).catch(() => setAllTags([]));
+  }, [kbId]);
+
+  const toggleTag = useCallback((tag: string) => {
+    const key = tag.toLowerCase();
+    setSelectedTags((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+    setSelected(new Set()); // filter change wipes bulk-selection
+  }, []);
+
   // Event-driven refresh. Any candidate_* event for this KB triggers a
   // re-fetch of the current filter. Debounced so a bulk action that emits
   // 22 rejects in a burst coalesces into a single refetch once the burst
@@ -185,6 +239,14 @@ export function QueuePanel() {
       e.type === 'candidate_resolved'
     ) {
       reloadDebounced();
+    }
+    // F92 — refresh the tag vocabulary when an approval commits new
+    // tags. Other event kinds don't touch documents.tags so they
+    // wouldn't change the aggregate.
+    if (e.type === 'candidate_approved') {
+      listTags(kbId).then(setAllTags).catch(() => {
+        // non-fatal — chip row may go slightly stale until next focus
+      });
     }
   });
   useEffect(() => onStreamOpen(reload), [reload]);
@@ -258,6 +320,28 @@ export function QueuePanel() {
     return !!meta?.recommendation?.recommendedActionId;
   });
 
+  // F32.3 — ids of visible pending candidates with confidence < low-tier
+  // threshold. The "Dismiss all <0.5" shortcut rejects these in one call.
+  // Scope is the already-filtered view (connector + tag + confidence tier
+  // all honoured), NOT the raw data.items — so a curator who zooms in via
+  // filters first, then one-clicks, only dismisses what they were looking
+  // at.
+  const visibleFiltered = (data?.items ?? []).filter((c) => {
+    if (selectedTags.size > 0) {
+      const meta = parseMetadata(c.metadata);
+      const raw = typeof meta?.tags === 'string' ? meta.tags : null;
+      const candidateTags = parseTags(raw).map((t) => t.toLowerCase());
+      for (const t of selectedTags) {
+        if (!candidateTags.includes(t)) return false;
+      }
+    }
+    if (!passesConfidenceTier(c.confidence, confidenceTier)) return false;
+    return true;
+  });
+  const lowConfidenceIds = visibleFiltered
+    .filter((c) => typeof c.confidence === 'number' && c.confidence < CONFIDENCE_LOW_MAX)
+    .map((c) => c.id);
+
   async function onBulkApprove() {
     const ids = Array.from(selected);
     if (ids.length === 0) return;
@@ -309,6 +393,36 @@ export function QueuePanel() {
 
   function openBulkReject() {
     setBulkReject({ ids: Array.from(selected), reason: '' });
+  }
+
+  /**
+   * F32.3 — one-click dismiss every visible candidate with confidence
+   * below the low-tier threshold. Uses the same effect='reject' bulk
+   * endpoint as the per-row dismiss path (so contradiction-alerts
+   * route to 'dismiss' and legacy candidates to 'reject'). Skips the
+   * reason modal — the whole point is low-friction noise-cleanup —
+   * and writes a canned reason so the audit trail still explains
+   * what happened.
+   */
+  async function onDismissLowConfidence(ids: string[]) {
+    if (ids.length === 0) return;
+    setBulkBusy(true);
+    try {
+      const reason = t('queue.bulkDismissLowConfidenceReason');
+      const r = await bulkQueue({ effect: 'reject', ids, reason });
+      setToast({
+        kind: r.failed.length === 0 ? 'success' : 'error',
+        text:
+          t('queue.bulk.rejectedToast', { ok: r.succeeded.length, total: r.requested }) +
+          (r.failed.length ? t('queue.bulk.failureSuffix', { n: r.failed.length }) : ''),
+      });
+      clearSelection();
+      reload();
+    } catch (err) {
+      setToast({ kind: 'error', text: err instanceof Error ? err.message : t('common.error') });
+    } finally {
+      setBulkBusy(false);
+    }
   }
 
   async function confirmBulkReject() {
@@ -539,6 +653,120 @@ export function QueuePanel() {
             ))}
           </div>
         ) : null}
+
+        {allTags.length > 0 ? (
+          <div class="mt-3">
+            <div class="flex items-center gap-2 mb-2">
+              <button
+                onClick={() => setTagFilterOpen((v) => !v)}
+                class="inline-flex items-center gap-1 text-[10px] font-mono uppercase tracking-wider text-[color:var(--color-fg-subtle)] hover:text-[color:var(--color-fg)] transition cursor-pointer"
+                aria-expanded={tagFilterOpen || selectedTags.size > 0}
+              >
+                <span>{tagFilterOpen || selectedTags.size > 0 ? '▼' : '▶'}</span>
+                <span>{t('tagFilter.label')}</span>
+                {selectedTags.size > 0 ? (
+                  <span class="normal-case text-[color:var(--color-accent)]">· {selectedTags.size}</span>
+                ) : null}
+              </button>
+              {selectedTags.size > 0 ? (
+                <button
+                  onClick={() => {
+                    setSelectedTags(new Set());
+                    setSelected(new Set());
+                  }}
+                  class="text-[10px] font-mono text-[color:var(--color-fg-subtle)] hover:text-[color:var(--color-fg)] transition"
+                >
+                  {t('tagFilter.clear')}
+                </button>
+              ) : null}
+            </div>
+            {tagFilterOpen || selectedTags.size > 0 ? (
+              <div class="flex flex-wrap gap-2">
+                {allTags.map(({ tag, count }) => {
+                  const active = selectedTags.has(tag.toLowerCase());
+                  return (
+                    <button
+                      key={tag}
+                      type="button"
+                      onClick={() => toggleTag(tag)}
+                      class={
+                        'inline-flex items-center gap-1 px-2 py-1 text-[11px] font-mono rounded-md border transition ' +
+                        (active
+                          ? 'border-[color:var(--color-accent)] bg-[color:var(--color-accent)]/15 text-[color:var(--color-fg)]'
+                          : 'border-[color:var(--color-border)] text-[color:var(--color-fg-muted)] hover:text-[color:var(--color-fg)] hover:border-[color:var(--color-border-strong)]')
+                      }
+                    >
+                      <span>{tag}</span>
+                      <span class="opacity-60">· {count}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
+        <div class="mt-3">
+          <div class="flex items-center gap-2 mb-2">
+            <button
+              onClick={() => setConfidenceFilterOpen((v) => !v)}
+              class="inline-flex items-center gap-1 text-[10px] font-mono uppercase tracking-wider text-[color:var(--color-fg-subtle)] hover:text-[color:var(--color-fg)] transition cursor-pointer"
+              aria-expanded={confidenceFilterOpen || confidenceTier !== 'all'}
+            >
+              <span>{confidenceFilterOpen || confidenceTier !== 'all' ? '▼' : '▶'}</span>
+              <span>{t('queue.confidenceFilter.label')}</span>
+              {confidenceTier !== 'all' ? (
+                <span class="normal-case text-[color:var(--color-accent)]">
+                  · {t(`queue.confidenceFilter.${confidenceTier}`)}
+                </span>
+              ) : null}
+            </button>
+            {confidenceTier !== 'all' ? (
+              <button
+                onClick={() => {
+                  setConfidenceTier('all');
+                  setSelected(new Set());
+                }}
+                class="text-[10px] font-mono text-[color:var(--color-fg-subtle)] hover:text-[color:var(--color-fg)] transition"
+              >
+                {t('queue.confidenceFilter.clear')}
+              </button>
+            ) : null}
+          </div>
+          {confidenceFilterOpen || confidenceTier !== 'all' ? (
+            <div class="flex flex-wrap gap-2">
+              {(['all', 'high', 'medium', 'low', 'none'] as const).map((tier) => {
+                const active = confidenceTier === tier;
+                const tierClass =
+                  tier === 'high'
+                    ? 'border-[color:var(--color-success)] bg-[color:var(--color-success)]/15'
+                    : tier === 'medium'
+                    ? 'border-[color:var(--color-accent)] bg-[color:var(--color-accent)]/15'
+                    : tier === 'low'
+                    ? 'border-[color:var(--color-danger)] bg-[color:var(--color-danger)]/15'
+                    : 'border-[color:var(--color-accent)] bg-[color:var(--color-accent)]/15';
+                return (
+                  <button
+                    key={tier}
+                    type="button"
+                    onClick={() => {
+                      setConfidenceTier(tier);
+                      setSelected(new Set());
+                    }}
+                    class={
+                      'inline-flex items-center gap-1 px-2 py-1 text-[11px] font-mono rounded-md border transition ' +
+                      (active
+                        ? tierClass + ' text-[color:var(--color-fg)]'
+                        : 'border-[color:var(--color-border)] text-[color:var(--color-fg-muted)] hover:text-[color:var(--color-fg)] hover:border-[color:var(--color-border-strong)]')
+                    }
+                  >
+                    {t(`queue.confidenceFilter.${tier}`)}
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
+        </div>
       </div>
 
       <nav class="flex gap-1 mb-5 border-b border-[color:var(--color-border)]">
@@ -600,6 +828,16 @@ export function QueuePanel() {
               </button>
             ) : null}
           </div>
+          {status === 'pending' && selected.size === 0 && lowConfidenceIds.length > 0 ? (
+            <button
+              disabled={bulkBusy}
+              onClick={() => onDismissLowConfidence(lowConfidenceIds)}
+              title={t('queue.bulkDismissLowConfidenceReason')}
+              class="px-3 py-1.5 text-[11px] rounded-md border border-[color:var(--color-danger)]/40 text-[color:var(--color-danger)] hover:bg-[color:var(--color-danger)]/10 disabled:opacity-50 transition"
+            >
+              {t('queue.bulkDismissLowConfidence', { n: lowConfidenceIds.length })}
+            </button>
+          ) : null}
           {selected.size > 0 ? (
             <div class="flex items-center gap-2">
               {status === 'pending' && selectedWithRecommendation.length > 0 ? (
@@ -649,25 +887,25 @@ export function QueuePanel() {
       ) : null}
 
       <ul class="space-y-2">
-        {data?.items.map((c) => (
-          <CandidateRow
-            key={c.id}
-            candidate={c}
-            kbId={kbId}
-            slugByDocId={slugByDocId}
-            isExpanded={expanded.has(c.id)}
-            onToggle={() => toggleExpanded(c.id)}
-            busy={acting.has(c.id)}
-            busyActionId={acting.get(c.id)?.actionId ?? null}
-            recommendationFailed={failedRecommendations.has(c.id)}
-            showRecommendationOverlay={acting.get(c.id)?.viaRecommendation === true}
-            onResolve={onResolve}
-            onReopen={onReopen}
-            selected={selected.has(c.id)}
-            onToggleSelected={() => toggleSelected(c.id)}
-            showCheckbox={status === 'pending'}
-          />
-        ))}
+        {visibleFiltered.map((c) => (
+            <CandidateRow
+              key={c.id}
+              candidate={c}
+              kbId={kbId}
+              slugByDocId={slugByDocId}
+              isExpanded={expanded.has(c.id)}
+              onToggle={() => toggleExpanded(c.id)}
+              busy={acting.has(c.id)}
+              busyActionId={acting.get(c.id)?.actionId ?? null}
+              recommendationFailed={failedRecommendations.has(c.id)}
+              showRecommendationOverlay={acting.get(c.id)?.viaRecommendation === true}
+              onResolve={onResolve}
+              onReopen={onReopen}
+              selected={selected.has(c.id)}
+              onToggleSelected={() => toggleSelected(c.id)}
+              showCheckbox={status === 'pending'}
+            />
+          ))}
       </ul>
 
       {toast ? (
@@ -918,6 +1156,26 @@ function CandidateRow({
           {!isExpanded ? (
             <p class="text-sm text-[color:var(--color-fg-muted)] mt-1 line-clamp-3">{preview}</p>
           ) : null}
+          {(() => {
+            // F92 — render tag chips on the candidate card when
+            // metadata.tags is populated. Lives below the body preview
+            // so the kind/status/op row at the top stays uncluttered.
+            const rawTags = typeof meta?.tags === 'string' ? meta.tags : null;
+            const candidateTags = parseTags(rawTags);
+            if (candidateTags.length === 0) return null;
+            return (
+              <div class="mt-2 flex flex-wrap gap-1.5">
+                {candidateTags.map((tag) => (
+                  <span
+                    key={tag}
+                    class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono bg-[color:var(--color-accent)]/10 border border-[color:var(--color-accent)]/25 text-[color:var(--color-accent)]"
+                  >
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            );
+          })()}
           <div class="mt-2 flex items-center gap-2 text-[11px] font-mono text-[color:var(--color-fg-subtle)]">
             <span>
               {formatTs(c.createdAt)}
