@@ -94,6 +94,21 @@ export class VersionConflictError extends Error {
   }
 }
 
+/**
+ * Thrown when an `external-feed` producer fires `op:"create"` against a
+ * (path, filename) that already has a live Neuron. Defense against
+ * misbehaving upstreams (e.g. a hook that fires session-end on every
+ * turn-end). HTTP layer maps this to 409 Conflict so the caller can
+ * learn to either send op:"update" or drop the idempotent write.
+ */
+export class DuplicateExternalFeedError extends Error {
+  readonly code = 'duplicate_external_feed' as const;
+  constructor(message: string) {
+    super(message);
+    this.name = 'DuplicateExternalFeedError';
+  }
+}
+
 export interface Actor {
   /** User id for curator actions, or a synthetic id like 'mcp:ingest' for pipelines. */
   id: string;
@@ -237,6 +252,34 @@ function safeParseActions(raw: string): CandidateAction[] | null {
   return null;
 }
 
+/**
+ * Lift just the fields needed for the external-feed dedup guard out of
+ * the stringified metadata blob. Tolerates missing / malformed JSON —
+ * returns null and lets the caller fall through to the normal create
+ * path (defensive: don't block legit writes on metadata shape quirks).
+ */
+function parseMetadataForDedup(raw: string | null | undefined): {
+  op?: string;
+  path?: string;
+  filename?: string;
+} | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as {
+      op?: unknown;
+      path?: unknown;
+      filename?: unknown;
+    };
+    return {
+      op: typeof parsed.op === 'string' ? parsed.op : undefined,
+      path: typeof parsed.path === 'string' ? parsed.path : undefined,
+      filename: typeof parsed.filename === 'string' ? parsed.filename : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
 function safeParseTranslations(raw: string): QueueCandidate['translations'] {
   try {
     const parsed = JSON.parse(raw) as unknown;
@@ -271,6 +314,39 @@ export async function createCandidate(
     )
     .get();
   if (!kb) throw new Error(`Knowledge base not found: ${input.knowledgeBaseId}`);
+
+  // Dedup guard for external-feed create spam. A misbehaving external
+  // producer (e.g. buddy firing session-end on every turn-end) would
+  // otherwise blindly stack 1000s of Neurons with identical (path,
+  // filename) because nothing in the wiki write path enforces
+  // uniqueness. Reject up-front with a typed error so the HTTP layer
+  // can respond 409 and the producer can learn to stop (or switch to
+  // op:"update"). Scoped to external-feed + op:"create" — other kinds
+  // are either auto-deduped (lint fingerprint) or user-driven.
+  if (input.kind === 'external-feed') {
+    const meta = parseMetadataForDedup(input.metadata);
+    if (meta && meta.op === 'create' && meta.filename) {
+      const existing = await db
+        .select({ id: documents.id })
+        .from(documents)
+        .where(
+          and(
+            eq(documents.knowledgeBaseId, input.knowledgeBaseId),
+            eq(documents.tenantId, tenantId),
+            eq(documents.kind, 'wiki'),
+            eq(documents.archived, false),
+            eq(documents.path, meta.path ?? '/'),
+            eq(documents.filename, meta.filename),
+          ),
+        )
+        .get();
+      if (existing) {
+        throw new DuplicateExternalFeedError(
+          `Neuron already exists at ${meta.path ?? '/'}${meta.filename} — send op:"update" to modify, or drop this write if it's idempotent`,
+        );
+      }
+    }
+  }
 
   const id = `cnd_${crypto.randomUUID().slice(0, 12)}`;
   // Every candidate carries `metadata.connector` so the Queue filter

@@ -15,6 +15,7 @@ import {
   countCandidates,
   getCandidate,
   resolveKbId,
+  DuplicateExternalFeedError,
   type Actor,
   type ResolutionResult,
 } from '@trail/core';
@@ -219,6 +220,9 @@ queueRoutes.post('/queue/candidates', async (c) => {
     }
     return c.json(result, 201);
   } catch (err) {
+    if (err instanceof DuplicateExternalFeedError) {
+      return c.json({ error: err.message, code: err.code }, 409);
+    }
     const msg = err instanceof Error ? err.message : 'Unknown error';
     if (msg.startsWith('Knowledge base not found')) return c.json({ error: msg }, 404);
     return c.json({ error: msg }, 500);

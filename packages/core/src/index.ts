@@ -11,6 +11,7 @@ export {
   persistCandidateTranslation,
   submitCuratorEdit,
   VersionConflictError,
+  DuplicateExternalFeedError,
   DEFAULT_ACTIONS,
 } from './queue/candidates.js';
 export type {
