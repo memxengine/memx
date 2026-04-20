@@ -127,6 +127,7 @@
     "conf": "sikkerhed {n}",
     "connectorFilterLabel": "Kilde:",
     "connectorFilterClear": "ryd",
+    "connectorFilterEmpty": "Ingen af kandidaterne har en kilde-attribution endnu.",
     "confidenceFilter": {
       "label": "Tillid:",
       "clear": "ryd",

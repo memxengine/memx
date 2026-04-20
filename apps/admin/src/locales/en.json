@@ -127,6 +127,7 @@
     "conf": "conf {n}",
     "connectorFilterLabel": "Source:",
     "connectorFilterClear": "clear",
+    "connectorFilterEmpty": "None of the candidates carry a source attribution yet.",
     "confidenceFilter": {
       "label": "Confidence:",
       "clear": "clear",

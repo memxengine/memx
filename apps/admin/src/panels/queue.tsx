@@ -4,7 +4,6 @@ import { marked } from 'marked';
 import type { CandidateAction, QueueCandidate, QueueCandidateStatus } from '@trail/shared';
 import {
   listQueue,
-  listTags,
   listWikiPages,
   resolveCandidate,
   reopenCandidate,
@@ -12,7 +11,6 @@ import {
   bulkAcceptRecommendations,
   ApiError,
   type QueueListResponse,
-  type TagCount,
 } from '../api';
 import { parseTags } from '../components/tag-chips';
 import type { Document } from '@trail/shared';
@@ -28,7 +26,6 @@ import { ConfidencePill } from '../components/confidence-pill';
 import {
   CONNECTORS,
   LIVE_CONNECTORS,
-  ROADMAP_CONNECTORS,
   type ConnectorId,
 } from '@trail/shared';
 import { useEvents, onStreamOpen, onFocusRefresh, debounce } from '../lib/event-stream';
@@ -124,10 +121,13 @@ export function QueuePanel() {
   const [connectorFilterOpen, setConnectorFilterOpen] = useState(false);
   // F92 — tag filter (AND-semantics). Filters applied client-side:
   // a candidate is kept only when every selected tag is on its
-  // metadata.tags (case-insensitive). Full tag vocabulary for the
-  // chip row comes from the per-KB tags aggregate endpoint.
+  // metadata.tags (case-insensitive). Vocabulary for the chip row is
+  // derived from the currently-loaded candidates (see availableTags
+  // below) — NOT from the Neuron-level /tags aggregate, because that
+  // endpoint counts Neuron tags, and Neuron-tags and candidate-tags
+  // are disjoint sets. Clicking a Neuron-tag chip would filter
+  // candidates to zero, which is exactly the bug Christian reported.
   const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
-  const [allTags, setAllTags] = useState<TagCount[]>([]);
   const [tagFilterOpen, setTagFilterOpen] = useState(false);
   // F32.2 — confidence-threshold filter. Mirrors the ConfidencePill
   // tiering (≥0.8 high, 0.5-0.8 medium, <0.5 low) so the chip labels
@@ -177,18 +177,19 @@ export function QueuePanel() {
 
   const reload = useCallback(() => {
     setError(null);
-    const connectorCsv = selectedConnectors.size > 0
-      ? Array.from(selectedConnectors).join(',')
-      : undefined;
+    // Server-side filtering is limited to status (the only filter with
+    // a meaningful DB index). Connector + tag + confidence filters are
+    // applied client-side against the loaded page below — the vocab
+    // chips are also derived from that loaded set, so every visible
+    // chip is guaranteed to return ≥1 row when clicked.
     listQueue({
       knowledgeBaseId: kbId,
       status: status === 'all' ? undefined : status,
-      connector: connectorCsv,
       limit: 100,
     })
       .then(setData)
       .catch((err: ApiError) => setError(err.message));
-  }, [kbId, status, selectedConnectors]);
+  }, [kbId, status]);
   const reloadDebounced = useCallback(debounce(reload, 100), [reload]);
 
   useEffect(reload, [reload]);
@@ -207,13 +208,6 @@ export function QueuePanel() {
         // Non-fatal — action cards without a resolvable slug just skip
         // the "Open editor" link. The queue itself still works.
       });
-  }, [kbId]);
-
-  // F92 — tag vocabulary for the filter chip row. Refreshed on
-  // candidate_approved via the useEvents hook below.
-  useEffect(() => {
-    if (!kbId) return;
-    listTags(kbId).then(setAllTags).catch(() => setAllTags([]));
   }, [kbId]);
 
   const toggleTag = useCallback((tag: string) => {
@@ -239,14 +233,6 @@ export function QueuePanel() {
       e.type === 'candidate_resolved'
     ) {
       reloadDebounced();
-    }
-    // F92 — refresh the tag vocabulary when an approval commits new
-    // tags. Other event kinds don't touch documents.tags so they
-    // wouldn't change the aggregate.
-    if (e.type === 'candidate_approved') {
-      listTags(kbId).then(setAllTags).catch(() => {
-        // non-fatal — chip row may go slightly stale until next focus
-      });
     }
   });
   useEffect(() => onStreamOpen(reload), [reload]);
@@ -327,8 +313,18 @@ export function QueuePanel() {
   // filters first, then one-clicks, only dismisses what they were looking
   // at.
   const visibleFiltered = (data?.items ?? []).filter((c) => {
+    const meta = parseMetadata(c.metadata);
+    // Connector filter (OR-semantics). A candidate is kept if its
+    // metadata.connector matches any selected chip. Applied client-side
+    // so the chip vocabulary and the filter stay consistent — server
+    // used to do this via ?connector=csv but that made the chip row
+    // enumerate connectors that didn't exist in the current queue,
+    // which confused curators into thinking the filter was broken.
+    if (selectedConnectors.size > 0) {
+      const conn = typeof meta?.connector === 'string' ? meta.connector : '';
+      if (!selectedConnectors.has(conn as ConnectorId)) return false;
+    }
     if (selectedTags.size > 0) {
-      const meta = parseMetadata(c.metadata);
       const raw = typeof meta?.tags === 'string' ? meta.tags : null;
       const candidateTags = parseTags(raw).map((t) => t.toLowerCase());
       for (const t of selectedTags) {
@@ -338,6 +334,38 @@ export function QueuePanel() {
     if (!passesConfidenceTier(c.confidence, confidenceTier)) return false;
     return true;
   });
+
+  // Chip vocabularies derived from the loaded rowset — every chip is
+  // guaranteed to match ≥1 row. Scope is pre-filter (raw data.items)
+  // so selecting one chip doesn't hide the others the curator might
+  // want to switch to. Counts reflect the unfiltered loaded page.
+  const availableConnectors = (() => {
+    const counts = new Map<string, number>();
+    for (const c of data?.items ?? []) {
+      const meta = parseMetadata(c.metadata);
+      const conn = typeof meta?.connector === 'string' ? meta.connector : '';
+      if (!conn) continue;
+      counts.set(conn, (counts.get(conn) ?? 0) + 1);
+    }
+    return counts;
+  })();
+  const availableTags = (() => {
+    const counts = new Map<string, { display: string; count: number }>();
+    for (const c of data?.items ?? []) {
+      const meta = parseMetadata(c.metadata);
+      const raw = typeof meta?.tags === 'string' ? meta.tags : null;
+      for (const tag of parseTags(raw)) {
+        const key = tag.toLowerCase();
+        const existing = counts.get(key);
+        if (existing) existing.count += 1;
+        else counts.set(key, { display: tag, count: 1 });
+      }
+    }
+    return Array.from(counts.values()).sort((a, b) => {
+      if (b.count !== a.count) return b.count - a.count;
+      return a.display.localeCompare(b.display);
+    });
+  })();
   const lowConfidenceIds = visibleFiltered
     .filter((c) => typeof c.confidence === 'number' && c.confidence < CONFIDENCE_LOW_MAX)
     .map((c) => c.id);
@@ -631,30 +659,28 @@ export function QueuePanel() {
           ) : null}
         </div>
         {connectorFilterOpen || selectedConnectors.size > 0 ? (
-          <div class="flex flex-wrap gap-2">
-            {LIVE_CONNECTORS.map((id) => (
-              <ConnectorBadge
-                key={id}
-                variant="chip"
-                connector={id}
-                active={selectedConnectors.has(id)}
-                onClick={() => toggleConnector(id)}
-              />
-            ))}
-            {ROADMAP_CONNECTORS.map((id) => (
-              <ConnectorBadge
-                key={id}
-                variant="chip"
-                connector={id}
-                active={false}
-                disabled
-                onClick={() => {}}
-              />
-            ))}
-          </div>
+          availableConnectors.size > 0 ? (
+            <div class="flex flex-wrap gap-2">
+              {LIVE_CONNECTORS.filter(
+                (id) => availableConnectors.has(id) || selectedConnectors.has(id),
+              ).map((id) => (
+                <ConnectorBadge
+                  key={id}
+                  variant="chip"
+                  connector={id}
+                  active={selectedConnectors.has(id)}
+                  onClick={() => toggleConnector(id)}
+                />
+              ))}
+            </div>
+          ) : (
+            <div class="text-[10px] font-mono text-[color:var(--color-fg-subtle)] italic">
+              {t('queue.connectorFilterEmpty')}
+            </div>
+          )
         ) : null}
 
-        {allTags.length > 0 ? (
+        {availableTags.length > 0 ? (
           <div class="mt-3">
             <div class="flex items-center gap-2 mb-2">
               <button
@@ -682,13 +708,13 @@ export function QueuePanel() {
             </div>
             {tagFilterOpen || selectedTags.size > 0 ? (
               <div class="flex flex-wrap gap-2">
-                {allTags.map(({ tag, count }) => {
-                  const active = selectedTags.has(tag.toLowerCase());
+                {availableTags.map(({ display, count }) => {
+                  const active = selectedTags.has(display.toLowerCase());
                   return (
                     <button
-                      key={tag}
+                      key={display}
                       type="button"
-                      onClick={() => toggleTag(tag)}
+                      onClick={() => toggleTag(display)}
                       class={
                         'inline-flex items-center gap-1 px-2 py-1 text-[11px] font-mono rounded-md border transition ' +
                         (active
@@ -696,7 +722,7 @@ export function QueuePanel() {
                           : 'border-[color:var(--color-border)] text-[color:var(--color-fg-muted)] hover:text-[color:var(--color-fg)] hover:border-[color:var(--color-border-strong)]')
                       }
                     >
-                      <span>{tag}</span>
+                      <span>{display}</span>
                       <span class="opacity-60">· {count}</span>
                     </button>
                   );
