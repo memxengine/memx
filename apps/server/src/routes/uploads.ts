@@ -96,9 +96,18 @@ uploadRoutes.post('/knowledge-bases/:kbId/documents/upload', async (c) => {
   if (isText) {
     const content = new TextDecoder().decode(buffer);
     const title = ext === 'md' ? extractTitle(content) ?? file.name : file.name;
+    // NOTE: we store the extracted content but leave status='processing'
+    // (set below) rather than jumping straight to 'ready'. Text files
+    // have no file-format-extract step so the row could technically
+    // be 'ready' from upload, but the LLM compile (runIngest) still
+    // has to fire and that's queued per-KB — with many uploads
+    // landing at once, a curator would see "ready" on doc #65 while
+    // its compile is still 30 minutes away in the queue. Status
+    // 'processing' surfaces that honestly: runIngest transitions to
+    // 'ready' when the compile actually completes.
     await trail.db
       .update(documents)
-      .set({ content, title, status: 'ready', version: 1 })
+      .set({ content, title, status: 'processing', version: 1 })
       .where(eq(documents.id, docId))
       .run();
 
