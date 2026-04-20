@@ -21,12 +21,13 @@ export type {
 } from './queue/candidates.js';
 export { shouldAutoApprove } from './queue/policy.js';
 
-// Lint pass (F32) — orphans, stale, contradictions.
+// Lint pass (F32) — orphans, stale, contradictions, faded heuristics (F139).
 export {
   runLint,
   detectOrphans,
   detectStale,
   detectContradictions,
+  detectFadedHeuristics,
 } from './lint/index.js';
 export { DEFAULT_HUB_PAGES } from './lint/orphans.js';
 export type {

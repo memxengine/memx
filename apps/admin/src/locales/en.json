@@ -348,6 +348,12 @@
     "clear": "clear",
     "empty": "None of the candidates carry tags yet."
   },
+  "heuristic": {
+    "pinned": "Pinned",
+    "active": "{n} conf",
+    "faded": "Faded · {n}",
+    "hint": "Heuristic Neurons carry a confidence score that decays over time unless they're edited or pinned. Below 0.3 they fade — chat excludes them so old rules-of-thumb don't contaminate new answers."
+  },
   "settings": {
     "savedToast": "Saved.",
     "trail": {

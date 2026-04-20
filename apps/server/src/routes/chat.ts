@@ -1,10 +1,16 @@
 import { Hono } from 'hono';
-import { knowledgeBases, type TrailDatabase } from '@trail/db';
-import { and, eq } from 'drizzle-orm';
+import { documents, knowledgeBases, type TrailDatabase } from '@trail/db';
+import { and, eq, like } from 'drizzle-orm';
 import { requireAuth, getTenant, getUser, getTrail } from '../middleware/auth.js';
 import { spawnClaude, extractAssistantText } from '../services/claude.js';
 import { ChatRequestSchema } from '@trail/shared';
 import { resolveKbId } from '@trail/core';
+import {
+  HEURISTIC_PATH,
+  computeConfidence,
+  isFaded,
+  isPinned,
+} from '@trail/shared';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -235,9 +241,16 @@ async function retrieveContext(
   for (const kbId of kbIds) {
     if (totalChars >= MAX_CHARS) break;
 
+    // F139 — faded heuristics (confidence <0.3, not pinned) are excluded
+    // from chat context so stale decision-rules don't drift into new
+    // answers. The filter is a Set<documentId> applied after FTS — cheap
+    // upfront query, usually 0 rows on KBs that don't use heuristics yet.
+    const fadedHeuristicIds = await listFadedHeuristicIds(trail, kbId, tenantId);
+
     const chunkHits = await trail.searchChunks(ftsQuery, kbId, tenantId, PER_KB_CHUNKS);
     for (const hit of chunkHits) {
       if (totalChars >= MAX_CHARS) break;
+      if (fadedHeuristicIds.has(hit.documentId)) continue;
       const header = hit.headerBreadcrumb ? `[${hit.headerBreadcrumb}] ` : '';
       const text = `### chunk ${header}\n${hit.content.slice(0, 2500)}`;
       chunks.push(text);
@@ -250,6 +263,7 @@ async function retrieveContext(
     const docHits = await trail.searchDocuments(ftsQuery, kbId, tenantId, PER_KB_DOCS);
     for (const hit of docHits) {
       if (hit.kind !== 'wiki') continue;
+      if (fadedHeuristicIds.has(hit.id)) continue;
       if (totalChars >= MAX_CHARS) break;
       if (!seen.has(hit.id)) {
         seen.add(hit.id);
@@ -259,6 +273,44 @@ async function retrieveContext(
   }
 
   return { context: chunks.join('\n\n---\n\n'), citations };
+}
+
+/**
+ * F139 — IDs of heuristic Neurons that have faded below the confidence
+ * threshold and are NOT pinned. Used by retrieveContext to suppress
+ * stale decision-rules from chat context. Returns an empty set when
+ * the KB has no heuristic Neurons (the common case today).
+ */
+async function listFadedHeuristicIds(
+  trail: TrailDatabase,
+  kbId: string,
+  tenantId: string,
+): Promise<Set<string>> {
+  const rows = await trail.db
+    .select({
+      id: documents.id,
+      content: documents.content,
+      updatedAt: documents.updatedAt,
+    })
+    .from(documents)
+    .where(
+      and(
+        eq(documents.knowledgeBaseId, kbId),
+        eq(documents.tenantId, tenantId),
+        eq(documents.kind, 'wiki'),
+        eq(documents.archived, false),
+        like(documents.path, `${HEURISTIC_PATH}%`),
+      ),
+    )
+    .all();
+
+  const faded = new Set<string>();
+  for (const r of rows) {
+    const pinned = isPinned(r.content);
+    const confidence = computeConfidence(r.updatedAt, pinned);
+    if (isFaded(confidence)) faded.add(r.id);
+  }
+  return faded;
 }
 
 function sanitizeFtsQuery(raw: string): string {

@@ -2,7 +2,13 @@ import { useEffect, useMemo, useState } from 'preact/hooks';
 import { useRoute } from 'preact-iso';
 import { marked } from 'marked';
 import type { Document } from '@trail/shared';
-import { slugify } from '@trail/shared';
+import {
+  slugify,
+  isHeuristicPath,
+  isPinned,
+  computeConfidence,
+  HEURISTIC_FADED_THRESHOLD,
+} from '@trail/shared';
 import {
   listWikiPages,
   getDocumentContent,
@@ -154,6 +160,12 @@ function ReaderView() {
               {readerTags.length > 0 ? (
                 <TagChips tags={readerTags} />
               ) : null}
+              {isHeuristicPath(d.path) ? (
+                <HeuristicBadge
+                  updatedAt={d.updatedAt ?? d.createdAt ?? null}
+                  content={content}
+                />
+              ) : null}
             </div>
             {provenance?.connector ? (
               <div class="mt-3 flex items-center gap-2 text-[11px] font-mono text-[color:var(--color-fg-subtle)] flex-wrap">
@@ -177,6 +189,47 @@ function ReaderView() {
         </article>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * F139 — heuristic confidence badge for the Neuron reader header.
+ * Only renders for Neurons under /neurons/heuristics/. Shows the
+ * computed confidence (decayed by age unless pinned) and a distinct
+ * style when faded below the threshold so a curator can see at a
+ * glance which decision-rules the system currently excludes from chat
+ * context.
+ */
+function HeuristicBadge({
+  updatedAt,
+  content,
+}: {
+  updatedAt: string | null;
+  content: string | null;
+}) {
+  const pinned = isPinned(content ?? '');
+  const confidence = computeConfidence(updatedAt, pinned);
+  const faded = confidence < HEURISTIC_FADED_THRESHOLD;
+  const toneClass = faded
+    ? 'bg-[color:var(--color-danger)]/10 border-[color:var(--color-danger)]/30 text-[color:var(--color-danger)]'
+    : pinned
+    ? 'bg-[color:var(--color-accent)]/10 border-[color:var(--color-accent)]/30 text-[color:var(--color-accent)]'
+    : 'bg-[color:var(--color-success)]/10 border-[color:var(--color-success)]/30 text-[color:var(--color-success)]';
+  const label = pinned
+    ? t('heuristic.pinned')
+    : faded
+    ? t('heuristic.faded', { n: confidence.toFixed(1) })
+    : t('heuristic.active', { n: confidence.toFixed(1) });
+  return (
+    <span
+      title={t('heuristic.hint')}
+      class={
+        'inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-mono uppercase tracking-wider border ' +
+        toneClass
+      }
+    >
+      {label}
+    </span>
   );
 }
 

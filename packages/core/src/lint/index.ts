@@ -19,6 +19,7 @@ import { and, eq, inArray, like } from 'drizzle-orm';
 import { createCandidate, type Actor } from '../queue/candidates.js';
 import { detectOrphans } from './orphans.js';
 import { detectStale } from './stale.js';
+import { detectFadedHeuristics } from './faded-heuristics.js';
 import type { QueueCandidate } from '@trail/shared';
 import type { LintFinding, LintOptions, LintReport } from './types.js';
 
@@ -36,6 +37,7 @@ export type LintEmitCallback = (args: {
 export type { LintFinding, LintOptions, LintReport } from './types.js';
 export { detectOrphans } from './orphans.js';
 export { detectStale } from './stale.js';
+export { detectFadedHeuristics } from './faded-heuristics.js';
 export {
   detectContradictions,
   type ContradictionCandidate,
@@ -47,6 +49,7 @@ export {
 const DETECTORS = [
   { name: 'orphans', run: detectOrphans },
   { name: 'stale', run: detectStale },
+  { name: 'faded-heuristics', run: detectFadedHeuristics },
 ] as const;
 
 /**

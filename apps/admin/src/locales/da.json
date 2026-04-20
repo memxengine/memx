@@ -348,6 +348,12 @@
     "clear": "ryd",
     "empty": "Ingen af kandidaterne har tags endnu."
   },
+  "heuristic": {
+    "pinned": "Pinnet",
+    "active": "{n} tillid",
+    "faded": "Falmet · {n}",
+    "hint": "Heuristic-Neuroner bærer en tillids-score der falder over tid medmindre de redigeres eller pinnes. Under 0.3 falmes de — chat ekskluderer dem så gamle tommelfinger-regler ikke forurener nye svar."
+  },
   "settings": {
     "savedToast": "Gemt.",
     "trail": {
