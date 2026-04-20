@@ -195,6 +195,18 @@ Ship'er Trail til "markedets bedste Karpathy-LLM-Wiki-killer" via ~34 features f
 |---|---------|--------|-------|------|
 | F135 | [Slug-based KB URLs](features/F135-slug-based-kb-urls.md) | Done | 1 | [plan](features/F135-slug-based-kb-urls.md) |
 
+### F137-F141 — Ecosystem-inspired semantic + telemetry extensions
+
+Batch drawn from evoailabs Medium survey of LLM Wiki ecosystem (Waykee Cortex, Sage-Wiki, Thinking-MCP) plus Christian's own read-telemetry idea. Each is net-new against the F100-F133 Karpathy-parity batch and orthogonal to current ship work.
+
+| # | Feature | Status | Phase | Plan |
+|---|---------|--------|-------|------|
+| F137 | [Typed Neuron Relationships](features/F137-typed-neuron-relationships.md) | Planned | 2 | [plan](features/F137-typed-neuron-relationships.md) |
+| F138 | [Work Layer: Tasks, Bugs, Milestones](features/F138-work-layer-tasks-milestones.md) | Planned | 2 | [plan](features/F138-work-layer-tasks-milestones.md) |
+| F139 | [Heuristic Neurons with Temporal Decay](features/F139-heuristic-neurons-with-decay.md) | Planned | 2 | [plan](features/F139-heuristic-neurons-with-decay.md) |
+| F140 | [Hierarchical Context Inheritance](features/F140-hierarchical-context-inheritance.md) | Planned | 2 | [plan](features/F140-hierarchical-context-inheritance.md) |
+| F141 | [Neuron Access Telemetry + Usage Weighting](features/F141-neuron-access-telemetry.md) | Planned | 2 | [plan](features/F141-neuron-access-telemetry.md) |
+
 ---
 
 ## Descriptions
