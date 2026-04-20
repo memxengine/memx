@@ -133,18 +133,34 @@ export function AmbientProvider() {
   useEffect(() => {
     const r = refs.current;
 
-    const tryGestureSwap = () => {
+    // Every user gesture (pointerdown/keydown) runs this. Design
+    // invariant: as long as ambientEnabled is true, after ANY gesture
+    // we want the engine to be playing the route's track. We used to
+    // gate on `pendingGestureSwap` — but that flag is only set inside
+    // the stopEnabled effect when ctx.state is 'suspended'. On a
+    // hard reload, if ensureContext() fails or the ctx happens to
+    // come up 'running', the flag is never set — and no subsequent
+    // gesture swaps the track. Drop the gate: let every gesture try
+    // to reach the desired state. swapTo() is idempotent (returns
+    // early when activeKey already matches), so repeated gestures
+    // after the engine is already playing are free.
+    const tryGestureSwap = async (): Promise<void> => {
       if (!ambientEnabled.value) return;
       if (!ensureContext(r)) return;
-      if (r.ctx?.state === 'suspended') {
-        r.ctx.resume().catch(() => {
-          /* user denied / not yet allowed */
-        });
+      // Await ctx.resume — needed because createBufferSource.start()
+      // on a suspended context queues silently. A fire-and-forget
+      // resume lets swapTo race ahead and the user hears nothing.
+      if (r.ctx && r.ctx.state === 'suspended') {
+        try {
+          await r.ctx.resume();
+        } catch {
+          /* browser blocked (no recent gesture trust) — next click */
+          return;
+        }
       }
-      if (r.pendingGestureSwap) {
-        r.pendingGestureSwap = false;
-        void swapTo(r, ambientRoute.value);
-      }
+      if (r.ctx?.state !== 'running') return;
+      r.pendingGestureSwap = false;
+      void swapTo(r, ambientRoute.value);
     };
     document.addEventListener('pointerdown', tryGestureSwap, true);
     document.addEventListener('keydown', tryGestureSwap, true);

@@ -9,6 +9,7 @@
  * speakers, headphones, room acoustics.
  */
 import { signal, effect } from '@preact/signals';
+import { routeFromPath } from './route-to-ambient';
 
 export type RouteKey = 'landing' | 'neurons' | 'queue' | 'chat' | 'search' | 'sources' | 'idle';
 
@@ -39,9 +40,21 @@ function readVolume(): number {
   return Math.max(0, Math.min(1, n));
 }
 
+/**
+ * Initial route is derived from the current pathname at module load
+ * so a full-page reload on `/kb/.../graph` starts directly on the
+ * `neurons` track — no landing-then-neurons swap, no ~100 ms silent
+ * gap during the hard cut. SSR-safe: falls back to `landing` when
+ * window is undefined.
+ */
+function initialRouteFromLocation(): RouteKey {
+  if (typeof window === 'undefined') return 'landing';
+  return routeFromPath(window.location.pathname);
+}
+
 export const ambientEnabled = signal<boolean>(readEnabled());
 export const ambientVolume = signal<number>(readVolume());
-export const ambientRoute = signal<RouteKey>('landing');
+export const ambientRoute = signal<RouteKey>(initialRouteFromLocation());
 
 // Persist on change. effect() runs once eagerly, so we guard the first
 // run to avoid writing the hydrated value back into localStorage and

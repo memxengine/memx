@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'preact/hooks';
 import { useRoute } from 'preact-iso';
 import { marked } from 'marked';
 import type { Document } from '@trail/shared';
+import { slugify } from '@trail/shared';
 import {
   listWikiPages,
   getDocumentContent,
@@ -46,10 +47,18 @@ function ReaderView() {
 
   const doc = useMemo(() => {
     if (!pages) return null;
+    // Match the requested slug against every Neuron's canonical slug
+    // form (slugify of filename-sans-.md). Robust against old links
+    // in the wild that carry raw display casing or spaces — a link
+    // written as `/neurons/FMC` or `/neurons/ARC Farm Intelligence`
+    // still lands on `fmc.md` / `arc-farm-intelligence.md`. Falls
+    // back to exact filename match for extra-safe round-tripping.
+    const wanted = slugify(slug);
     return (
       pages.find((p) => {
         const d = p as Document & { filename: string };
-        return d.filename.replace(/\.md$/i, '') === slug;
+        const fileSlug = slugify(d.filename.replace(/\.md$/i, ''));
+        return fileSlug === wanted || d.filename.replace(/\.md$/i, '') === slug;
       }) ?? null
     );
   }, [pages, slug]);

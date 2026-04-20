@@ -17,7 +17,11 @@
 import type { RouteKey } from './ambient-store';
 
 export function routeFromPath(pathname: string): RouteKey {
-  if (/^\/kb\/[^/]+\/neurons/.test(pathname)) return 'neurons';
+  // F99 — /graph maps to the same `neurons` loop as /neurons/:slug so
+  // the track keeps playing when the user drills from graph into a
+  // reader page. Both surfaces are Neuron-exploration modes; they
+  // share the mental context and should share the audio bed.
+  if (/^\/kb\/[^/]+\/(neurons|graph)/.test(pathname)) return 'neurons';
   if (/^\/kb\/[^/]+\/chat/.test(pathname)) return 'chat';
   if (/^\/kb\/[^/]+\/search/.test(pathname)) return 'search';
   if (/^\/kb\/[^/]+\/sources/.test(pathname)) return 'sources';
