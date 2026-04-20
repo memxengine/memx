@@ -361,7 +361,12 @@ function SourceRow({
             <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono uppercase tracking-wider bg-[color:var(--color-bg)] border border-[color:var(--color-border)] text-[color:var(--color-fg-muted)]">
               {doc.fileType || 'doc'}
             </span>
-            <StatusBadge status={doc.status} />
+            <StatusBadge
+              status={doc.status}
+              neuronCount={
+                (doc as Document & { neuronCount?: number }).neuronCount ?? null
+              }
+            />
             {doc.pageCount ? (
               <span class="text-[10px] font-mono text-[color:var(--color-fg-subtle)]">
                 {doc.pageCount} page{doc.pageCount === 1 ? '' : 's'}
@@ -501,24 +506,42 @@ function ExpandedSource({ doc }: { doc: Document }) {
   );
 }
 
-function StatusBadge({ status }: { status: Document['status'] }) {
-  // `ready` used to suppress to null — the absence of a badge read as
-  // "nothing happening". Rendering a soft-success pill next to the
-  // file-type chip gives curators a positive acknowledgement that
-  // extract + ingest completed. Green tone matches the SUCCESS palette
-  // elsewhere (e.g. `✓ saved to queue` confirmation in chat.tsx).
+function StatusBadge({
+  status,
+  neuronCount,
+}: {
+  status: Document['status'];
+  neuronCount?: number | null;
+}) {
+  // Differentiate "extract done but compile yielded nothing" from
+  // "extract done AND at least one Neuron cites this Source". Both
+  // are technically `status='ready'`, but SUCCESS reads as "the
+  // pipeline did its job" — misleading when 0 Neurons were written.
+  // EXTRACTED (neutral amber) signals "file is here, LLM compile
+  // produced nothing — re-ingest to retry".
+  const extractedButEmpty = status === 'ready' && (neuronCount ?? 0) === 0;
   const tone =
     status === 'failed'
       ? 'bg-[color:var(--color-danger)]/10 text-[color:var(--color-danger)]'
       : status === 'processing'
       ? 'bg-[color:var(--color-accent)]/15 text-[color:var(--color-accent)]'
+      : extractedButEmpty
+      ? 'bg-[color:var(--color-warning,#f59e0b)]/15 text-[color:var(--color-warning,#f59e0b)]'
       : status === 'ready'
       ? 'bg-[color:var(--color-success)]/15 text-[color:var(--color-success)]'
       : 'bg-[color:var(--color-bg)] border border-[color:var(--color-border)] text-[color:var(--color-fg-muted)]';
-  const label = status === 'ready' ? 'success' : status;
+  const label = extractedButEmpty
+    ? 'extracted'
+    : status === 'ready'
+    ? 'success'
+    : status;
+  const title = extractedButEmpty
+    ? 'Extracted successfully, but the LLM compile produced no Neurons. Click re-ingest to try again.'
+    : undefined;
   return (
     <span
       class={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono uppercase tracking-wider ${tone}`}
+      title={title}
     >
       {label}
     </span>

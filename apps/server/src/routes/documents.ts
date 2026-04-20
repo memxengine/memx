@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { documents, knowledgeBases, documentChunks, wikiEvents, queueCandidates } from '@trail/db';
+import { documents, knowledgeBases, documentChunks, wikiEvents, queueCandidates, documentReferences } from '@trail/db';
 import {
   CreateNoteSchema,
   UpdateDocumentSchema,
@@ -8,7 +8,7 @@ import {
   DocumentKindEnum,
   canonicaliseTagString,
 } from '@trail/shared';
-import { eq, and, inArray, asc, desc, type SQL } from 'drizzle-orm';
+import { eq, and, inArray, asc, desc, sql, type SQL } from 'drizzle-orm';
 import { submitCuratorEdit, VersionConflictError, resolveKbId } from '@trail/core';
 import { requireAuth, getUser, getTenant, getTrail } from '../middleware/auth.js';
 import { chunkText, storeChunks } from '../services/chunker.js';
@@ -104,6 +104,16 @@ documentRoutes.get('/knowledge-bases/:kbId/documents', async (c) => {
       isCanonical: documents.isCanonical,
       createdAt: documents.createdAt,
       updatedAt: documents.updatedAt,
+      // Count of DISTINCT Neurons that cite this Source via
+      // document_references. Drives the sources-panel badge:
+      // `ready` + neuronCount=0 → EXTRACTED (compile ran but yielded
+      // nothing); `ready` + neuronCount>0 → SUCCESS. Subquery avoids
+      // N+1 and costs near-zero on the existing idx_refs_source index.
+      neuronCount: sql<number>`(
+        SELECT COUNT(DISTINCT ${documentReferences.wikiDocumentId})
+        FROM ${documentReferences}
+        WHERE ${documentReferences.sourceDocumentId} = ${documents.id}
+      )`.as('neuron_count'),
     })
     .from(documents)
     .where(and(...conditions))
