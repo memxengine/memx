@@ -518,6 +518,24 @@ function SourceRow({
             <span class="text-[10px] font-mono text-[color:var(--color-fg-subtle)]">
               {formatBytes(doc.fileSize)}
             </span>
+            {/* Neuron count — number of Neurons that cite this Source.
+                Zero is worth showing explicitly (not suppressed to
+                null) because "0 Neurons" on a ready Source is the
+                thing that tells the curator this row needs re-ingest,
+                even if the badge already hints at it. Tone amber for
+                zero so it's visually tied to the EXTRACTED badge. */}
+            {doc.status === 'ready' ? (
+              (() => {
+                const n =
+                  (doc as Document & { neuronCount?: number }).neuronCount ?? 0;
+                const key = n === 0 ? 'sources.neuronCountZero' : n === 1 ? 'sources.neuronCountOne' : 'sources.neuronCount';
+                const cls =
+                  n === 0
+                    ? 'text-[10px] font-mono text-[color:var(--color-warning,#f59e0b)]'
+                    : 'text-[10px] font-mono text-[color:var(--color-fg-subtle)]';
+                return <span class={cls}>{t(key, { n })}</span>;
+              })()
+            ) : null}
           </div>
           <div class="font-medium">{doc.title ?? doc.filename}</div>
           <div class="text-[11px] font-mono text-[color:var(--color-fg-subtle)] truncate">
