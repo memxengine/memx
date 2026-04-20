@@ -36,6 +36,15 @@ import {
   POLLUTED_SEED_MARKERS,
   POLLUTED_MARKER_THRESHOLD,
 } from '../services/glossary-seed.js';
+import { backfillGlossaryForKb } from '../services/glossary-backfill.js';
+
+// Content markers the backfill uses to decide "this glossary is an
+// empty template and has never been populated" — one per locale,
+// drawn from the first line of the seed body.
+const EMPTY_TEMPLATE_MARKERS = [
+  'Domæne-specifikke fagtermer fra denne vidensbase. Ingen endnu',
+  'Domain-specific terms from this knowledge base. None yet',
+];
 
 const GLOSSARY_FILENAME = 'glossary.md';
 const GLOSSARY_PATH = '/neurons/';
@@ -62,6 +71,11 @@ export async function seedMissingGlossaryNeurons(trail: TrailDatabase): Promise<
 
   if (kbs.length === 0) return;
 
+  // KBs whose glossary is still the empty template after the seed+
+  // cleanup passes — these are the ones the retroactive LLM backfill
+  // needs to process. Collected inside the loop, run AFTER boot.
+  const needsBackfill: Kb[] = [];
+
   let seeded = 0;
   let rewritten = 0;
   for (const kb of kbs) {
@@ -84,7 +98,10 @@ export async function seedMissingGlossaryNeurons(trail: TrailDatabase): Promise<
       .get();
 
     if (!existing) {
-      if (await seedGlossary(trail, kb)) seeded += 1;
+      if (await seedGlossary(trail, kb)) {
+        seeded += 1;
+        needsBackfill.push(kb);
+      }
       continue;
     }
 
@@ -95,6 +112,16 @@ export async function seedMissingGlossaryNeurons(trail: TrailDatabase): Promise<
       const replacement = buildSeedGlossary(kb.language);
       await rewriteGlossary(trail, kb, existing.id, existing.version, replacement);
       rewritten += 1;
+      needsBackfill.push(kb);
+      continue;
+    }
+
+    // Not polluted, not missing — check whether it's still the empty
+    // template. A populated glossary (even a manually-edited one) is
+    // left alone. An empty template queues for retroactive backfill.
+    const isEmptyTemplate = EMPTY_TEMPLATE_MARKERS.some((m) => content.includes(m));
+    if (isEmptyTemplate) {
+      needsBackfill.push(kb);
     }
   }
 
@@ -104,6 +131,43 @@ export async function seedMissingGlossaryNeurons(trail: TrailDatabase): Promise<
   if (rewritten > 0) {
     console.log(`  F102 bootstrap: rewrote polluted glossary in ${rewritten} KB(s) (reverted to empty template)`);
   }
+
+  // Fire-and-forget retroactive backfill. One LLM call per empty KB,
+  // serialised so we don't spawn 200 CLI subprocesses at scale. Runs
+  // AFTER the async return so engine boot isn't blocked by Haiku
+  // latency — subscribers + admin come up immediately; glossaries
+  // populate in the background as each KB's pass finishes.
+  if (needsBackfill.length > 0) {
+    console.log(
+      `  F102 bootstrap: queueing retroactive backfill for ${needsBackfill.length} empty glossary(ies) — runs in background`,
+    );
+    void runBackfillSerial(trail, needsBackfill);
+  }
+}
+
+/**
+ * Sequential backfill loop — one KB at a time. Keeps LLM concurrency
+ * at 1 so a 200-KB boot doesn't swamp the CLI lane or the model host.
+ * Tolerates per-KB errors without aborting the queue.
+ */
+async function runBackfillSerial(trail: TrailDatabase, kbs: Kb[]): Promise<void> {
+  let totalEntries = 0;
+  const t0 = Date.now();
+  for (const kb of kbs) {
+    try {
+      const entries = await backfillGlossaryForKb(trail, kb);
+      totalEntries += entries;
+    } catch (err) {
+      console.error(
+        `[F102 backfill] unhandled error for KB "${kb.name}":`,
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+  const elapsed = Math.round((Date.now() - t0) / 1000);
+  console.log(
+    `[F102 backfill] complete: ${kbs.length} KB(s), ${totalEntries} total entries, ${elapsed}s`,
+  );
 }
 
 async function seedGlossary(trail: TrailDatabase, kb: Kb): Promise<boolean> {
