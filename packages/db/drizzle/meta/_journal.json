@@ -36,6 +36,13 @@
       "when": 1776420312544,
       "tag": "0004_lucky_red_wolf",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1777100000000,
+      "tag": "0005_typed_edges",
+      "breakpoints": true
     }
   ]
 }

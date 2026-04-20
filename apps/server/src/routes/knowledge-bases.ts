@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { knowledgeBases, type TrailDatabase } from '@trail/db';
+import { documents, knowledgeBases, wikiBacklinks, type TrailDatabase } from '@trail/db';
 import { CreateKBSchema, UpdateKBSchema } from '@trail/shared';
 import { eq, and } from 'drizzle-orm';
 import { requireAuth, getUser, getTenant, getTrail } from '../middleware/auth.js';
@@ -7,6 +7,7 @@ import { uniqueSlug, createCandidate, resolveKbId } from '@trail/core';
 import { broadcaster } from '../services/broadcast.js';
 import { listKbTags } from '../services/tag-aggregate.js';
 import { buildSeedGlossary } from '../services/glossary-seed.js';
+import { VALID_EDGE_TYPES, type EdgeType } from '../services/backlink-extractor.js';
 
 export const kbRoutes = new Hono();
 
@@ -79,6 +80,35 @@ kbRoutes.get('/knowledge-bases/:id/tags', async (c) => {
 
   const tags = await listKbTags(trail, tenant.id, kbId);
   return c.json(tags);
+});
+
+/**
+ * F137 — typed Neuron relationships.
+ * GET /knowledge-bases/:id/relationships?type=contradicts
+ *
+ * Returns every wiki_backlinks row whose edge_type matches the filter,
+ * joined against documents so the response carries titles + filenames
+ * the UI can render without a round-trip. Filter is optional — omitting
+ * `?type=` returns every typed edge, which powers the graph side legend
+ * and the "all my relationships"-view.
+ *
+ * Invalid edge-type strings return [] (fail-soft — a typo in the query
+ * string shouldn't 400 the whole panel). Unknown `?type=` values are
+ * treated as "no match" for the same reason.
+ */
+kbRoutes.get('/knowledge-bases/:id/relationships', async (c) => {
+  const trail = getTrail(c);
+  const tenant = getTenant(c);
+  const kbId = await resolveKbId(trail, tenant.id, c.req.param('id'));
+  if (!kbId) return c.json({ error: 'Not found' }, 404);
+
+  const typeParam = c.req.query('type');
+  if (typeParam && !(VALID_EDGE_TYPES as readonly string[]).includes(typeParam)) {
+    return c.json({ edges: [] });
+  }
+
+  const edges = await listRelationships(trail, tenant.id, kbId, typeParam as EdgeType | undefined);
+  return c.json({ edges });
 });
 
 kbRoutes.post('/knowledge-bases', async (c) => {
@@ -222,4 +252,83 @@ async function nextAvailableKbSlug(
     suffix += 1;
     candidate = `${base}-${suffix}`;
   }
+}
+
+/**
+ * F137 — load typed edges for a KB, with document titles/filenames on
+ * both ends so the API response is renderable without a follow-up
+ * round-trip. Scoped to non-archived documents so a stale link to a
+ * retired Neuron doesn't surface in the listing. `typeFilter` narrows
+ * to a single edge_type; undefined returns every typed edge.
+ */
+async function listRelationships(
+  trail: TrailDatabase,
+  tenantId: string,
+  kbId: string,
+  typeFilter: EdgeType | undefined,
+): Promise<
+  Array<{
+    from: { id: string; title: string | null; filename: string };
+    to: { id: string; title: string | null; filename: string };
+    edgeType: EdgeType;
+    linkText: string;
+  }>
+> {
+  const rows = await trail.db
+    .select({
+      fromId: wikiBacklinks.fromDocumentId,
+      toId: wikiBacklinks.toDocumentId,
+      edgeType: wikiBacklinks.edgeType,
+      linkText: wikiBacklinks.linkText,
+    })
+    .from(wikiBacklinks)
+    .where(
+      and(
+        eq(wikiBacklinks.tenantId, tenantId),
+        eq(wikiBacklinks.knowledgeBaseId, kbId),
+        ...(typeFilter ? [eq(wikiBacklinks.edgeType, typeFilter)] : []),
+      ),
+    )
+    .all();
+
+  if (rows.length === 0) return [];
+
+  // One pass: collect every doc id we need to resolve titles for, then
+  // one SELECT to fetch the document projections. Avoids N+1 lookups.
+  const docIds = new Set<string>();
+  for (const r of rows) {
+    docIds.add(r.fromId);
+    docIds.add(r.toId);
+  }
+  const docs = await trail.db
+    .select({
+      id: documents.id,
+      title: documents.title,
+      filename: documents.filename,
+      archived: documents.archived,
+    })
+    .from(documents)
+    .where(and(eq(documents.tenantId, tenantId), eq(documents.knowledgeBaseId, kbId)))
+    .all();
+
+  const byId = new Map<string, { title: string | null; filename: string; archived: boolean }>();
+  for (const d of docs) {
+    byId.set(d.id, { title: d.title, filename: d.filename, archived: d.archived });
+  }
+
+  const out: Awaited<ReturnType<typeof listRelationships>> = [];
+  for (const r of rows) {
+    const from = byId.get(r.fromId);
+    const to = byId.get(r.toId);
+    // Skip edges touching archived docs — a retired Neuron's relations
+    // shouldn't surface in the "live KB" listing.
+    if (!from || !to || from.archived || to.archived) continue;
+    out.push({
+      from: { id: r.fromId, title: from.title, filename: from.filename },
+      to: { id: r.toId, title: to.title, filename: to.filename },
+      edgeType: r.edgeType as EdgeType,
+      linkText: r.linkText,
+    });
+  }
+  return out;
 }

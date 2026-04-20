@@ -184,7 +184,14 @@ Your job is to ingest this source into the wiki. Follow these steps exactly:
 
 IMPORTANT RULES:
 - Be thorough but concise. Every claim should reference its source.
-- Use [[page-name]] for internal wiki cross-references.
+- Use [[page-name]] for internal wiki cross-references. When the relation is stronger than a plain mention, annotate it via [[page-name|edge-type]] so the knowledge-graph can reason about it. Valid edge-types:
+  * \`[[target|is-a]]\` — hierarchical specialisation (NADA is-a acupuncture-protocol)
+  * \`[[target|part-of]]\` — composition (ear-point-lung is part-of NADA)
+  * \`[[target|contradicts]]\` — explicit disagreement between claims
+  * \`[[target|supersedes]]\` — versioning; this Neuron replaces an older one
+  * \`[[target|example-of]]\` — concrete instance of an abstract concept
+  * \`[[target|caused-by]]\` — causal dependency
+  Bare \`[[target]]\` (no edge-type) means a plain citation/reference. Use typed edges sparingly — only when the relation is semantically load-bearing, not just "I mentioned this page."
 - ALL pages you create or update under /neurons/concepts/, /neurons/entities/, or /neurons/sources/ MUST have a \`sources: [...]\` field in their YAML frontmatter listing every Source filename the page draws claims from. The orphan-detector flags pages missing this field, so a missing \`sources\` list is a bug, not a shortcut. When updating an existing page, merge — don't replace — its existing sources array.
 - Required frontmatter fields on every page: title, tags, date, sources.
 - Do NOT create pages for trivial concepts. Focus on the 2-5 most important ones.

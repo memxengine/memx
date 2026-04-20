@@ -69,23 +69,53 @@ async function loadWikiPool(
 }
 
 /**
+ * Closed set of edge types accepted from `[[target|edge-type]]` syntax.
+ * Anything the LLM emits that isn't in this list falls back to 'cites'
+ * — bad edge-type strings don't break extraction, they just lose the
+ * semantic annotation.
+ */
+export const VALID_EDGE_TYPES = [
+  'cites',
+  'is-a',
+  'part-of',
+  'contradicts',
+  'supersedes',
+  'example-of',
+  'caused-by',
+] as const;
+export type EdgeType = (typeof VALID_EDGE_TYPES)[number];
+const EDGE_TYPE_SET = new Set<string>(VALID_EDGE_TYPES);
+
+export interface WikiLinkMatch {
+  target: string;
+  edgeType: EdgeType;
+}
+
+/**
  * Extract every `[[...]]` string from a Neuron body. Ignores frontmatter
  * (between the first pair of `---` lines) — source refs live there, and we
  * don't want to double-count a [[link]] that happens to sit in YAML.
+ *
+ * F137 — when the link carries an `|edge-type` suffix (`[[target|is-a]]`),
+ * parse it. Bare `[[link]]`s default to 'cites'. Unknown edge-types also
+ * default to 'cites' so a malformed suffix stays useful as a reference.
  */
-export function parseWikiLinks(content: string): string[] {
+export function parseWikiLinks(content: string): WikiLinkMatch[] {
   const withoutFrontmatter = stripFrontmatter(content);
-  const matches = withoutFrontmatter.matchAll(/\[\[([^\[\]|\n]+?)(?:\|[^\]]*)?\]\]/g);
-  const seen = new Set<string>();
-  const out: string[] = [];
+  const matches = withoutFrontmatter.matchAll(/\[\[([^\[\]|\n]+?)(?:\|([^\]\n]*))?\]\]/g);
+  const seen = new Map<string, WikiLinkMatch>();
   for (const m of matches) {
-    const raw = m[1]!.trim();
-    if (!raw) continue;
-    if (seen.has(raw)) continue;
-    seen.add(raw);
-    out.push(raw);
+    const target = m[1]!.trim();
+    if (!target) continue;
+    const suffix = (m[2] ?? '').trim().toLowerCase();
+    const edgeType: EdgeType = EDGE_TYPE_SET.has(suffix) ? (suffix as EdgeType) : 'cites';
+    // Dedup by target; first-write-wins on edge_type. A Neuron that
+    // writes `[[A|contradicts]]` and later `[[A]]` keeps contradicts.
+    // Matches how the old dedup-by-target worked, just with typed edge.
+    if (seen.has(target)) continue;
+    seen.set(target, { target, edgeType });
   }
-  return out;
+  return Array.from(seen.values());
 }
 
 function stripFrontmatter(content: string): string {
@@ -141,6 +171,7 @@ async function insertBacklink(
   wikiDoc: WikiDoc,
   targetId: string,
   linkText: string,
+  edgeType: EdgeType,
 ): Promise<boolean> {
   const id = `bl_${crypto.randomUUID().slice(0, 12)}`;
   try {
@@ -153,6 +184,7 @@ async function insertBacklink(
         fromDocumentId: wikiDoc.id,
         toDocumentId: targetId,
         linkText,
+        edgeType,
       })
       .run();
     return true;
@@ -201,10 +233,10 @@ export async function extractBacklinksForDoc(
   const wikiPool = pool ?? (await loadWikiPool(trail, doc.tenantId, doc.knowledgeBaseId));
 
   // Resolve every link, keep only those that land on a real Neuron.
-  const resolved: Array<{ targetId: string; linkText: string }> = [];
-  for (const linkText of links) {
-    const target = resolveLink(wikiPool, doc.id, linkText);
-    if (target) resolved.push({ targetId: target.id, linkText });
+  const resolved: Array<{ targetId: string; linkText: string; edgeType: EdgeType }> = [];
+  for (const link of links) {
+    const target = resolveLink(wikiPool, doc.id, link.target);
+    if (target) resolved.push({ targetId: target.id, linkText: link.target, edgeType: link.edgeType });
   }
 
   // Delete any prior backlinks from this doc that are no longer present in
@@ -217,8 +249,8 @@ export async function extractBacklinksForDoc(
     .run();
 
   let inserted = 0;
-  for (const { targetId, linkText } of resolved) {
-    const ok = await insertBacklink(trail, doc, targetId, linkText);
+  for (const { targetId, linkText, edgeType } of resolved) {
+    const ok = await insertBacklink(trail, doc, targetId, linkText, edgeType);
     if (ok) inserted += 1;
   }
   return inserted;

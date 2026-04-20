@@ -273,11 +273,23 @@ export const wikiBacklinks = sqliteTable(
     // filename — e.g. `[[Orphans + Stale]]` resolves to `orphans-stale.md`
     // but we keep the authored form for display + debugging.
     linkText: text('link_text').notNull(),
+    // F137 — typed relation carried by the link. Parsed from
+    // `[[target|edge-type]]` syntax by the backlink-extractor; defaults
+    // to 'cites' for bare `[[link]]`s and all pre-F137 rows.
+    //   cites        — bare mention, weakest relation (default)
+    //   is-a         — hierarchical specialisation
+    //   part-of      — composition (A is-part-of B)
+    //   contradicts  — explicit disagreement between claims
+    //   supersedes   — versioning (A replaces older B)
+    //   example-of   — concrete instance of an abstract concept
+    //   caused-by    — causal dependency
+    edgeType: text('edge_type').notNull().default('cites'),
     createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
   },
   (table) => [
     index('idx_backlinks_from').on(table.fromDocumentId),
     index('idx_backlinks_to').on(table.toDocumentId),
+    index('idx_backlinks_edge_type').on(table.edgeType),
     // Prevents re-extracting the same link over and over. The link text is
     // part of the key so a Neuron can link twice with different phrasings.
     uniqueIndex('idx_backlinks_unique').on(table.fromDocumentId, table.toDocumentId, table.linkText),
