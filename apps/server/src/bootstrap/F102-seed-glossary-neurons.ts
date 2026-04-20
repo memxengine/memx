@@ -1,32 +1,54 @@
 /**
  * F102 bootstrap — idempotent.
  *
- * Ensure every existing KB has a `/neurons/glossary.md` Neuron. KBs
- * created before F102 shipped never got one at creation-time, so
- * the compile-pipeline's glossary-maintenance step has nothing to
- * str_replace into. This bootstrap seeds the missing ones.
+ * Two responsibilities:
  *
- * Safe to leave in place forever: once a KB has a glossary Neuron,
- * the SELECT guard skips it on subsequent boots.
+ * 1. Ensure every KB has a `/neurons/glossary.md` Neuron. KBs created
+ *    before F102 shipped never got one at creation-time.
  *
- * The seed write goes through `createCandidate` (as every wiki write
- * must per the Curation Queue invariant) with `actor.kind='system'`
- * and `kind='ingest-summary'`, which the auto-approval policy accepts
- * on sight — same shape the post-/knowledge-bases handler uses.
+ * 2. Clean up glossaries that landed with the WRONG seed content. The
+ *    first F102 ship (commit 8770194) mis-seeded the Neuron with the
+ *    trail-APP terminology (Trail, Neuron, Curator, …) drawn from
+ *    data/glossary.json. That's app vocabulary — it lives in the
+ *    global /glossary admin panel. Per-KB glossaries are meant for
+ *    DOMAIN-specific fagtermer the compile-pipeline harvests from
+ *    Sources. This bootstrap detects the polluted content via a
+ *    signature marker (see glossary-seed.ts POLLUTED_SEED_MARKERS)
+ *    and overwrites it with the empty template via a direct
+ *    documents-table UPDATE. A wiki_events row is written so the
+ *    rewrite is visible in the history rather than looking like a
+ *    silent mutation.
+ *
+ * Safe to leave in place forever: both the SELECT guard (creates
+ *    only when missing) and the content-marker check (rewrites only
+ *    still-polluted seeds) idempotent-ize out after one run.
  */
-import { documents, knowledgeBases, type TrailDatabase } from '@trail/db';
+import {
+  documents,
+  knowledgeBases,
+  wikiEvents,
+  type TrailDatabase,
+} from '@trail/db';
 import { and, eq } from 'drizzle-orm';
 import { createCandidate } from '@trail/core';
-import { buildSeedGlossary } from '../services/glossary-seed.js';
+import {
+  buildSeedGlossary,
+  POLLUTED_SEED_MARKERS,
+} from '../services/glossary-seed.js';
 
 const GLOSSARY_FILENAME = 'glossary.md';
 const GLOSSARY_PATH = '/neurons/';
 
+type Kb = {
+  id: string;
+  tenantId: string;
+  createdBy: string;
+  name: string;
+  language: string | null;
+};
+
 export async function seedMissingGlossaryNeurons(trail: TrailDatabase): Promise<void> {
-  // Actor = kb.createdBy. The service-ingest user only exists when
-  // TRAIL_INGEST_TOKEN is configured; leaning on it here would fail
-  // on fresh installs and on dev DBs that never set the token.
-  const kbs = await trail.db
+  const kbs = (await trail.db
     .select({
       id: knowledgeBases.id,
       tenantId: knowledgeBases.tenantId,
@@ -35,14 +57,19 @@ export async function seedMissingGlossaryNeurons(trail: TrailDatabase): Promise<
       language: knowledgeBases.language,
     })
     .from(knowledgeBases)
-    .all();
+    .all()) as Kb[];
 
   if (kbs.length === 0) return;
 
   let seeded = 0;
+  let rewritten = 0;
   for (const kb of kbs) {
     const existing = await trail.db
-      .select({ id: documents.id })
+      .select({
+        id: documents.id,
+        content: documents.content,
+        version: documents.version,
+      })
       .from(documents)
       .where(
         and(
@@ -54,41 +81,99 @@ export async function seedMissingGlossaryNeurons(trail: TrailDatabase): Promise<
         ),
       )
       .get();
-    if (existing) continue;
 
-    const lang = kb.language ?? 'da';
-    const title = lang === 'da' ? 'Ordliste' : 'Glossary';
-    const content = buildSeedGlossary(lang);
+    if (!existing) {
+      if (await seedGlossary(trail, kb)) seeded += 1;
+      continue;
+    }
 
-    try {
-      await createCandidate(
-        trail,
-        kb.tenantId,
-        {
-          knowledgeBaseId: kb.id,
-          kind: 'ingest-summary',
-          title,
-          content,
-          metadata: JSON.stringify({
-            op: 'create',
-            filename: GLOSSARY_FILENAME,
-            path: GLOSSARY_PATH,
-            source: 'bootstrap:F102',
-          }),
-          confidence: 1,
-        },
-        { id: kb.createdBy, kind: 'system' },
-      );
-      seeded += 1;
-    } catch (err) {
-      console.error(
-        `[F102 bootstrap] failed to seed glossary for KB "${kb.name}":`,
-        err instanceof Error ? err.message : err,
-      );
+    const content = existing.content ?? '';
+    const isPolluted = POLLUTED_SEED_MARKERS.some((m) => content.includes(m));
+    if (isPolluted) {
+      const replacement = buildSeedGlossary(kb.language);
+      await rewriteGlossary(trail, kb, existing.id, existing.version, replacement);
+      rewritten += 1;
     }
   }
 
   if (seeded > 0) {
     console.log(`  F102 bootstrap: seeded glossary.md in ${seeded} KB(s)`);
+  }
+  if (rewritten > 0) {
+    console.log(`  F102 bootstrap: rewrote polluted glossary in ${rewritten} KB(s) (reverted to empty template)`);
+  }
+}
+
+async function seedGlossary(trail: TrailDatabase, kb: Kb): Promise<boolean> {
+  const lang = kb.language ?? 'da';
+  const title = lang === 'da' ? 'Ordliste' : 'Glossary';
+  const content = buildSeedGlossary(lang);
+
+  try {
+    await createCandidate(
+      trail,
+      kb.tenantId,
+      {
+        knowledgeBaseId: kb.id,
+        kind: 'ingest-summary',
+        title,
+        content,
+        metadata: JSON.stringify({
+          op: 'create',
+          filename: GLOSSARY_FILENAME,
+          path: GLOSSARY_PATH,
+          source: 'bootstrap:F102',
+        }),
+        confidence: 1,
+      },
+      { id: kb.createdBy, kind: 'system' },
+    );
+    return true;
+  } catch (err) {
+    console.error(
+      `[F102 bootstrap] failed to seed glossary for KB "${kb.name}":`,
+      err instanceof Error ? err.message : err,
+    );
+    return false;
+  }
+}
+
+async function rewriteGlossary(
+  trail: TrailDatabase,
+  kb: Kb,
+  docId: string,
+  currentVersion: number,
+  content: string,
+): Promise<void> {
+  const nextVersion = currentVersion + 1;
+  const nowIso = new Date().toISOString();
+  try {
+    await trail.db
+      .update(documents)
+      .set({ content, version: nextVersion, updatedAt: nowIso })
+      .where(eq(documents.id, docId))
+      .run();
+
+    // History trail so the rewrite is auditable rather than a silent
+    // mutation. Actor kind 'system' (the bootstrap ran the update, not
+    // a human), eventType 'edited' matches the normal rewrite event.
+    await trail.db.insert(wikiEvents).values({
+      id: crypto.randomUUID(),
+      tenantId: kb.tenantId,
+      documentId: docId,
+      eventType: 'edited',
+      actorId: kb.createdBy,
+      actorKind: 'system',
+      previousVersion: currentVersion,
+      newVersion: nextVersion,
+      summary: 'F102 bootstrap: replaced polluted glossary seed with empty template',
+      contentSnapshot: content,
+      createdAt: nowIso,
+    }).run();
+  } catch (err) {
+    console.error(
+      `[F102 bootstrap] failed to rewrite polluted glossary for KB "${kb.name}":`,
+      err instanceof Error ? err.message : err,
+    );
   }
 }
