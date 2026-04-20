@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import { broadcaster } from './broadcast.js';
 import { spawnClaude } from './claude.js';
 import { ensureMcpConfig } from '../lib/mcp-config.js';
+import { listKbTags } from './tag-aggregate.js';
 
 const INGEST_MODEL = process.env.INGEST_MODEL ?? '';
 const INGEST_TIMEOUT_MS = Number(process.env.INGEST_TIMEOUT_MS ?? 180_000);
@@ -75,7 +76,31 @@ async function runIngest(job: IngestJob): Promise<void> {
   const sSummaryTitle = JSON.stringify(summaryTitle);
   const sLogHeading = JSON.stringify(doc.title ?? doc.filename);
 
-  const prompt = `You are the wiki compiler for knowledge base ${sKbName} (slug: ${sKbSlug}).
+  // F92.1 — feed the existing KB tag vocabulary into the compile
+  // prompt so the LLM prefers REUSING tags over inventing fresh ones.
+  // Without this the compile LLM generates a new unique tag per
+  // Neuron, producing a long tail of count=1 tags that destroys the
+  // facet-filter's value (we saw 100% unique-tag rate on Sanne's KB).
+  // Top-60 covers any KB we'll realistically see; the aggregate is
+  // already cached (60s TTL) so repeated ingests don't pay per-call.
+  let existingTags: string[] = [];
+  try {
+    const aggregate = await listKbTags(trail, job.tenantId, job.kbId);
+    existingTags = aggregate.slice(0, 60).map((t) => t.tag);
+  } catch (err) {
+    // Aggregate failure isn't fatal — the LLM can still propose
+    // fresh tags without the vocabulary hint. Log so the cause is
+    // visible if Christian notices count=1 tags coming back.
+    console.warn(
+      '[ingest] tag vocabulary fetch failed; compile will run without hint:',
+      err instanceof Error ? err.message : err,
+    );
+  }
+  const tagBlock = existingTags.length > 0
+    ? `\n\nEXISTING TAG VOCABULARY IN THIS KB (prefer reusing over inventing new ones — exact spelling required):\n${existingTags.map((t) => `  - ${t}`).join('\n')}\n\nOnly propose a new tag when nothing in the list fits the concept.`
+    : '\n\n(This KB has no tags yet — you are establishing the vocabulary. Keep tags short, lowercase, and specific.)';
+
+  const prompt = `You are the wiki compiler for knowledge base ${sKbName} (slug: ${sKbSlug}).${tagBlock}
 
 A new source has been added: ${sFilename} at path ${sSourcePath}.
 
