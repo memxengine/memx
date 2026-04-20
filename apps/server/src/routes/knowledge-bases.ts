@@ -3,7 +3,7 @@ import { knowledgeBases, type TrailDatabase } from '@trail/db';
 import { CreateKBSchema, UpdateKBSchema } from '@trail/shared';
 import { eq, and } from 'drizzle-orm';
 import { requireAuth, getUser, getTenant, getTrail } from '../middleware/auth.js';
-import { uniqueSlug, createCandidate } from '@trail/core';
+import { uniqueSlug, createCandidate, resolveKbId } from '@trail/core';
 import { broadcaster } from '../services/broadcast.js';
 import { listKbTags } from '../services/tag-aggregate.js';
 
@@ -44,7 +44,8 @@ kbRoutes.get('/knowledge-bases', async (c) => {
 kbRoutes.get('/knowledge-bases/:id', async (c) => {
   const trail = getTrail(c);
   const tenant = getTenant(c);
-  const kbId = c.req.param('id');
+  const kbId = await resolveKbId(trail, tenant.id, c.req.param('id'));
+  if (!kbId) return c.json({ error: 'Not found' }, 404);
 
   const kb = await trail.db
     .select()
@@ -72,14 +73,8 @@ kbRoutes.get('/knowledge-bases/:id', async (c) => {
 kbRoutes.get('/knowledge-bases/:id/tags', async (c) => {
   const trail = getTrail(c);
   const tenant = getTenant(c);
-  const kbId = c.req.param('id');
-
-  const kb = await trail.db
-    .select({ id: knowledgeBases.id })
-    .from(knowledgeBases)
-    .where(and(eq(knowledgeBases.id, kbId), eq(knowledgeBases.tenantId, tenant.id)))
-    .get();
-  if (!kb) return c.json({ error: 'Not found' }, 404);
+  const kbId = await resolveKbId(trail, tenant.id, c.req.param('id'));
+  if (!kbId) return c.json({ error: 'Not found' }, 404);
 
   const tags = await listKbTags(trail, tenant.id, kbId);
   return c.json(tags);
@@ -153,7 +148,8 @@ kbRoutes.post('/knowledge-bases', async (c) => {
 kbRoutes.patch('/knowledge-bases/:id', async (c) => {
   const trail = getTrail(c);
   const tenant = getTenant(c);
-  const kbId = c.req.param('id');
+  const kbId = await resolveKbId(trail, tenant.id, c.req.param('id'));
+  if (!kbId) return c.json({ error: 'Not found' }, 404);
   const body = UpdateKBSchema.parse(await c.req.json());
 
   const existing = await trail.db
@@ -186,7 +182,8 @@ kbRoutes.patch('/knowledge-bases/:id', async (c) => {
 kbRoutes.delete('/knowledge-bases/:id', async (c) => {
   const trail = getTrail(c);
   const tenant = getTenant(c);
-  const kbId = c.req.param('id');
+  const kbId = await resolveKbId(trail, tenant.id, c.req.param('id'));
+  if (!kbId) return c.json({ error: 'Not found' }, 404);
 
   const existing = await trail.db
     .select()

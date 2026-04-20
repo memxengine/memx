@@ -9,7 +9,7 @@ import {
   canonicaliseTagString,
 } from '@trail/shared';
 import { eq, and, inArray, asc, desc, type SQL } from 'drizzle-orm';
-import { submitCuratorEdit, VersionConflictError } from '@trail/core';
+import { submitCuratorEdit, VersionConflictError, resolveKbId } from '@trail/core';
 import { requireAuth, getUser, getTenant, getTrail } from '../middleware/auth.js';
 import { chunkText, storeChunks } from '../services/chunker.js';
 import { processPdfAsync, processDocxAsync } from './uploads.js';
@@ -43,7 +43,8 @@ documentRoutes.use('*', requireAuth);
 documentRoutes.get('/knowledge-bases/:kbId/documents', async (c) => {
   const trail = getTrail(c);
   const tenant = getTenant(c);
-  const kbId = c.req.param('kbId');
+  const kbId = await resolveKbId(trail, tenant.id, c.req.param('kbId'));
+  if (!kbId) return c.json({ error: 'Knowledge base not found' }, 404);
   const path = c.req.query('path');
   const kindParam = c.req.query('kind');
   const archivedParam = c.req.query('archived'); // 'true' | 'false' | 'all'
@@ -227,15 +228,9 @@ documentRoutes.post('/knowledge-bases/:kbId/documents/note', async (c) => {
   const trail = getTrail(c);
   const user = getUser(c);
   const tenant = getTenant(c);
-  const kbId = c.req.param('kbId');
+  const kbId = await resolveKbId(trail, tenant.id, c.req.param('kbId'));
+  if (!kbId) return c.json({ error: 'Knowledge base not found' }, 404);
   const body = CreateNoteSchema.parse(await c.req.json());
-
-  const kb = await trail.db
-    .select()
-    .from(knowledgeBases)
-    .where(and(eq(knowledgeBases.id, kbId), eq(knowledgeBases.tenantId, tenant.id)))
-    .get();
-  if (!kb) return c.json({ error: 'Knowledge base not found' }, 404);
 
   const id = crypto.randomUUID();
   const title = extractTitle(body.content) ?? body.filename.replace(/\.md$/, '');

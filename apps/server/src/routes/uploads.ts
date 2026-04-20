@@ -1,12 +1,13 @@
 import { Hono } from 'hono';
-import { documents, knowledgeBases, type TrailDatabase } from '@trail/db';
-import { eq, and } from 'drizzle-orm';
+import { documents, type TrailDatabase } from '@trail/db';
+import { eq } from 'drizzle-orm';
 import { requireAuth, getUser, getTenant, getTrail } from '../middleware/auth.js';
 import { processPdf, processDocx } from '@trail/pipelines';
 import { storage, sourcePath } from '../lib/storage.js';
 import { chunkText, storeChunks } from '../services/chunker.js';
 import { triggerIngest } from '../services/ingest.js';
 import { createVisionBackend } from '../services/vision.js';
+import { resolveKbId } from '@trail/core';
 
 const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
 // Silent hangs in pdfjs-dist on malformed PDFs are the single worst failure
@@ -52,14 +53,8 @@ uploadRoutes.post('/knowledge-bases/:kbId/documents/upload', async (c) => {
   const trail = getTrail(c);
   const user = getUser(c);
   const tenant = getTenant(c);
-  const kbId = c.req.param('kbId');
-
-  const kb = await trail.db
-    .select()
-    .from(knowledgeBases)
-    .where(and(eq(knowledgeBases.id, kbId), eq(knowledgeBases.tenantId, tenant.id)))
-    .get();
-  if (!kb) return c.json({ error: 'Knowledge base not found' }, 404);
+  const kbId = await resolveKbId(trail, tenant.id, c.req.param('kbId'));
+  if (!kbId) return c.json({ error: 'Knowledge base not found' }, 404);
 
   const formData = await c.req.formData();
   const file = formData.get('file') as File | null;

@@ -14,6 +14,7 @@ import {
   listCandidates,
   countCandidates,
   getCandidate,
+  resolveKbId,
   type Actor,
   type ResolutionResult,
 } from '@trail/core';
@@ -155,6 +156,12 @@ queueRoutes.post('/queue/candidates', async (c) => {
   // on the incoming metadata (if any) win — we never overwrite the
   // curator's intent.
   let payload = parsed.data;
+
+  // F135 — accept slug or UUID in payload.knowledgeBaseId. Resolve to
+  // canonical UUID so createCandidate's FK reference resolves.
+  const kbId = await resolveKbId(getTrail(c), tenant.id, payload.knowledgeBaseId);
+  if (!kbId) return c.json({ error: 'Knowledge base not found' }, 404);
+  payload = { ...payload, knowledgeBaseId: kbId };
   // F92 — canonicalise any incoming metadata.tags string at the HTTP
   // boundary so external POSTs (scripts, webhooks, the chat-save
   // flow, buddy's trail_save) all store the same normalised shape.
@@ -225,11 +232,22 @@ queueRoutes.get('/queue', async (c) => {
   if (!query.success) return c.json({ error: query.error.flatten() }, 400);
 
   const tenant = getTenant(c);
+  const trail = getTrail(c);
+
+  // F135 — accept slug or UUID in ?knowledgeBaseId=. Resolve to canonical
+  // UUID so listCandidates' FK-scoped filter matches.
+  let resolved = query.data;
+  if (query.data.knowledgeBaseId) {
+    const kbId = await resolveKbId(trail, tenant.id, query.data.knowledgeBaseId);
+    if (!kbId) return c.json({ error: 'Knowledge base not found' }, 404);
+    resolved = { ...query.data, knowledgeBaseId: kbId };
+  }
+
   // `count` is the TOTAL matching filter — independent of `limit`. Callers
   // that want the length of the paginated page just use items.length.
   const [items, count] = await Promise.all([
-    listCandidates(getTrail(c), tenant.id, query.data),
-    countCandidates(getTrail(c), tenant.id, query.data),
+    listCandidates(trail, tenant.id, resolved),
+    countCandidates(trail, tenant.id, resolved),
   ]);
   return c.json({ items, count });
 });

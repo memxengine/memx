@@ -1,8 +1,7 @@
 import { Hono } from 'hono';
-import { knowledgeBases } from '@trail/db';
-import { eq, and } from 'drizzle-orm';
 import { requireAuth, getTenant, getTrail } from '../middleware/auth.js';
 import { parseTags, canonicaliseTag } from '@trail/shared';
+import { resolveKbId } from '@trail/core';
 
 export const searchRoutes = new Hono();
 
@@ -11,7 +10,8 @@ searchRoutes.use('*', requireAuth);
 searchRoutes.get('/knowledge-bases/:kbId/search', async (c) => {
   const trail = getTrail(c);
   const tenant = getTenant(c);
-  const kbId = c.req.param('kbId');
+  const kbId = await resolveKbId(trail, tenant.id, c.req.param('kbId'));
+  if (!kbId) return c.json({ error: 'Not found' }, 404);
   const query = c.req.query('q') ?? '';
   const limit = Math.min(Number(c.req.query('limit') ?? 10), 50);
   // F92 — repeated ?tag= params narrow the hit list to Neurons whose
@@ -27,13 +27,6 @@ searchRoutes.get('/knowledge-bases/:kbId/search', async (c) => {
   if (!query.trim()) {
     return c.json({ documents: [], chunks: [] });
   }
-
-  const kb = await trail.db
-    .select({ id: knowledgeBases.id })
-    .from(knowledgeBases)
-    .where(and(eq(knowledgeBases.id, kbId), eq(knowledgeBases.tenantId, tenant.id)))
-    .get();
-  if (!kb) return c.json({ error: 'Not found' }, 404);
 
   const ftsQuery = sanitizeFtsQuery(query);
   if (!ftsQuery) return c.json({ documents: [], chunks: [] });

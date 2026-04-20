@@ -110,7 +110,7 @@ export function KnowledgeBasesPanel() {
               <div class="px-4 py-3">
                 <div class="flex items-baseline justify-between gap-4">
                   <a
-                    href={`/kb/${kb.id}/neurons`}
+                    href={`/kb/${kb.slug}/neurons`}
                     class="min-w-0 flex-1 hover:opacity-90 transition"
                   >
                     <div class="font-medium">{kb.name}</div>

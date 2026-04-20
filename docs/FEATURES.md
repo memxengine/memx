@@ -189,6 +189,12 @@ Ship'er Trail til "markedets bedste Karpathy-LLM-Wiki-killer" via ~34 features f
 | F132 | [`source-kind` Variants for Ingest-Compile Tuning](features/F132-source-kind-variants.md) | Planned | 2 | [plan](features/F132-source-kind-variants.md) |
 | F133 | [Schema Integrity Improvements](features/F133-schema-integrity-improvements.md) | Planned | 2 | [plan](features/F133-schema-integrity-improvements.md) |
 
+**Stand-alone Phase 1 refactors:**
+
+| # | Feature | Status | Phase | Plan |
+|---|---------|--------|-------|------|
+| F135 | [Slug-based KB URLs](features/F135-slug-based-kb-urls.md) | Done | 1 | [plan](features/F135-slug-based-kb-urls.md) |
+
 ---
 
 ## Descriptions

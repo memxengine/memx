@@ -1,8 +1,6 @@
 import { Hono, type Context } from 'hono';
-import { knowledgeBases } from '@trail/db';
-import { and, eq } from 'drizzle-orm';
 import { requireAuth, getTenant, getUser, getTrail } from '../middleware/auth.js';
-import { runLint, type Actor } from '@trail/core';
+import { runLint, resolveKbId, type Actor } from '@trail/core';
 import { INGEST_USER_ID } from '../bootstrap/ingest-user.js';
 import { broadcaster } from '../services/broadcast.js';
 
@@ -36,14 +34,8 @@ function lintActor(c: Context): Actor {
 lintRoutes.post('/knowledge-bases/:kbId/lint', async (c) => {
   const trail = getTrail(c);
   const tenant = getTenant(c);
-  const kbId = c.req.param('kbId');
-
-  const kb = await trail.db
-    .select({ id: knowledgeBases.id })
-    .from(knowledgeBases)
-    .where(and(eq(knowledgeBases.id, kbId), eq(knowledgeBases.tenantId, tenant.id)))
-    .get();
-  if (!kb) return c.json({ error: 'Knowledge base not found' }, 404);
+  const kbId = await resolveKbId(trail, tenant.id, c.req.param('kbId'));
+  if (!kbId) return c.json({ error: 'Knowledge base not found' }, 404);
 
   const body = (await c.req.json().catch(() => ({}))) as {
     staleDays?: number;

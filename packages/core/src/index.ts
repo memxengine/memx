@@ -40,3 +40,4 @@ export type {
 
 // Utilities
 export { slugify, uniqueSlug } from './slug.js';
+export { resolveKbId, looksLikeUuid } from './kb/resolve.js';

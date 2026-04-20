@@ -4,6 +4,7 @@ import { and, eq } from 'drizzle-orm';
 import { requireAuth, getTenant, getUser, getTrail } from '../middleware/auth.js';
 import { spawnClaude, extractAssistantText } from '../services/claude.js';
 import { ChatRequestSchema } from '@trail/shared';
+import { resolveKbId } from '@trail/core';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -48,16 +49,25 @@ chatRoutes.post('/chat', async (c) => {
   const user = getUser(c);
   const body = ChatRequestSchema.parse(await c.req.json());
 
+  // F135 — accept slug or UUID in body.knowledgeBaseId. Resolve to
+  // canonical UUID before any FK-scoped queries run.
+  const resolvedKbId = body.knowledgeBaseId
+    ? await resolveKbId(trail, tenant.id, body.knowledgeBaseId)
+    : null;
+  if (body.knowledgeBaseId && !resolvedKbId) {
+    return c.json({ error: 'Knowledge base not found' }, 404);
+  }
+
   // Scope to either a specific KB (validating it belongs to this tenant) or all
   // the tenant's KBs. The old code fetched by id alone without a tenant check,
   // which was fine single-tenant but dangerous when F40.2 lands — fixing now.
-  const kbs = body.knowledgeBaseId
+  const kbs = resolvedKbId
     ? await trail.db
         .select({ id: knowledgeBases.id, name: knowledgeBases.name })
         .from(knowledgeBases)
         .where(
           and(
-            eq(knowledgeBases.id, body.knowledgeBaseId),
+            eq(knowledgeBases.id, resolvedKbId),
             eq(knowledgeBases.tenantId, tenant.id),
           ),
         )
@@ -158,7 +168,7 @@ ${currentTrailName ? `## Current Trail\nThe user is currently viewing the Trail 
   // apps/mcp).
   const spawnEnv = {
     TRAIL_TENANT_ID: tenant.id,
-    TRAIL_KNOWLEDGE_BASE_ID: body.knowledgeBaseId ?? kbs[0]!.id,
+    TRAIL_KNOWLEDGE_BASE_ID: resolvedKbId ?? kbs[0]!.id,
     TRAIL_USER_ID: user.id,
   };
 
