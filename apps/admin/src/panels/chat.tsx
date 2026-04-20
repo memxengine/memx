@@ -3,7 +3,6 @@ import { useRoute } from 'preact-iso';
 import { marked } from 'marked';
 import { chat, saveChatAsNeuron, ApiError, type ChatResponse, type ChatCitation } from '../api';
 import { rewriteWikiLinks } from '../lib/wiki-links';
-import { displayPath } from '../lib/display-path';
 import { Modal, ModalButton } from '../components/modal';
 import { ThinkingAnimation } from '../components/thinking-animation';
 
@@ -290,29 +289,27 @@ function AnswerView({
         dangerouslySetInnerHTML={{ __html: html }}
       />
 
-      {turn.citations.length ? (
-        <div class="mt-4 pt-3 border-t border-[color:var(--color-border)]">
-          <div class="text-[11px] font-mono uppercase tracking-wider text-[color:var(--color-fg-subtle)] mb-2">
-            Cited Neurons
-          </div>
-          <ul class="space-y-1">
-            {turn.citations.map((c) => {
-              const slug = c.filename.replace(/\.md$/i, '');
-              return (
-                <li key={c.documentId}>
-                  <a
-                    href={`/kb/${kbId}/neurons/${encodeURIComponent(slug)}`}
-                    class="text-xs flex items-baseline gap-2 text-[color:var(--color-fg-muted)] hover:text-[color:var(--color-accent)] transition"
-                  >
-                    <span class="font-mono text-[10px] text-[color:var(--color-fg-subtle)]">
-                      {displayPath(c.path)}
-                    </span>
-                    <span>{c.filename}</span>
-                  </a>
-                </li>
-              );
-            })}
-          </ul>
+      {turn.citations.length > 0 ? (
+        <div class="mt-3 flex flex-wrap items-center gap-1.5">
+          <span class="text-[10px] font-mono text-[color:var(--color-fg-subtle)] uppercase tracking-wider mr-1 flex-shrink-0">
+            Sources
+          </span>
+          {turn.citations.map((c) => {
+            const slug = c.filename.replace(/\.md$/i, '');
+            const name = c.filename.replace(/\.md$/i, '');
+            return (
+              <a
+                key={c.documentId}
+                href={`/kb/${kbId}/neurons/${encodeURIComponent(slug)}`}
+                title={c.path}
+                class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono bg-[color:var(--color-bg)]/80 border border-[color:var(--color-border)] text-[color:var(--color-fg-muted)] hover:text-[color:var(--color-accent)] hover:border-[color:var(--color-accent)]/50 transition"
+              >
+                <span class="opacity-50 select-none">[[</span>
+                <span>{name}</span>
+                <span class="opacity-50 select-none">]]</span>
+              </a>
+            );
+          })}
         </div>
       ) : null}
 

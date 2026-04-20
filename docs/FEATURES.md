@@ -201,11 +201,11 @@ Batch drawn from evoailabs Medium survey of LLM Wiki ecosystem (Waykee Cortex, S
 
 | # | Feature | Status | Phase | Plan |
 |---|---------|--------|-------|------|
-| F137 | [Typed Neuron Relationships](features/F137-typed-neuron-relationships.md) | Planned | 2 | [plan](features/F137-typed-neuron-relationships.md) |
-| F138 | [Work Layer: Tasks, Bugs, Milestones](features/F138-work-layer-tasks-milestones.md) | Planned | 2 | [plan](features/F138-work-layer-tasks-milestones.md) |
-| F139 | [Heuristic Neurons with Temporal Decay](features/F139-heuristic-neurons-with-decay.md) | Planned | 2 | [plan](features/F139-heuristic-neurons-with-decay.md) |
-| F140 | [Hierarchical Context Inheritance](features/F140-hierarchical-context-inheritance.md) | Planned | 2 | [plan](features/F140-hierarchical-context-inheritance.md) |
-| F141 | [Neuron Access Telemetry + Usage Weighting](features/F141-neuron-access-telemetry.md) | Planned | 2 | [plan](features/F141-neuron-access-telemetry.md) |
+| F137 | [Typed Neuron Relationships](features/F137-typed-neuron-relationships.md) | Shipped | 2 | [plan](features/F137-typed-neuron-relationships.md) |
+| F138 | [Work Layer: Tasks, Bugs, Milestones](features/F138-work-layer-tasks-milestones.md) | Shipped (MVP — llms.txt section deferred to F130) | 2 | [plan](features/F138-work-layer-tasks-milestones.md) |
+| F139 | [Heuristic Neurons with Temporal Decay](features/F139-heuristic-neurons-with-decay.md) | Shipped | 2 | [plan](features/F139-heuristic-neurons-with-decay.md) |
+| F140 | [Hierarchical Context Inheritance](features/F140-hierarchical-context-inheritance.md) | Shipped | 2 | [plan](features/F140-hierarchical-context-inheritance.md) |
+| F141 | [Neuron Access Telemetry + Usage Weighting](features/F141-neuron-access-telemetry.md) | Shipped | 2 | [plan](features/F141-neuron-access-telemetry.md) |
 
 ---
 

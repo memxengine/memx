@@ -1,0 +1,17 @@
+{
+  "calendarSecret": "6f43fca46be2103e91e7e26881d7e5dffa760456af6ddb926b8516e06f399f2f",
+  "deployAppName": "cbroberg/trail-site",
+  "deployProductionUrl": "https://cbroberg.github.io/trail-site",
+  "previewSiteUrl": "https://cbroberg.github.io/trail-site",
+  "deployProvider": "github-pages",
+  "deployHookUrl": "",
+  "deployApiToken": "",
+  "deployFlyOrg": "",
+  "deployCustomDomain": "trail.webhouse.app",
+  "deployOnSave": true,
+  "deployFlyLiveRegion": "arn",
+  "deployFlyLiveVolumeName": "site_data",
+  "deployFlyLiveSyncSecret": "",
+  "deployCloudflareAccountId": "",
+  "deployCloudflareProjectName": ""
+}

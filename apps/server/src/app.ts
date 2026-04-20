@@ -17,6 +17,7 @@ import { queueRoutes } from './routes/queue.js';
 import { lintRoutes } from './routes/lint.js';
 import { glossaryRoutes } from './routes/glossary.js';
 import { graphRoutes } from './routes/graph.js';
+import { workRoutes } from './routes/work.js';
 
 /**
  * Hono context variables visible to every handler.
@@ -74,6 +75,7 @@ export function createApp(trail: TrailDatabase): Hono<AppBindings> {
   app.route('/api/v1', lintRoutes);
   app.route('/api/v1', glossaryRoutes);
   app.route('/api/v1', graphRoutes);
+  app.route('/api/v1', workRoutes);
 
   return app;
 }

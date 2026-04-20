@@ -1,0 +1,1278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Work That Fits in a Night: How Trail Stops Caring About Corpus Size — trail</title>
+  <meta name="description" content="A compile-time knowledge system has to integrate new sources against everything it already knows. That integration cost grows with the corpus — until, one Tuesday, it stops finishing before the next night begins. Here is how Trail makes that cost bounded without going blind to the long tail.">
+  <meta property="og:title" content="Work That Fits in a Night: How Trail Stops Caring About Corpus Size">
+  <meta property="og:description" content="A compile-time knowledge system has to integrate new sources against everything it already knows. That integration cost grows with the corpus — until, one Tuesday, it stops finishing before the next night begins. Here is how Trail makes that cost bounded without going blind to the long tail.">
+  <meta property="og:type" content="website">
+  <link rel="icon" type="image/svg+xml" href="/uploads/favicon.svg">
+  <link rel="apple-touch-icon" href="/uploads/memx-logo.svg">
+  <meta name="theme-color" content="#FAF9F5">
+  <script>
+    /* Apply theme before first paint to avoid flash. Mirrors admin's
+     * theme store (localStorage key 'trail.theme'), default light. */
+    (function(){try{var t=localStorage.getItem('trail.theme');document.documentElement.setAttribute('data-theme', t==='dark'?'dark':'light');}catch(e){document.documentElement.setAttribute('data-theme','light');}})();
+  </script>
+  <style>
+/* Tokens mirror apps/admin/src/index.css in the trail repo so landing + admin
+ * share one palette. Light = Bauhaus warm off-white; dark = warm inversion.
+ * Graph vars are rgb triplets (consumed as rgba() by the canvas script). */
+:root,
+html[data-theme="light"] {
+  --bg: #FAF9F5;
+  --bg-card: #FFFFFF;
+  --fg: #1a1715;
+  --accent: #e8a87c;
+  --accent-tint: rgba(232, 168, 124, 0.06);
+  --fg-10: rgba(26, 23, 21, 0.10);
+  --fg-20: rgba(26, 23, 21, 0.20);
+  --fg-40: rgba(26, 23, 21, 0.40);
+  --fg-60: rgba(26, 23, 21, 0.60);
+  --fg-70: rgba(26, 23, 21, 0.70);
+  --fg-90: rgba(26, 23, 21, 0.90);
+  --bg-50: rgba(250, 249, 245, 0.50);
+  --bg-80: rgba(250, 249, 245, 0.80);
+  --graph-node: #1a1715;
+  --graph-accent: #e8a87c;
+  --graph-line: 26, 23, 21;
+  --graph-accent-line: 232, 168, 124;
+  --font-sans: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", "Fira Code", "Courier New", monospace;
+}
+
+html[data-theme="dark"] {
+  --bg: #17140F;
+  --bg-card: #1F1B16;
+  --fg: #F5F1EA;
+  --accent: #e8a87c;
+  --accent-tint: rgba(232, 168, 124, 0.08);
+  --fg-10: rgba(245, 241, 234, 0.10);
+  --fg-20: rgba(245, 241, 234, 0.20);
+  --fg-40: rgba(245, 241, 234, 0.40);
+  --fg-60: rgba(245, 241, 234, 0.60);
+  --fg-70: rgba(245, 241, 234, 0.70);
+  --fg-90: rgba(245, 241, 234, 0.90);
+  --bg-50: rgba(23, 20, 15, 0.50);
+  --bg-80: rgba(23, 20, 15, 0.80);
+  --graph-node: #f5f1ea;
+  --graph-accent: #e8a87c;
+  --graph-line: 245, 241, 234;
+  --graph-accent-line: 232, 168, 124;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html {
+  scroll-behavior: smooth;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background: var(--bg);
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+html, body { overflow-x: hidden; max-width: 100vw; }
+body {
+  font-family: var(--font-sans);
+  background: transparent; /* canvas (fixed, z-index: -1) renders between html and body */
+  color: var(--fg);
+  line-height: 1.5;
+  min-height: 100vh;
+}
+::selection { background: rgba(232, 168, 124, 0.3); color: var(--fg); }
+
+a { color: inherit; text-decoration: none; }
+img { max-width: 100%; display: block; height: auto; }
+button { font: inherit; cursor: pointer; border: none; background: none; color: inherit; }
+svg { max-width: 100%; height: auto; }
+
+/* Navbar */
+.nav {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 50;
+  padding: 0.75rem 1rem;
+  display: flex; justify-content: space-between; align-items: center;
+  background: var(--bg-80);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--fg-10);
+}
+@media (min-width: 768px) { .nav { padding: 1rem 1.5rem; } }
+.nav-brand { display: flex; align-items: center; gap: 0.625rem; min-width: 0; color: var(--fg); }
+.nav-brand img, .nav-brand svg { width: 32px; height: 32px; flex-shrink: 0; }
+@media (min-width: 768px) { .nav-brand { gap: 0.875rem; } .nav-brand img, .nav-brand svg { width: 40px; height: 40px; } }
+.nav-brand .brand-text {
+  font-family: var(--font-mono);
+  font-size: 1.125rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@media (min-width: 768px) { .nav-brand .brand-text { font-size: 1.375rem; } }
+.nav-links { display: none; gap: 2rem; font-size: 0.875rem; font-weight: 500; color: var(--fg-70); }
+.nav-links a { transition: color 0.15s; }
+.nav-links a:hover { color: var(--fg); }
+@media (min-width: 768px) { .nav-links { display: flex; } }
+
+.nav-actions { display: flex; gap: 0.5rem; align-items: center; }
+@media (min-width: 768px) { .nav-actions { gap: 1rem; } }
+.nav-signin {
+  font-size: 0.875rem; font-weight: 500; color: var(--fg);
+  transition: color 0.15s;
+  display: none;
+}
+@media (min-width: 768px) { .nav-signin { display: inline; } }
+.nav-signin:hover { color: var(--accent); }
+.nav-cta {
+  padding: 0.45rem 0.85rem;
+  background: var(--fg); color: var(--bg);
+  font-size: 0.8rem; font-weight: 500;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+@media (min-width: 768px) { .nav-cta { padding: 0.5rem 1rem; font-size: 0.875rem; } }
+.nav-cta:hover { background: var(--fg-90); border-color: var(--accent); }
+
+/* Theme toggle — sun in dark, moon in light */
+.theme-toggle {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 36px; height: 36px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid var(--fg-10);
+  border-radius: 6px;
+  color: var(--fg-70);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.theme-toggle:hover { background: var(--bg-50); color: var(--fg); border-color: var(--fg-20); }
+.theme-toggle:active { transform: scale(0.96); }
+.theme-toggle svg { width: 18px; height: 18px; }
+.theme-toggle .icon-sun { display: none; }
+.theme-toggle .icon-moon { display: block; }
+html[data-theme="dark"] .theme-toggle .icon-sun { display: block; }
+html[data-theme="dark"] .theme-toggle .icon-moon { display: none; }
+
+/* Mobile hamburger toggle */
+.nav-toggle {
+  display: inline-flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  width: 40px; height: 40px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid var(--fg-10);
+  border-radius: 6px;
+  cursor: pointer;
+  gap: 4px;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.15s;
+}
+.nav-toggle:hover { background: var(--bg-50); }
+.nav-toggle:active { transform: scale(0.96); }
+.nav-toggle span {
+  display: block;
+  width: 18px;
+  height: 2px;
+  background: var(--fg);
+  border-radius: 2px;
+  transition: transform 0.2s, opacity 0.2s;
+}
+@media (min-width: 768px) { .nav-toggle { display: none; } }
+body[data-menu-open="true"] .nav-toggle span:nth-child(1) { transform: translateY(6px) rotate(45deg); }
+body[data-menu-open="true"] .nav-toggle span:nth-child(2) { opacity: 0; }
+body[data-menu-open="true"] .nav-toggle span:nth-child(3) { transform: translateY(-6px) rotate(-45deg); }
+
+/* Mobile menu overlay */
+.nav-mobile {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: var(--bg);
+  z-index: 49;
+  padding: 5rem 1.5rem 2rem;
+  display: flex; flex-direction: column; gap: 1.5rem;
+  transform: translateX(100%);
+  transition: transform 0.25s ease-out;
+  overflow-y: auto;
+}
+body[data-menu-open="true"] .nav-mobile { transform: translateX(0); }
+@media (min-width: 768px) { .nav-mobile { display: none; } }
+.nav-mobile a {
+  font-size: 1.125rem; font-weight: 500; color: var(--fg);
+  padding: 0.625rem 0;
+  border-bottom: 1px solid var(--fg-10);
+}
+.nav-mobile a:last-child { border-bottom: none; }
+body[data-menu-open="true"] { overflow: hidden; }
+
+/* Hero */
+.hero {
+  position: relative;
+  min-height: 100vh;
+  display: flex; flex-direction: column; justify-content: center; align-items: center;
+  padding-top: 5rem; overflow: hidden;
+}
+#trail-graph {
+  position: fixed; inset: 0;
+  pointer-events: none; opacity: 0.4; z-index: -1;
+}
+.hero-inner {
+  position: relative; z-index: 10;
+  max-width: 56rem; margin: 0 auto;
+  padding: 0 2rem;
+  text-align: center;
+  width: 100%;
+}
+@media (min-width: 640px) { .hero-inner { padding: 0 2.5rem; } }
+.eyebrow {
+  display: inline-flex; align-items: center; gap: 0.5rem;
+  padding: 0.25rem 0.75rem; margin-bottom: 2rem;
+  border: 1px solid var(--fg-20); border-radius: 9999px;
+  font-size: 0.75rem; font-family: var(--font-mono);
+  background: var(--bg-50); backdrop-filter: blur(4px);
+}
+.eyebrow .dot {
+  width: 0.5rem; height: 0.5rem; border-radius: 9999px;
+  background: var(--accent);
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+.hero h1 {
+  font-size: clamp(2.5rem, 7vw, 4.5rem);
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  line-height: 1.1;
+  margin-bottom: 1.5rem;
+}
+.hero h1 .accent {
+  background: linear-gradient(to right, var(--fg), rgba(232, 168, 124, 0.8));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.hero p.lead {
+  font-size: 1.125rem;
+  color: var(--fg-70);
+  margin: 0 auto 2.5rem; max-width: 40rem;
+  line-height: 1.6;
+}
+@media (min-width: 768px) { .hero p.lead { font-size: 1.25rem; } }
+
+.cta-group {
+  display: flex; flex-direction: column; gap: 1rem;
+  justify-content: center; align-items: center;
+}
+@media (min-width: 640px) { .cta-group { flex-direction: row; } }
+
+.btn {
+  display: inline-flex; align-items: center; gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  border-radius: 6px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+.btn-primary {
+  background: var(--fg); color: var(--bg);
+}
+.btn-primary:hover {
+  background: var(--fg-90);
+  box-shadow: 0 10px 25px -5px rgba(232, 168, 124, 0.2);
+}
+.btn-secondary {
+  background: transparent; border: 1px solid var(--fg-20);
+  color: var(--fg);
+  font-family: var(--font-mono); font-size: 0.875rem;
+}
+.btn-secondary:hover { border-color: var(--fg); }
+
+.scroll-indicator {
+  position: absolute; bottom: 2rem; left: 50%;
+  transform: translateX(-50%);
+  width: 32px; height: 32px;
+  display: flex; align-items: center; justify-content: center;
+  border: 1px solid var(--fg-20);
+  border-radius: 9999px;
+  color: var(--fg-60);
+  opacity: 0.7;
+  animation: scroll-hint 2.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  transition: opacity 0.2s, border-color 0.2s;
+}
+.scroll-indicator:hover { opacity: 1; border-color: var(--fg); color: var(--fg); }
+.scroll-indicator svg { width: 14px; height: 14px; }
+@keyframes scroll-hint {
+  0%, 100% { transform: translate(-50%, 0); }
+  50%      { transform: translate(-50%, 6px); }
+}
+
+/* Features */
+.features {
+  padding: 4rem 2rem;
+  border-top: 1px solid var(--fg-10);
+}
+@media (min-width: 768px) { .features { padding: 6rem 1.5rem; } }
+.features-inner { max-width: 72rem; margin: 0 auto; }
+.features-header { margin-bottom: 4rem; }
+.features-header h2 {
+  font-size: clamp(1.75rem, 3.5vw, 2rem);
+  font-weight: 700; letter-spacing: -0.02em; margin-bottom: 1rem;
+}
+.features-header p {
+  color: var(--fg-60); max-width: 36rem;
+}
+.features-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.25rem;
+}
+@media (min-width: 768px) { .features-grid { grid-template-columns: repeat(3, 1fr); } }
+
+.feature-card {
+  position: relative; overflow: hidden;
+  padding: 1.5rem;
+  border: 1px solid var(--fg-10);
+  background: color-mix(in srgb, var(--bg) 78%, transparent);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  transition: background 0.2s;
+}
+.feature-card:hover { background: color-mix(in srgb, var(--bg-card) 90%, transparent); }
+.feature-card::before {
+  content: "";
+  position: absolute; top: 0; left: 0;
+  width: 100%; height: 2px;
+  background: var(--accent);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.3s;
+}
+.feature-card:hover::before { transform: scaleX(1); }
+.feature-card .icon { margin-bottom: 1rem; color: var(--fg); }
+.feature-card h3 {
+  font-family: var(--font-mono);
+  font-size: 1.125rem; font-weight: 600;
+  letter-spacing: -0.02em; margin-bottom: 0.5rem;
+  color: var(--fg);
+}
+.feature-card p {
+  color: var(--fg-70);
+  font-size: 0.875rem; line-height: 1.6;
+}
+
+/* Article (long-form pages) */
+.container { max-width: 48rem; margin: 0 auto; padding: 0 2rem; }
+@media (min-width: 640px) { .container { padding: 0 2.5rem; } }
+/* Use padding-block (top/bottom only) so .container's horizontal padding survives. */
+.article { padding-top: 6rem; padding-bottom: 3rem; }
+@media (min-width: 768px) { .article { padding-top: 7rem; padding-bottom: 4rem; } }
+.article-header { margin-bottom: 3rem; border-bottom: 1px solid var(--fg-10); padding-bottom: 2rem; }
+.article-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.75rem; letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 1rem;
+}
+.article-header h1 {
+  font-size: clamp(2rem, 5vw, 3rem);
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  line-height: 1.1;
+  margin-bottom: 1rem;
+}
+.article-lead {
+  font-size: 1.125rem;
+  color: var(--fg-70);
+  line-height: 1.6;
+  margin-bottom: 1.25rem;
+}
+.article-meta {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  color: var(--fg-60);
+}
+.article-tags { display: flex; flex-wrap: wrap; gap: 0.375rem; margin-top: 1rem; }
+.article-tags .tag {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  padding: 0.15rem 0.5rem;
+  border: 1px solid var(--fg-10);
+  border-radius: 9999px;
+  color: var(--fg-60);
+}
+.article-cover { margin: 2rem 0 0; }
+.article-cover img { width: 100%; border-radius: 4px; }
+
+.prose { font-size: 1.0625rem; line-height: 1.75; color: var(--fg); word-wrap: break-word; overflow-wrap: break-word; }
+.prose h1, .prose h2, .prose h3 { letter-spacing: -0.02em; }
+.prose h2 { font-size: 1.625rem; font-weight: 700; margin: 3rem 0 1rem; }
+.prose h3 { font-size: 1.25rem; font-weight: 600; margin: 2rem 0 0.75rem; }
+.prose p { margin-bottom: 1.25rem; }
+.prose strong { font-weight: 600; }
+.prose em { font-style: italic; }
+.prose a { color: var(--fg); border-bottom: 1px solid var(--accent); transition: color 0.15s; }
+.prose a:hover { color: var(--accent); }
+.prose blockquote {
+  border-left: 3px solid var(--accent);
+  padding: 0.5rem 0 0.5rem 1.25rem;
+  margin: 1.75rem 0;
+  color: var(--fg-70);
+  font-style: italic;
+}
+.prose blockquote p:last-child { margin-bottom: 0; }
+.prose ul, .prose ol { padding-left: 1.5rem; margin-bottom: 1.25rem; }
+.prose li { margin-bottom: 0.5rem; }
+.prose code {
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  background: var(--fg-10);
+  padding: 0.125rem 0.375rem;
+  border-radius: 3px;
+}
+.prose pre {
+  background: var(--fg); color: var(--bg);
+  padding: 1rem 1.25rem;
+  border-radius: 4px;
+  overflow-x: auto;
+  margin-bottom: 1.5rem;
+  font-size: 0.875rem;
+}
+.prose pre code { background: none; padding: 0; color: inherit; }
+.prose hr { border: none; border-top: 1px solid var(--fg-10); margin: 3rem 0; }
+.prose figure {
+  margin: 1rem 0 1.5rem;
+  text-align: center;
+  color: var(--fg); /* inline SVGs use currentColor so strokes/text swap with theme */
+}
+.prose figure svg { width: 100%; height: auto; display: block; }
+
+/* Fullscreen view for SVG figures — click to zoom, Escape to close */
+.prose .cms-svg { cursor: zoom-in; transition: opacity 0.15s; }
+.prose .cms-svg:hover { opacity: 0.85; }
+.svg-fullscreen {
+  position: fixed; inset: 0; z-index: 100;
+  background: color-mix(in srgb, var(--bg) 96%, transparent);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: none;
+  padding: 4rem 2rem 2rem;
+  cursor: zoom-out;
+  overflow-y: auto;
+}
+.svg-fullscreen[data-open="true"] {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 1.25rem;
+}
+.svg-fullscreen-content {
+  max-width: 96vw; max-height: 82vh;
+  display: flex; align-items: center; justify-content: center;
+}
+.svg-fullscreen-content svg {
+  width: auto; height: auto;
+  max-width: 96vw; max-height: 82vh;
+}
+.svg-fullscreen-caption {
+  font-family: var(--font-mono); font-size: 0.85rem;
+  color: var(--fg-70); max-width: 48rem; text-align: center; line-height: 1.5;
+  padding: 0 1rem;
+}
+.svg-fullscreen-close {
+  position: fixed; top: 1.25rem; right: 1.25rem;
+  width: 40px; height: 40px;
+  padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--bg-80);
+  border: 1px solid var(--fg-20);
+  border-radius: 50%;
+  color: var(--fg);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, transform 0.15s;
+}
+.svg-fullscreen-close svg { display: block; }
+.svg-fullscreen-close:hover { background: var(--fg-10); border-color: var(--accent); }
+.svg-fullscreen-close:active { transform: scale(0.95); }
+.prose figcaption {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  color: var(--fg-60);
+  margin-top: 0.75rem;
+  line-height: 1.5;
+}
+.prose img { max-width: 100%; border-radius: 4px; margin: 1.5rem auto; }
+
+/* Footer */
+.footer {
+  border-top: 1px solid var(--fg-10);
+  padding: 2.5rem 2rem;
+  background: var(--bg);
+}
+@media (min-width: 768px) { .footer { padding: 3rem 1.5rem; } }
+.footer-inner {
+  max-width: 72rem; margin: 0 auto;
+  display: flex; flex-direction: column;
+  gap: 1.5rem; align-items: center;
+  justify-content: space-between;
+}
+@media (min-width: 768px) { .footer-inner { flex-direction: row; } }
+.footer-brand { display: flex; align-items: center; gap: 0.625rem; color: var(--fg); }
+.footer-brand img, .footer-brand svg { width: 32px; height: 32px; }
+.footer-brand span {
+  font-family: var(--font-mono);
+  font-size: 1rem; font-weight: 600;
+}
+.footer-links { display: flex; gap: 1.5rem; font-family: var(--font-mono); font-size: 0.875rem; color: var(--fg-60); }
+.footer-links a { transition: color 0.15s; }
+.footer-links a:hover { color: var(--accent); }
+.footer-copy { font-family: var(--font-mono); font-size: 0.75rem; color: var(--fg-40); }
+.footer-copy a { color: var(--fg-60); border-bottom: 1px dotted var(--fg-20); transition: color 0.15s, border-color 0.15s; }
+.footer-copy a:hover { color: var(--accent); border-bottom-color: var(--accent); }
+
+/* Clickable article tags (reused by pages) */
+.article-tags .tag { transition: color 0.15s, border-color 0.15s; }
+.article-tags .tag:hover { color: var(--accent); border-color: var(--accent); }
+
+/* Trails index + category pages */
+.trails-section { margin: 3rem 0; }
+.trails-section-header {
+  display: flex; justify-content: space-between; align-items: baseline;
+  gap: 1rem; margin-bottom: 1.25rem;
+  border-bottom: 1px solid var(--fg-10); padding-bottom: 0.5rem;
+}
+.trails-section-header h2 {
+  font-size: 1.375rem; font-weight: 700; letter-spacing: -0.02em;
+}
+.trails-section-link {
+  font-family: var(--font-mono); font-size: 0.75rem;
+  color: var(--fg-60); letter-spacing: 0.06em;
+  transition: color 0.15s;
+}
+.trails-section-link:hover { color: var(--accent); }
+.post-empty { color: var(--fg-60); font-style: italic; margin: 2rem 0; }
+
+.post-grid {
+  display: grid; grid-template-columns: 1fr;
+  gap: 0.25rem;
+}
+@media (min-width: 640px) { .post-grid { grid-template-columns: repeat(2, 1fr); } }
+.post-card {
+  display: flex; flex-direction: column; gap: 0.5rem;
+  padding: 1.25rem;
+  border: 1px solid var(--fg-10);
+  background: color-mix(in srgb, var(--bg) 78%, transparent);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  transition: background 0.2s, border-color 0.2s;
+  position: relative; overflow: hidden;
+}
+.post-card::before {
+  content: "";
+  position: absolute; top: 0; left: 0;
+  width: 100%; height: 2px; background: var(--accent);
+  transform: scaleX(0); transform-origin: left;
+  transition: transform 0.3s;
+}
+.post-card:hover { background: var(--bg-card); border-color: var(--fg-20); }
+.post-card:hover::before { transform: scaleX(1); }
+.post-card-eyebrow {
+  font-family: var(--font-mono); font-size: 0.7rem;
+  letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--accent);
+}
+.post-card h3 {
+  font-size: 1.125rem; font-weight: 600;
+  letter-spacing: -0.02em; line-height: 1.3;
+}
+.post-card p {
+  color: var(--fg-70); font-size: 0.9rem; line-height: 1.55;
+  margin: 0;
+}
+.post-card-meta {
+  font-family: var(--font-mono); font-size: 0.7rem;
+  color: var(--fg-60); margin-top: auto; padding-top: 0.25rem;
+}
+
+/* Post footer (below prose): bottom tag pills + "more from category" */
+.post-footer {
+  margin: 3rem 0 0;
+  padding-top: 2rem;
+  border-top: 1px solid var(--fg-10);
+}
+.post-tags {
+  display: flex; flex-wrap: wrap; gap: 0.5rem;
+  margin-bottom: 1.5rem;
+}
+.post-tag {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  padding: 0.3rem 0.75rem;
+  border: 1px solid var(--fg-20);
+  border-radius: 9999px;
+  color: var(--fg-70);
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.post-tag:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-tint);
+}
+.post-more {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  letter-spacing: 0.06em;
+  color: var(--fg-60);
+  transition: color 0.15s;
+}
+.post-more:hover { color: var(--accent); }
+
+.post-related {
+  margin-bottom: 1.75rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid var(--fg-10);
+}
+.post-related-label {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--fg-60);
+  margin-bottom: 0.75rem;
+}
+.post-related ul { list-style: none; padding: 0; margin: 0; }
+.post-related li { margin: 0.4rem 0; }
+.post-related a {
+  font-size: 1rem;
+  color: var(--fg);
+  border-bottom: 1px solid var(--fg-10);
+  padding-bottom: 0.15rem;
+  transition: color 0.15s, border-color 0.15s;
+}
+.post-related a:hover { color: var(--accent); border-bottom-color: var(--accent); }
+.post-related-arrow {
+  color: var(--fg-60);
+  margin-left: 0.25rem;
+  transition: color 0.15s, transform 0.15s;
+  display: inline-block;
+}
+.post-related a:hover .post-related-arrow { color: var(--accent); transform: translateX(3px); }
+</style>
+
+  <!-- webhouse.app enrichment -->
+  <meta name="generator" content="webhouse.app" />
+  <link rel="canonical" href="https://trail.webhouse.app/trails/how-trail-works/work-that-fits-in-a-night/" />
+  <meta property="og:url" content="https://trail.webhouse.app/trails/how-trail-works/work-that-fits-in-a-night/" />
+  <meta property="og:site_name" content="trail" />
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="Work That Fits in a Night: How Trail Stops Caring About Corpus Size" />
+  <meta name="twitter:description" content="A compile-time knowledge system has to integrate new sources against everything it already knows. That integration cost grows with the corpus — until, one Tuesday, it stops finishing before the next night begins. Here is how Trail makes that cost bounded without going blind to the long tail." />
+  <link rel="manifest" href="/manifest.json" />
+</head>
+<body>
+  <canvas id="trail-graph" aria-hidden="true"></canvas>
+  <nav class="nav">
+    <a href="/" class="nav-brand">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="40" height="40" role="img" aria-label="trail">
+  <circle cx="16" cy="16" r="14" fill="none" stroke="currentColor" stroke-width="2"/>
+  <circle cx="16" cy="16" r="9" fill="none" stroke="#e8a87c" stroke-width="0.9" opacity="0.55"/>
+  <circle cx="16" cy="16" r="3.5" fill="#e8a87c"/>
+</svg>
+      <span class="brand-text">trail</span>
+    </a>
+    <div class="nav-links">
+      <a href="/#features">Architecture</a>
+      <a href="/#docs">Documentation</a>
+      <a href="/trails/">Trails</a>
+      <a href="/the-1945-concept/">The 1945 Concept</a>
+    </div>
+    <div class="nav-actions">
+      <button type="button" class="theme-toggle" aria-label="Toggle theme">
+        <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+      </button>
+      <a href="#" class="nav-signin">Sign In</a>
+      <a href="#" class="nav-cta">Initialize trail</a>
+      <button type="button" class="nav-toggle" aria-label="Open menu" aria-expanded="false" aria-controls="mobile-menu">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+  </nav>
+  <div id="mobile-menu" class="nav-mobile" role="navigation" aria-label="Mobile menu" aria-hidden="true">
+    <a href="/#features">Architecture</a>
+    <a href="/#docs">Documentation</a>
+    <a href="/trails/">Trails</a>
+    <a href="/the-1945-concept/">The 1945 Concept</a>
+    <a href="#">Sign In</a>
+  </div>
+  <script>
+    (function () {
+      var btn = document.querySelector('.nav-toggle');
+      var menu = document.getElementById('mobile-menu');
+      var body = document.body;
+      if (!btn || !menu) return;
+      function setOpen(open) {
+        body.dataset.menuOpen = open ? 'true' : 'false';
+        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        btn.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
+        menu.setAttribute('aria-hidden', open ? 'false' : 'true');
+      }
+      btn.addEventListener('click', function () { setOpen(body.dataset.menuOpen !== 'true'); });
+      menu.addEventListener('click', function (e) {
+        if (e.target instanceof HTMLAnchorElement) setOpen(false);
+      });
+      document.addEventListener('keydown', function (e) { if (e.key === 'Escape') setOpen(false); });
+    })();
+
+    (function () {
+      var tbtn = document.querySelector('.theme-toggle');
+      if (!tbtn) return;
+      tbtn.addEventListener('click', function () {
+        var current = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+        var next = current === 'dark' ? 'light' : 'dark';
+        document.documentElement.setAttribute('data-theme', next);
+        try { localStorage.setItem('trail.theme', next); } catch (e) {}
+        var meta = document.querySelector('meta[name="theme-color"]');
+        if (meta) meta.setAttribute('content', next === 'dark' ? '#17140F' : '#FAF9F5');
+      });
+    })();
+
+    function initSvgFullscreen() {
+      var figures = document.querySelectorAll('.prose .cms-svg');
+      if (!figures.length) return;
+      var overlay = document.createElement('div');
+      overlay.className = 'svg-fullscreen';
+      overlay.setAttribute('data-open', 'false');
+      overlay.setAttribute('role', 'dialog');
+      overlay.setAttribute('aria-modal', 'true');
+      overlay.setAttribute('aria-label', 'Enlarged figure');
+      overlay.innerHTML = '<button type="button" class="svg-fullscreen-close" aria-label="Close"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button><div class="svg-fullscreen-content"></div><div class="svg-fullscreen-caption"></div>';
+      document.body.appendChild(overlay);
+      var contentEl = overlay.querySelector('.svg-fullscreen-content');
+      var captionEl = overlay.querySelector('.svg-fullscreen-caption');
+      var closeBtn = overlay.querySelector('.svg-fullscreen-close');
+      function close() {
+        overlay.setAttribute('data-open', 'false');
+        contentEl.innerHTML = '';
+        captionEl.textContent = '';
+        document.body.style.overflow = '';
+      }
+      function open(fig) {
+        var svg = fig.querySelector('svg');
+        var caption = fig.querySelector('figcaption');
+        if (!svg) return;
+        contentEl.innerHTML = svg.outerHTML;
+        var placed = contentEl.querySelector('svg');
+        var vb = placed.getAttribute('viewBox');
+        if (vb) {
+          var parts = vb.split(/s+|,/).map(Number);
+          var ratio = parts[2] / parts[3];
+          var vw = window.innerWidth;
+          var vh = window.innerHeight - 140; /* room for caption + close */
+          var maxW = vw * 0.96;
+          var maxH = vh * 0.90;
+          var w, h;
+          if (maxW / ratio <= maxH) { w = maxW; h = maxW / ratio; }
+          else { h = maxH; w = maxH * ratio; }
+          placed.style.width = w + 'px';
+          placed.style.height = h + 'px';
+        }
+        captionEl.textContent = caption ? caption.textContent : '';
+        overlay.setAttribute('data-open', 'true');
+        document.body.style.overflow = 'hidden';
+      }
+      figures.forEach(function (fig) {
+        fig.setAttribute('role', 'button');
+        fig.setAttribute('tabindex', '0');
+        fig.setAttribute('aria-label', 'View figure in fullscreen');
+        fig.addEventListener('click', function () { open(fig); });
+        fig.addEventListener('keydown', function (e) {
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(fig); }
+        });
+      });
+      closeBtn.addEventListener('click', function (e) { e.stopPropagation(); close(); });
+      overlay.addEventListener('click', function () { close(); });
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && overlay.getAttribute('data-open') === 'true') close();
+      });
+    }
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initSvgFullscreen);
+    } else {
+      initSvgFullscreen();
+    }
+  </script>
+  <article class="article container"><header class="article-header">
+      <div class="article-eyebrow">How Trail Works</div>
+      <h1>Work That Fits in a Night: How Trail Stops Caring About Corpus Size</h1>
+      <p class="article-lead">A compile-time knowledge system has to integrate new sources against everything it already knows. That integration cost grows with the corpus — until, one Tuesday, it stops finishing before the next night begins. Here is how Trail makes that cost bounded without going blind to the long tail.</p>
+      <div class="article-meta">How Trail Works · trail by broberg.ai · April 20, 2026</div>
+      
+    </header><div class="prose"><h2>A graph that does not stop growing</h2>
+<p>If you build a system that compiles knowledge at ingest time — as Trail does, and as Karpathy&#39;s LLM Wiki does, and as a brain does during sleep — you accept a particular kind of problem the moment the corpus crosses about eight thousand pages.</p>
+<p>Every new source wants to be integrated against everything the system already knows. Every existing page wants to be re-checked against every new claim. Contradictions should not accumulate silently. Stale references should surface. Orphaned Neurons — pages no source supports anymore — should get caught.</p>
+<p>All of this is correct, all of this is necessary, and all of this runs as a nightly background pass. The problem is that the nightly pass is not free, and at a certain corpus size it stops fitting inside the night.</p>
+<p>This is a post about that wall, how we hit it, and how we walked through it without the usual answers — without giving up on full-corpus consistency, without silently skipping old pages, and without turning the whole engine into a distributed computing project.</p>
+<p><figure class="cms-svg cms-svg--scan-wall-curve"><svg viewBox="0 20 920 420" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Contradiction-scan wall-clock time grows with corpus size, crossing the 24h scheduling window around N=8000 Neurons; sampling holds the line flat.">
+  <text x="460" y="45" font-family="monospace" font-size="11" fill="currentColor" text-anchor="middle" opacity="0.55" letter-spacing="1.5">WHERE THE SCAN HITS THE WALL</text>
+
+  <!-- Axes -->
+  <line x1="80" y1="340" x2="820" y2="340" stroke="currentColor" stroke-width="1.2"/>
+  <line x1="80" y1="90"  x2="80"  y2="340" stroke="currentColor" stroke-width="1.2"/>
+
+  <!-- Y axis label -->
+  <text x="32" y="95"  font-family="monospace" font-size="9" fill="currentColor" opacity="0.7">full-pass</text>
+  <text x="32" y="107" font-family="monospace" font-size="9" fill="currentColor" opacity="0.7">hours</text>
+
+  <!-- X axis label -->
+  <text x="460" y="380" font-family="monospace" font-size="10" fill="currentColor" text-anchor="middle" letter-spacing="0.5">NEURONS IN CORPUS</text>
+
+  <!-- Y ticks: 0, 8h, 16h, 24h, 32h -->
+  <g stroke="currentColor" stroke-width="0.6" opacity="0.5">
+    <line x1="75" y1="340" x2="80" y2="340"/>
+    <line x1="75" y1="280" x2="80" y2="280"/>
+    <line x1="75" y1="220" x2="80" y2="220"/>
+    <line x1="75" y1="160" x2="80" y2="160"/>
+    <line x1="75" y1="100" x2="80" y2="100"/>
+  </g>
+  <g font-family="monospace" font-size="8" fill="currentColor" opacity="0.55" text-anchor="end">
+    <text x="72" y="343">0</text>
+    <text x="72" y="283">8h</text>
+    <text x="72" y="223">16h</text>
+    <text x="72" y="163">24h</text>
+    <text x="72" y="103">32h</text>
+  </g>
+
+  <!-- X ticks: 0, 2k, 4k, 6k, 8k, 10k -->
+  <g stroke="currentColor" stroke-width="0.6" opacity="0.5">
+    <line x1="80"  y1="340" x2="80"  y2="345"/>
+    <line x1="228" y1="340" x2="228" y2="345"/>
+    <line x1="376" y1="340" x2="376" y2="345"/>
+    <line x1="524" y1="340" x2="524" y2="345"/>
+    <line x1="672" y1="340" x2="672" y2="345"/>
+    <line x1="820" y1="340" x2="820" y2="345"/>
+  </g>
+  <g font-family="monospace" font-size="8" fill="currentColor" opacity="0.55" text-anchor="middle">
+    <text x="80"  y="358">0</text>
+    <text x="228" y="358">2k</text>
+    <text x="376" y="358">4k</text>
+    <text x="524" y="358">6k</text>
+    <text x="672" y="358">8k</text>
+    <text x="820" y="358">10k</text>
+  </g>
+
+  <!-- 24h wall -->
+  <line x1="80" y1="160" x2="820" y2="160" stroke="currentColor" stroke-width="0.7" stroke-dasharray="4,3" opacity="0.6"/>
+  <text x="816" y="155" font-family="monospace" font-size="8" fill="currentColor" text-anchor="end" opacity="0.65">24h scheduling window</text>
+
+  <!-- Sequential curve: rises linearly at ~7.5s per Neuron → at N=8000 hits 24h (y=160). Use a slightly super-linear shape. -->
+  <path d="M 80 340 L 228 320 L 376 285 L 524 235 L 672 160 L 820 90" fill="none" stroke="currentColor" stroke-width="1.6"/>
+  <text x="830" y="90" font-family="monospace" font-size="9" fill="currentColor" text-anchor="start" font-weight="bold">naive</text>
+  <text x="830" y="102" font-family="monospace" font-size="8" fill="currentColor" text-anchor="start" opacity="0.55">O(N·K) sequential</text>
+
+  <!-- Crossing point marker: N=8k, 24h -->
+  <line x1="672" y1="340" x2="672" y2="160" stroke="currentColor" stroke-width="0.6" stroke-dasharray="2,3" opacity="0.5"/>
+  <circle cx="672" cy="160" r="3.5" fill="currentColor"/>
+  <text x="672" y="148" font-family="monospace" font-size="8" fill="currentColor" text-anchor="middle" opacity="0.75">wall hit</text>
+
+  <!-- Sampled flat line at ~1h -->
+  <line x1="80" y1="332" x2="820" y2="332" stroke="#e8a87c" stroke-width="1.8"/>
+  <text x="830" y="334" font-family="monospace" font-size="9" fill="#e8a87c" text-anchor="start" font-weight="bold">sampled</text>
+  <text x="830" y="346" font-family="monospace" font-size="8" fill="#e8a87c" text-anchor="start" opacity="0.9">cap=500/pass</text>
+
+  <!-- Annotation: overflow zone -->
+  <path d="M 672 160 L 820 160 L 820 90 L 672 90 Z" fill="currentColor" opacity="0.06"/>
+  <text x="746" y="128" font-family="monospace" font-size="8" fill="currentColor" text-anchor="middle" opacity="0.55">passes stack up</text>
+
+  <!-- Caption bottom -->
+  <text x="460" y="412" font-family="monospace" font-size="9" fill="currentColor" text-anchor="middle" opacity="0.4">at N≈8000 a sequential full pass no longer finishes before the next one starts; sampling flattens the curve</text>
+</svg>
+<figcaption>A naive sequential scan crosses the 24-hour scheduling window around 8,000 Neurons and the passes start stacking. The sampled pass stays flat — by design.</figcaption></figure></p>
+<h2>The math of the wall</h2>
+<p>Trail&#39;s contradiction detector works like this. For every Neuron that has changed — or, in the nightly pass, every Neuron at all — we find its top-K nearest peers via FTS5 over the corpus, then ask a small language model whether each (new, peer) pair contradicts each other. Top-K is 5 by default. Each LLM call takes 1–3 seconds on Haiku. So every Neuron costs about 5 × 1.5 seconds ≈ 7.5 seconds of wall-clock time to scan.</p>
+<p>At a thousand Neurons, that is two hours. At four thousand, eight hours. At eight thousand, a sequential full pass runs close to seventeen hours — and the scheduler re-fires every twenty-four. The passes start to overlap. Then they start to stack. Then the scan queue grows without bound, and the whole lint service is one bad night away from becoming useless.</p>
+<p>This is the scan wall. It is not a bug in the detector; it is a direct consequence of an architecture where knowledge compiles. RAG doesn&#39;t have this problem because RAG never integrates anything. Trail has it because Trail does the integration that gives Neurons their value in the first place.</p>
+<p>The wall has to be walked through, not avoided.</p>
+<h2>Why the obvious solutions are wrong</h2>
+<p><strong>Parallelise it.</strong> The straightforward response is to spawn K worker processes and divide the Neurons among them. This works in the sense that it moves the wall further out, but it does not move it far enough — at 50,000 Neurons a 4-way parallel scan still takes almost an entire night, and the LLM token budget scales linearly with worker count. Worse, it replaces an architectural problem with an operations problem. Trail would become a service that required tuning a thread pool.</p>
+<p><strong>Skip pages that have not changed.</strong> The reactive path already does this. When a Neuron is approved, the contradiction-lint subscriber fires for that Neuron only. The nightly pass exists precisely because the reactive path misses cases: a page approved before contradiction-lint was enabled, a page affected by a source that was later retracted, a page whose truth-value depends on a peer that was just rewritten. You cannot drop the full pass without reintroducing silent drift.</p>
+<p><strong>Sample uniformly.</strong> Pick 500 random Neurons every night and scan those. Over sixteen days, every page gets visited eventually. This sounds reasonable until you look at where contradictions actually live. Contradictions are overwhelmingly introduced by recent edits, not discovered by re-checking quiet pages. A uniform random 500-of-8000 would delay the discovery of a fresh contradiction by a week on average, which is roughly forever in curator-time. The curator would notice the problem before the system did.</p>
+<p>Each of these three solutions has a defect at the same place: they treat every Neuron as equally worth scanning, when the Neurons that actually need scanning are the ones near a recent edit — and, with lower frequency, a long-idle tail that nobody has looked at in months.</p>
+<h2>The split that works</h2>
+<p>The solution Trail ships is boring in the way good solutions usually are.</p>
+<p>Cap the per-pass budget at 500 Neurons. Spend sixty percent of that budget — three hundred Neurons — on the most-recently-updated pages in the corpus. Spend the remaining forty percent — two hundred Neurons — on a uniform random sample of everything else. Do this every twenty-four hours.</p>
+<p><figure class="cms-svg cms-svg--sampling-split"><svg viewBox="0 20 920 400" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Sampling strategy: 60% of the per-pass budget is drawn from the most-recently-updated Neurons; the remaining 40% is uniformly sampled from the rest of the corpus so long-idle pages still get revisited.">
+  <text x="460" y="45" font-family="monospace" font-size="11" fill="currentColor" text-anchor="middle" opacity="0.55" letter-spacing="1.5">WHAT THE SAMPLE PICKS</text>
+
+  <!-- Corpus bar: full population, sorted by updatedAt desc (left=most recent) -->
+  <rect x="80" y="100" width="760" height="38" fill="none" stroke="currentColor" stroke-width="1.2" opacity="0.85"/>
+
+  <!-- Split divider at 20% (recent zone) -->
+  <line x1="232" y1="98" x2="232" y2="142" stroke="currentColor" stroke-width="0.6" stroke-dasharray="3,3" opacity="0.55"/>
+
+  <!-- Labels for the two regions -->
+  <text x="156" y="90" font-family="monospace" font-size="9" fill="currentColor" text-anchor="middle" opacity="0.7">RECENT EDITS</text>
+  <text x="536" y="90" font-family="monospace" font-size="9" fill="currentColor" text-anchor="middle" opacity="0.55">LONG-TAIL — idle Neurons</text>
+
+  <!-- Axis underneath: newest → oldest -->
+  <line x1="80" y1="158" x2="840" y2="158" stroke="currentColor" stroke-width="0.6" opacity="0.5"/>
+  <text x="80"  y="172" font-family="monospace" font-size="8" fill="currentColor" text-anchor="start"  opacity="0.55">newest</text>
+  <text x="840" y="172" font-family="monospace" font-size="8" fill="currentColor" text-anchor="end"    opacity="0.55">oldest</text>
+
+  <!-- N annotation -->
+  <text x="460" y="175" font-family="monospace" font-size="8" fill="currentColor" text-anchor="middle" opacity="0.45">every Neuron in the KB · sorted by last edit</text>
+
+  <!-- Lower block: the sample (300 solid dots + 200 scattered across tail) -->
+  <text x="460" y="220" font-family="monospace" font-size="11" fill="currentColor" text-anchor="middle" opacity="0.55" letter-spacing="1.5">THE NIGHTLY SAMPLE · cap = 500</text>
+
+  <!-- Recent 60%: packed amber dots from x=80 to x=232 -->
+  <g fill="#e8a87c">
+    <circle cx="88"  cy="260" r="3"/>
+    <circle cx="100" cy="260" r="3"/>
+    <circle cx="112" cy="260" r="3"/>
+    <circle cx="124" cy="260" r="3"/>
+    <circle cx="136" cy="260" r="3"/>
+    <circle cx="148" cy="260" r="3"/>
+    <circle cx="160" cy="260" r="3"/>
+    <circle cx="172" cy="260" r="3"/>
+    <circle cx="184" cy="260" r="3"/>
+    <circle cx="196" cy="260" r="3"/>
+    <circle cx="208" cy="260" r="3"/>
+    <circle cx="220" cy="260" r="3"/>
+    <circle cx="88"  cy="272" r="3"/>
+    <circle cx="100" cy="272" r="3"/>
+    <circle cx="112" cy="272" r="3"/>
+    <circle cx="124" cy="272" r="3"/>
+    <circle cx="136" cy="272" r="3"/>
+    <circle cx="148" cy="272" r="3"/>
+    <circle cx="160" cy="272" r="3"/>
+    <circle cx="172" cy="272" r="3"/>
+    <circle cx="184" cy="272" r="3"/>
+    <circle cx="196" cy="272" r="3"/>
+    <circle cx="208" cy="272" r="3"/>
+    <circle cx="220" cy="272" r="3"/>
+  </g>
+
+  <!-- Random 40%: sparse scattered dots from x=240 to x=840 -->
+  <g fill="currentColor" opacity="0.75">
+    <circle cx="258"  cy="262" r="2.5"/>
+    <circle cx="285"  cy="268" r="2.5"/>
+    <circle cx="312"  cy="259" r="2.5"/>
+    <circle cx="348"  cy="271" r="2.5"/>
+    <circle cx="379"  cy="262" r="2.5"/>
+    <circle cx="412"  cy="268" r="2.5"/>
+    <circle cx="445"  cy="260" r="2.5"/>
+    <circle cx="476"  cy="270" r="2.5"/>
+    <circle cx="508"  cy="264" r="2.5"/>
+    <circle cx="542"  cy="258" r="2.5"/>
+    <circle cx="574"  cy="268" r="2.5"/>
+    <circle cx="605"  cy="262" r="2.5"/>
+    <circle cx="638"  cy="270" r="2.5"/>
+    <circle cx="668"  cy="260" r="2.5"/>
+    <circle cx="698"  cy="267" r="2.5"/>
+    <circle cx="731"  cy="262" r="2.5"/>
+    <circle cx="762"  cy="270" r="2.5"/>
+    <circle cx="795"  cy="260" r="2.5"/>
+    <circle cx="825"  cy="268" r="2.5"/>
+  </g>
+
+  <!-- Bracket annotations for each region -->
+  <!-- Recent bracket -->
+  <path d="M 80 290 L 80 296 L 232 296 L 232 290" fill="none" stroke="#e8a87c" stroke-width="0.9"/>
+  <text x="156" y="315" font-family="monospace" font-size="9" fill="#e8a87c" text-anchor="middle" font-weight="bold">60% · most recent</text>
+  <text x="156" y="327" font-family="monospace" font-size="8" fill="currentColor" text-anchor="middle" opacity="0.55">highest contradiction yield</text>
+
+  <!-- Random bracket -->
+  <path d="M 240 290 L 240 296 L 840 296 L 840 290" fill="none" stroke="currentColor" stroke-width="0.7" opacity="0.6"/>
+  <text x="540" y="315" font-family="monospace" font-size="9" fill="currentColor" text-anchor="middle" font-weight="bold" opacity="0.75">40% · uniform random tail</text>
+  <text x="540" y="327" font-family="monospace" font-size="8" fill="currentColor" text-anchor="middle" opacity="0.55">long-idle Neurons still get revisited</text>
+
+  <!-- Caption bottom -->
+  <text x="460" y="370" font-family="monospace" font-size="9" fill="currentColor" text-anchor="middle" opacity="0.4">the sample is biased toward edits — but not exclusively, so old Neurons don't silently rot</text>
+</svg>
+<figcaption>Each nightly sample is biased toward recent edits (where contradictions actually live) but reserves room for random long-tail picks so old Neurons never stop being checked.</figcaption></figure></p>
+<p>That is the whole thing.</p>
+<p>The choices embedded in those two numbers are not arbitrary. Sixty percent is what you get when you follow the biology honestly: slow-wave sleep devotes the bulk of its replay bandwidth to recent experience, but not all of it. The hippocampus replays the day&#39;s traces preferentially; it also replays older memories that are being consolidated or updated. If you look at sleep-spindle literature, the ratio is not symmetric and it is not winner-take-all — it is weighted toward new material with a meaningful reserve for old. Sixty-forty falls out of that shape.</p>
+<p>Five hundred is the number that makes a full pass fit in roughly an hour of wall-clock time on a single Haiku lane, with comfortable headroom for retries and scheduler slack. It is not a constant of the universe. Tune it by environment variable (<code>TRAIL_CONTRADICTION_SAMPLE_SIZE</code>) based on your hardware budget. On a larger deployment with parallel CLI lanes, push it to two thousand. On a Raspberry Pi running a personal knowledge base, drop it to fifty. The sampling strategy does not change — only the cap.</p>
+<p>And cap zero disables the cap entirely. On a corpus of three hundred Neurons, there is nothing to ration; just scan all of them. The code path that handles this is four lines long.</p>
+<h2>What this looks like in a running system</h2>
+<p><figure class="cms-svg cms-svg--dreaming-cycle"><svg viewBox="0 20 920 420" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The nightly dreaming cycle: sample, scan top-K peers, emit findings, wait — run once every 24 hours like a slow-wave consolidation pass.">
+  <text x="460" y="45" font-family="monospace" font-size="11" fill="currentColor" text-anchor="middle" opacity="0.55" letter-spacing="1.5">THE NIGHTLY DREAMING PASS</text>
+
+  <!-- Clock dial -->
+  <circle cx="460" cy="240" r="140" fill="none" stroke="currentColor" stroke-width="1.2" opacity="0.85"/>
+
+  <!-- 12 hour ticks -->
+  <g stroke="currentColor" stroke-width="0.8" opacity="0.55">
+    <line x1="460" y1="100" x2="460" y2="110"/>
+    <line x1="530" y1="119" x2="525" y2="127"/>
+    <line x1="581" y1="170" x2="572" y2="175"/>
+    <line x1="600" y1="240" x2="590" y2="240"/>
+    <line x1="581" y1="310" x2="572" y2="305"/>
+    <line x1="530" y1="361" x2="525" y2="353"/>
+    <line x1="460" y1="380" x2="460" y2="370"/>
+    <line x1="390" y1="361" x2="395" y2="353"/>
+    <line x1="339" y1="310" x2="348" y2="305"/>
+    <line x1="320" y1="240" x2="330" y2="240"/>
+    <line x1="339" y1="170" x2="348" y2="175"/>
+    <line x1="390" y1="119" x2="395" y2="127"/>
+  </g>
+
+  <!-- Clock numerals -->
+  <g font-family="monospace" font-size="9" fill="currentColor" opacity="0.55" text-anchor="middle">
+    <text x="460" y="94">00</text>
+    <text x="600" y="243">06</text>
+    <text x="460" y="395">12</text>
+    <text x="320" y="243">18</text>
+  </g>
+
+  <!-- Active scan arc: from ~01:00 to ~02:00 (amber) -->
+  <!-- arc start angle: 30° from 12 (01:00) = vertical +30° right; radius 140 -->
+  <!-- Using SVG arc: from (460 + 140*sin(30°), 240 - 140*cos(30°)) to (460 + 140*sin(60°), 240 - 140*cos(60°)) -->
+  <!-- approx: (530,119) to (581,170) -->
+  <path d="M 530 119 A 140 140 0 0 1 581 170" fill="none" stroke="#e8a87c" stroke-width="5"/>
+  <text x="588" y="138" font-family="monospace" font-size="9" fill="#e8a87c" font-weight="bold">scan pass</text>
+  <text x="588" y="150" font-family="monospace" font-size="8" fill="currentColor" opacity="0.6">~1h wall-clock</text>
+
+  <!-- Center block: pipeline steps -->
+  <g font-family="monospace" font-size="10" fill="currentColor" text-anchor="middle">
+    <text x="460" y="210" font-weight="bold" opacity="0.9">4 steps per pass</text>
+  </g>
+  <g font-family="monospace" font-size="9" fill="currentColor" text-anchor="middle" opacity="0.75">
+    <text x="460" y="232">① sample 500</text>
+    <text x="460" y="248">② find top-K peers</text>
+    <text x="460" y="264">③ emit findings</text>
+    <text x="460" y="280">④ sleep · 23h</text>
+  </g>
+
+  <!-- Idle arc annotation: most of the day is the system waiting -->
+  <text x="225" y="240" font-family="monospace" font-size="9" fill="currentColor" text-anchor="middle" opacity="0.55">idle · 23h</text>
+  <text x="225" y="254" font-family="monospace" font-size="8" fill="currentColor" text-anchor="middle" opacity="0.45">serving reads</text>
+
+  <path d="M 285 240 L 315 240" stroke="currentColor" stroke-width="0.8" opacity="0.45" marker-end="url(#arrowhead)"/>
+
+  <defs>
+    <marker id="arrowhead" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+      <polygon points="0 0, 6 3, 0 6" fill="currentColor" opacity="0.6"/>
+    </marker>
+  </defs>
+
+  <!-- Biological analogy -->
+  <g font-family="monospace" font-size="8" fill="currentColor" opacity="0.55">
+    <text x="700" y="78">LIKE THE BRAIN DOES DURING SLEEP</text>
+  </g>
+  <g font-family="monospace" font-size="9" fill="currentColor" opacity="0.75">
+    <text x="700" y="100">slow-wave sleep</text>
+    <text x="700" y="115" opacity="0.55">hippocampus replays recent traces</text>
+    <text x="700" y="130" opacity="0.55">cortex integrates into long-term memory</text>
+    <text x="700" y="150" font-style="italic">Trail dreams on a cron.</text>
+  </g>
+
+  <!-- Caption bottom -->
+  <text x="460" y="408" font-family="monospace" font-size="9" fill="currentColor" text-anchor="middle" opacity="0.4">work during the quiet hour; serve queries the other twenty-three</text>
+</svg>
+<figcaption>A scheduled pass that sleeps for most of the day and does one bounded hour of integration work. The analogy to slow-wave consolidation is not metaphorical — it is the same pattern.</figcaption></figure></p>
+<p>The scheduler ticks once a day. It picks the five hundred Neurons described above, hands each one to the contradiction checker in sequence, and emits any findings as curation-queue candidates. A curator sees those findings in the queue the next morning — or later that day, or whenever they open the admin — and resolves them through the standard flow. Retire the newer page, retire the older one, reconcile manually, or dismiss as a false positive.</p>
+<p>From the curator&#39;s perspective, nothing about the scheduling strategy is visible. They see a queue of findings. The queue is roughly the same size on night one at a thousand Neurons as it is on night one-hundred-and-fifty at twenty thousand. The work per human has been flattened, even though the corpus has grown by twenty times.</p>
+<p>From the infrastructure side, the work per machine has also been flattened. LLM token spend per night is bounded by the cap, not by corpus size. Database read pressure is bounded. The scheduler either finishes its pass in an hour or it doesn&#39;t fire at all, depending on whether contradictions are enabled for that KB. There is no runaway.</p>
+<p>The full-fidelity story is that every Neuron gets re-scanned on average every sixteen to twenty nights. Recent edits get re-scanned within twenty-four hours of the edit. A Neuron that has not been touched in two years sits in the tail and gets picked up a handful of times a year, which is the right frequency for a page that nobody is modifying. The system never stops checking anything; it just checks different things at different rates.</p>
+<h2>The same pattern, used everywhere</h2>
+<p>Contradiction-scanning is the most expensive thing the lint scheduler does, but it is not the only thing. The same nightly pass also runs orphan detection (every source to every Neuron, asking which Neurons no source supports anymore) and stale detection (every Neuron&#39;s <code>updatedAt</code> against a cutoff, flagging pages that haven&#39;t been touched in the configured staleness window).</p>
+<p>Orphan and stale detection are cheap. They are pure SQL queries; they cost milliseconds even on large corpora. They run across the full KB every night with no sampling. There is nothing to ration because there is nothing expensive to do.</p>
+<p>The principle is that expensive work gets sampled; cheap work gets exhaustively scanned. Trail applies this uniformly across the background services. The queue-backfill that replays source re-ingests after schema migrations uses the same bounded-per-tick model. The reference-extractor runs reactively, never on a full pass. The backlink-extractor rebuilds incrementally on candidate_approved events.</p>
+<p>The pattern falls out naturally once you commit to the compile-time architecture. Work has to be integrated. Integration has cost. Bounded integration has bounded cost. Unbounded integration, given a growing corpus, eventually exceeds any schedule you give it. You either sample thoughtfully or you accept that your system will eventually stop working on large corpora — and &quot;eventually&quot; arrives around the eight-thousand-Neuron mark, not at some abstract future scale.</p>
+<h2>What the user sees</h2>
+<p>Nothing. That is the point.</p>
+<p>A curator with three hundred Neurons and a curator with thirty thousand Neurons have the same experience of the queue. The queue fills at roughly the same rate. The findings that land there are drawn from the same nightly-pass machinery. The delay between editing a page and the system re-checking it against its peers is under twenty-four hours in both cases.</p>
+<p>The difference is hidden inside the scheduler. On the small KB, the cap is irrelevant — there are not enough Neurons for the cap to matter. On the large KB, the cap is the only reason the scheduler has not fallen apart. And because the sampling is biased toward recent edits, the curator&#39;s most common action — &quot;I just merged a source, are any of these claims contradicting something I have already written?&quot; — gets answered on the correct timescale regardless of how big the KB is.</p>
+<p>Trail does not brag about this. It does not need to. The measure of a good scaling plan is that it does not show up in the product. Nobody notices the wall when you have already walked through it.</p>
+<h2>The broader commitment</h2>
+<p>Compile-time architecture makes a specific bet: that it is better to pay the integration cost at ingest than to avoid integration altogether. That bet is correct for a wide class of knowledge work — the class where knowledge should compound over months or years — and it is wrong for the class where corpus size is small and query volume is low.</p>
+<p>But the bet only pays off if the integration cost stays bounded as the corpus grows. If every nightly pass scales with N and every reactive emission scales with K, the system eventually drowns in its own usefulness. The integration that made the Neurons valuable is also the integration that, unbounded, makes the system slow and eventually unusable.</p>
+<p>Sampling with bias is how you escape that trap. Not uniform sampling — too much blindness. Not full scans — too much cost. A weighted cap that spends its budget where contradictions actually live, keeps a reserve for the long tail, and stays inside a human-meaningful time window.</p>
+<p>That is the scaling plan. It is not an engineering tour de force. It is the result of taking seriously that compile-time knowledge, like biological memory, has to be consolidated continuously — and that consolidation, in both cases, is always bounded by sleep. Trail just has sleep on a cron.</p>
+<hr>
+<h3>Further reading</h3>
+<ul>
+<li>Walker, Matthew. <em>Why We Sleep</em>. Scribner, 2017. Chapter 6 is the most accessible non-academic account of slow-wave consolidation&#39;s role in memory integration.</li>
+<li>Diekelmann, S. &amp; Born, J. <em>The memory function of sleep</em>. Nature Reviews Neuroscience, 2010. The canonical review on sleep-dependent memory reorganisation, including the recency-bias that Trail&#39;s 60/40 split mirrors.</li>
+<li>Andrej Karpathy, <em>LLM Wiki</em> — October 2025. Names the pattern Trail implements; does not address the scan-wall problem, which falls out once you try to operate the pattern at scale.</li>
+<li>For Trail&#39;s full scaling analysis across queue, lint, and ingest at corpus sizes from 200 to 100,000 Neurons, see the engineering note <a href="/trails/research/scaling-trail-from-200-to-100000-neurons/">Scaling Trail from 200 to 100,000 Neurons</a>.</li>
+</ul>
+</div><div class="post-footer"><div class="post-tags"><a class="post-tag" href="/tags/scalability/">#scalability</a><a class="post-tag" href="/tags/architecture/">#architecture</a><a class="post-tag" href="/tags/sampling/">#sampling</a><a class="post-tag" href="/tags/systems-design/">#systems-design</a><a class="post-tag" href="/tags/lint/">#lint</a><a class="post-tag" href="/tags/llm-wiki/">#llm-wiki</a></div><a class="post-more" href="/trails/how-trail-works/">← MORE FROM HOW TRAIL WORKS</a></div></article>
+  <footer class="footer">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" role="img" aria-label="trail">
+  <circle cx="16" cy="16" r="14" fill="none" stroke="currentColor" stroke-width="2"/>
+  <circle cx="16" cy="16" r="9" fill="none" stroke="#e8a87c" stroke-width="0.9" opacity="0.55"/>
+  <circle cx="16" cy="16" r="3.5" fill="#e8a87c"/>
+</svg>
+        <span>trail</span>
+      </div>
+      <div class="footer-links">
+        <a href="#">Twitter</a>
+        <a href="https://github.com/broberg-ai/trail">GitHub</a>
+        <a href="#">Status</a>
+      </div>
+      <div class="footer-copy">© 2026 Trail by broberg.ai. As we may think. Site built by <a href="https://webhouse.app" target="_blank" rel="noopener">@webhouse/cms</a></div>
+    </div>
+  </footer>
+  <script>
+(function(){
+  const canvas = document.getElementById('trail-graph');
+  if (!canvas) return;
+  /* Respect reduced-motion — draw one static frame and stop. */
+  const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const ctx = canvas.getContext('2d');
+  let animationFrameId = 0;
+  let running = false;
+  let particles = [];
+  const mouse = { x: null, y: null };
+  const DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+  /* Cache colors at mount; re-read only on theme change. Reading CSS vars
+   * with getComputedStyle on every frame forces style recalc and was
+   * pegging CPU/GPU on long-running pages. */
+  const colors = { node: '#1a1715', accent: '#e8a87c', line: '26, 23, 21', accentLine: '232, 168, 124' };
+  function refreshColors(){
+    const cs = getComputedStyle(document.documentElement);
+    const read = function(n, f){ return (cs.getPropertyValue(n).trim() || f); };
+    colors.node = read('--graph-node', colors.node);
+    colors.accent = read('--graph-accent', colors.accent);
+    colors.line = read('--graph-line', colors.line);
+    colors.accentLine = read('--graph-accent-line', colors.accentLine);
+  }
+  refreshColors();
+
+  /* Re-cache when theme toggles (data-theme attribute changes on <html>). */
+  if ('MutationObserver' in window) {
+    new MutationObserver(refreshColors).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+  }
+
+  function resize(){
+    canvas.width = window.innerWidth * DPR;
+    canvas.height = window.innerHeight * DPR;
+    canvas.style.width = window.innerWidth + 'px';
+    canvas.style.height = window.innerHeight + 'px';
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    initParticles();
+  }
+
+  function Particle(){
+    this.x = Math.random() * window.innerWidth;
+    this.y = Math.random() * window.innerHeight;
+    this.vx = (Math.random() - 0.5) * 0.3;
+    this.vy = (Math.random() - 0.5) * 0.3;
+    this.baseRadius = Math.random() > 0.95 ? 3 : 1.5;
+    this.isAccent = Math.random() > 0.98;
+  }
+  Particle.prototype.update = function(){
+    this.x += this.vx;
+    this.y += this.vy;
+    /* Bound by intent, not by position — a particle that has drifted
+     * past an edge should only flip if it's still moving outward. */
+    if ((this.x < 0 && this.vx < 0) || (this.x > window.innerWidth && this.vx > 0)) this.vx = -this.vx;
+    if ((this.y < 0 && this.vy < 0) || (this.y > window.innerHeight && this.vy > 0)) this.vy = -this.vy;
+    if (mouse.x !== null && mouse.y !== null) {
+      const dx = mouse.x - this.x;
+      const dy = mouse.y - this.y;
+      const d = Math.sqrt(dx*dx + dy*dy);
+      if (d < 100) { this.x -= dx * 0.01; this.y -= dy * 0.01; }
+    }
+  };
+  Particle.prototype.draw = function(){
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.baseRadius, 0, Math.PI * 2);
+    ctx.fillStyle = this.isAccent ? colors.accent : colors.node;
+    ctx.fill();
+  };
+
+  function initParticles(){
+    particles = [];
+    /* Cap at 150 — O(n²) linking loop becomes the bottleneck past that.
+     * On 4K screens the old formula produced 400+ particles. */
+    const count = Math.min(150, Math.floor((window.innerWidth * window.innerHeight) / 15000));
+    for (let i = 0; i < count; i++) particles.push(new Particle());
+  }
+
+  const LINK_DIST = 160;
+  const LINK_DIST_SQ = LINK_DIST * LINK_DIST;
+  function drawLines(){
+    for (let i = 0; i < particles.length; i++){
+      const pi = particles[i];
+      for (let j = i + 1; j < particles.length; j++){
+        const pj = particles[j];
+        const dx = pi.x - pj.x;
+        const dy = pi.y - pj.y;
+        /* Squared-distance early-bail — skip sqrt for the ~95% of pairs
+         * that are too far apart to draw a line between. */
+        const d2 = dx*dx + dy*dy;
+        if (d2 >= LINK_DIST_SQ) continue;
+        const opacity = 1 - (Math.sqrt(d2) / LINK_DIST);
+        ctx.beginPath();
+        if (pi.isAccent || pj.isAccent) {
+          ctx.strokeStyle = 'rgba(' + colors.accentLine + ', ' + (opacity * 0.5) + ')';
+        } else {
+          ctx.strokeStyle = 'rgba(' + colors.line + ', ' + (opacity * 0.18) + ')';
+        }
+        ctx.lineWidth = 0.6;
+        ctx.moveTo(pi.x, pi.y);
+        ctx.lineTo(pj.x, pj.y);
+        ctx.stroke();
+      }
+    }
+  }
+
+  function renderOneFrame(){
+    ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+    for (const p of particles){ p.update(); p.draw(); }
+    drawLines();
+  }
+
+  function loop(){
+    if (!running) return;
+    renderOneFrame();
+    animationFrameId = requestAnimationFrame(loop);
+  }
+  function start(){
+    if (running || reduceMotion) return;
+    running = true;
+    loop();
+  }
+  function stop(){
+    running = false;
+    if (animationFrameId) cancelAnimationFrame(animationFrameId);
+    animationFrameId = 0;
+  }
+
+  window.addEventListener('resize', resize);
+  window.addEventListener('mousemove', function(e){ mouse.x = e.clientX; mouse.y = e.clientY; });
+  window.addEventListener('mouseout', function(){ mouse.x = null; mouse.y = null; });
+  /* Pause when the tab is hidden — rAF keeps firing in some browsers for
+   * several seconds before throttling, and an invisible tab shouldn't
+   * burn GPU. */
+  document.addEventListener('visibilitychange', function(){
+    if (document.hidden) stop();
+    else start();
+  });
+
+  resize();
+  if (reduceMotion) {
+    /* Draw one static starfield so the background isn't empty. */
+    renderOneFrame();
+  } else {
+    start();
+  }
+})();
+</script>
+
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"WebPage","name":"Work That Fits in a Night: How Trail Stops Caring About Corpus Size","url":"https://trail.webhouse.app/trails/how-trail-works/work-that-fits-in-a-night/","description":"A compile-time knowledge system has to integrate new sources against everything it already knows. That integration cost grows with the corpus — until, one Tuesday, it stops finishing before the next night begins. Here is how Trail makes that cost bounded without going blind to the long tail.","inLanguage":"en","isPartOf":{"@type":"WebSite","name":"trail","url":"https://trail.webhouse.app/"}}</script>
+</body>
+</html>

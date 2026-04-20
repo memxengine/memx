@@ -104,16 +104,22 @@ graphRoutes.get('/knowledge-bases/:kbId/graph', async (c) => {
   const kbId = await resolveKbId(trail, tenant.id, c.req.param('kbId'));
   if (!kbId) return c.json({ error: 'Knowledge base not found' }, 404);
 
-  // Nodes: every non-archived wiki doc. Join on backlinks to compute
-  // the incoming-backlink count (used for node size: sqrt then clamp).
+  // Nodes: every non-archived wiki OR work doc. F138 adds kind='work'
+  // so the graph shows Knowledge + Work in one frame — the whole point
+  // of the Work Layer is that tasks/bugs live alongside the Neurons
+  // they reference. Node shape is carried in the response so the admin
+  // renders circles for knowledge and squares for work.
   const nodeRows = await trail.db
     .select({
       id: documents.id,
+      kind: documents.kind,
       title: documents.title,
       filename: documents.filename,
       path: documents.path,
       tags: documents.tags,
       content: documents.content,
+      workStatus: documents.workStatus,
+      workKind: documents.workKind,
       backlinkCount: sql<number>`(
         SELECT COUNT(*) FROM ${wikiBacklinks}
         WHERE ${wikiBacklinks.toDocumentId} = ${documents.id}
@@ -124,7 +130,7 @@ graphRoutes.get('/knowledge-bases/:kbId/graph', async (c) => {
       and(
         eq(documents.tenantId, tenant.id),
         eq(documents.knowledgeBaseId, kbId),
-        eq(documents.kind, 'wiki'),
+        sql`(${documents.kind} = 'wiki' OR ${documents.kind} = 'work')`,
         eq(documents.archived, false),
       ),
     )
@@ -240,6 +246,14 @@ graphRoutes.get('/knowledge-bases/:kbId/graph', async (c) => {
       // rolled up yet — callers should treat 0 as "unknown", not "cold".
       usageWeight: usageByDoc.get(r.id) ?? 0,
       excerpt: excerptOf(r.content),
+      // F138 — kind drives node shape in the admin renderer: 'wiki'
+      // → circle (knowledge), 'work' → square (task/bug/milestone).
+      // workStatus + workKind populated only when kind='work' so the
+      // client can colour the square by status without a second round-
+      // trip.
+      kind: r.kind,
+      workStatus: r.workStatus,
+      workKind: r.workKind,
     };
   });
 

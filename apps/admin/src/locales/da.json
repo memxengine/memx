@@ -2,6 +2,7 @@
   "nav": {
     "neurons": "Neuroner",
     "graph": "Graf",
+    "work": "Arbejde",
     "chat": "Chat",
     "search": "Søg",
     "queue": "Kø",
@@ -195,7 +196,14 @@
     "title": "Kilder",
     "summary": "{n} kilde",
     "summaryPlural": "{n} kilder",
-    "empty": "Ingen kilder endnu. Træk en fil hvor som helst på siden for at uploade.",
+    "empty": {
+      "active": "Ingen kilder er under behandling.",
+      "extracted": "Ingen kilder i extracted-men-tomme tilstand.",
+      "success": "Ingen kilder har produceret Neuroner endnu.",
+      "failed": "Ingen fejlede kilder.",
+      "archived": "Ingen arkiverede kilder.",
+      "all": "Ingen kilder endnu. Træk en fil hvor som helst på siden for at uploade."
+    },
     "showContent": "Vis hele indholdet",
     "hideContent": "Skjul indhold",
     "retry": "Prøv igen",
@@ -225,10 +233,12 @@
     "restoreHint": "Bring denne kilde tilbage til den aktive liste",
     "filter": {
       "active": "Aktive",
+      "extracted": "Extracted",
+      "success": "Success",
+      "failed": "Fejlede",
       "archived": "Arkiverede",
       "all": "Alle"
     },
-    "emptyArchived": "Ingen arkiverede kilder.",
     "processing": "Behandler…",
     "failed": "Fejlede",
     "uploading": "Uploader {name}…",
@@ -254,7 +264,27 @@
     "lintDonePlural": "Lint lavede {n} nye kandidater",
     "lintClean": "Intet at markere.",
     "lintFailed": "Lint fejlede",
-    "emptyFiltered": "Ingen Neuroner matcher de valgte tags. Ryd filteret for at se alt."
+    "emptyFiltered": "Ingen Neuroner matcher de valgte tags. Ryd filteret for at se alt.",
+    "newNeuron": "Ny",
+    "newNeuronHint": "Opret et nyt Neuron manuelt — havner i køen til gennemgang",
+    "newNeuronModal": {
+      "title": "Nyt Neuron",
+      "titleLabel": "Titel",
+      "titlePlaceholder": "f.eks. NADA-protokol",
+      "pathLabel": "Sti",
+      "contentLabel": "Indhold",
+      "contentPlaceholder": "Markdown-indhold (valgfrit — kan redigeres efter godkendelse)",
+      "tagsLabel": "Tags",
+      "tagsPlaceholder": "kommasepareret",
+      "create": "Send til kø",
+      "creating": "Sender…",
+      "paths": {
+        "concepts": "Koncept",
+        "entities": "Entitet",
+        "heuristics": "Heuristik",
+        "decisions": "Beslutning"
+      }
+    }
   },
   "chat": {
     "title": "Chat",
@@ -288,7 +318,9 @@
     "hubLabel": "struktur",
     "emptyTitle": "Grafen er tom",
     "emptyBody": "Tilføj flere Neuroner for at se din Trail tage form. Grafen skal bruge mindst to forbundne Neuroner for at tegne.",
-    "emptyCta": "Åbn køen"
+    "emptyCta": "Åbn køen",
+    "hotTitle": "Populære Neuroner",
+    "edgeHoverRelation": "relationstype"
   },
   "kbs": {
     "title": "Trails",
@@ -377,7 +409,11 @@
     "pinned": "Pinnet",
     "active": "{n} tillid",
     "faded": "Falmet · {n}",
-    "hint": "Heuristic-Neuroner bærer en tillids-score der falder over tid medmindre de redigeres eller pinnes. Under 0.3 falmes de — chat ekskluderer dem så gamle tommelfinger-regler ikke forurener nye svar."
+    "hint": "Heuristic-Neuroner bærer en tillids-score der falder over tid medmindre de redigeres eller pinnes. Under 0.3 falmes de — chat ekskluderer dem så gamle tommelfinger-regler ikke forurener nye svar.",
+    "pinAction": "Fastgør",
+    "unpinAction": "Løsgør",
+    "pinSaving": "Gemmer…",
+    "pinError": "Gem fejlede"
   },
   "settings": {
     "savedToast": "Gemt.",
@@ -404,6 +440,36 @@
       "ambient": "Ambient lyd",
       "ambientEnabled": "Afspil ambient-loops mens jeg arbejder",
       "ambientVolume": "Lydstyrke"
+    }
+  },
+  "work": {
+    "title": "Arbejde",
+    "subtitle": "Tasks, bugs, milestones og beslutninger der lever på samme Trail som din viden — med automatisk kontekst fra relaterede Neuroner via [[wiki-links]].",
+    "new": "+ NYT",
+    "create": "Opret",
+    "createTitle": "Nyt arbejds-item",
+    "status": {
+      "open": "Åben",
+      "in-progress": "I gang",
+      "blocked": "Blokeret",
+      "done": "Færdig"
+    },
+    "kind": {
+      "task": "Task",
+      "bug": "Bug",
+      "milestone": "Milestone",
+      "decision": "Beslutning"
+    },
+    "filter": {
+      "kind": "Filtrér på type"
+    },
+    "field": {
+      "title": "Titel",
+      "kind": "Type",
+      "assignee": "Tildelt",
+      "dueAt": "Deadline",
+      "content": "Beskrivelse",
+      "contentHint": "Markdown. Brug [[neuron-slug]] til at linke til relateret viden — konteksten arves automatisk i chat + kompilering."
     }
   }
 }

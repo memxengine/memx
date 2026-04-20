@@ -1,0 +1,1163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Why Your Knowledge Base Should Compile, Not Search — trail</title>
+  <meta name="description" content="Most AI knowledge systems are sophisticated search engines that forget between queries. The organizations winning are building something different — and the architectural choice has direct consequences for cost, accuracy, and defensibility.">
+  <meta property="og:title" content="Why Your Knowledge Base Should Compile, Not Search">
+  <meta property="og:description" content="Most AI knowledge systems are sophisticated search engines that forget between queries. The organizations winning are building something different — and the architectural choice has direct consequences for cost, accuracy, and defensibility.">
+  <meta property="og:type" content="website">
+  <link rel="icon" type="image/svg+xml" href="/uploads/favicon.svg">
+  <link rel="apple-touch-icon" href="/uploads/memx-logo.svg">
+  <meta name="theme-color" content="#FAF9F5">
+  <script>
+    /* Apply theme before first paint to avoid flash. Mirrors admin's
+     * theme store (localStorage key 'trail.theme'), default light. */
+    (function(){try{var t=localStorage.getItem('trail.theme');document.documentElement.setAttribute('data-theme', t==='dark'?'dark':'light');}catch(e){document.documentElement.setAttribute('data-theme','light');}})();
+  </script>
+  <style>
+/* Tokens mirror apps/admin/src/index.css in the trail repo so landing + admin
+ * share one palette. Light = Bauhaus warm off-white; dark = warm inversion.
+ * Graph vars are rgb triplets (consumed as rgba() by the canvas script). */
+:root,
+html[data-theme="light"] {
+  --bg: #FAF9F5;
+  --bg-card: #FFFFFF;
+  --fg: #1a1715;
+  --accent: #e8a87c;
+  --accent-tint: rgba(232, 168, 124, 0.06);
+  --fg-10: rgba(26, 23, 21, 0.10);
+  --fg-20: rgba(26, 23, 21, 0.20);
+  --fg-40: rgba(26, 23, 21, 0.40);
+  --fg-60: rgba(26, 23, 21, 0.60);
+  --fg-70: rgba(26, 23, 21, 0.70);
+  --fg-90: rgba(26, 23, 21, 0.90);
+  --bg-50: rgba(250, 249, 245, 0.50);
+  --bg-80: rgba(250, 249, 245, 0.80);
+  --graph-node: #1a1715;
+  --graph-accent: #e8a87c;
+  --graph-line: 26, 23, 21;
+  --graph-accent-line: 232, 168, 124;
+  --font-sans: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", "Fira Code", "Courier New", monospace;
+}
+
+html[data-theme="dark"] {
+  --bg: #17140F;
+  --bg-card: #1F1B16;
+  --fg: #F5F1EA;
+  --accent: #e8a87c;
+  --accent-tint: rgba(232, 168, 124, 0.08);
+  --fg-10: rgba(245, 241, 234, 0.10);
+  --fg-20: rgba(245, 241, 234, 0.20);
+  --fg-40: rgba(245, 241, 234, 0.40);
+  --fg-60: rgba(245, 241, 234, 0.60);
+  --fg-70: rgba(245, 241, 234, 0.70);
+  --fg-90: rgba(245, 241, 234, 0.90);
+  --bg-50: rgba(23, 20, 15, 0.50);
+  --bg-80: rgba(23, 20, 15, 0.80);
+  --graph-node: #f5f1ea;
+  --graph-accent: #e8a87c;
+  --graph-line: 245, 241, 234;
+  --graph-accent-line: 232, 168, 124;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html {
+  scroll-behavior: smooth;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background: var(--bg);
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+html, body { overflow-x: hidden; max-width: 100vw; }
+body {
+  font-family: var(--font-sans);
+  background: transparent; /* canvas (fixed, z-index: -1) renders between html and body */
+  color: var(--fg);
+  line-height: 1.5;
+  min-height: 100vh;
+}
+::selection { background: rgba(232, 168, 124, 0.3); color: var(--fg); }
+
+a { color: inherit; text-decoration: none; }
+img { max-width: 100%; display: block; height: auto; }
+button { font: inherit; cursor: pointer; border: none; background: none; color: inherit; }
+svg { max-width: 100%; height: auto; }
+
+/* Navbar */
+.nav {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 50;
+  padding: 0.75rem 1rem;
+  display: flex; justify-content: space-between; align-items: center;
+  background: var(--bg-80);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--fg-10);
+}
+@media (min-width: 768px) { .nav { padding: 1rem 1.5rem; } }
+.nav-brand { display: flex; align-items: center; gap: 0.625rem; min-width: 0; color: var(--fg); }
+.nav-brand img, .nav-brand svg { width: 32px; height: 32px; flex-shrink: 0; }
+@media (min-width: 768px) { .nav-brand { gap: 0.875rem; } .nav-brand img, .nav-brand svg { width: 40px; height: 40px; } }
+.nav-brand .brand-text {
+  font-family: var(--font-mono);
+  font-size: 1.125rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@media (min-width: 768px) { .nav-brand .brand-text { font-size: 1.375rem; } }
+.nav-links { display: none; gap: 2rem; font-size: 0.875rem; font-weight: 500; color: var(--fg-70); }
+.nav-links a { transition: color 0.15s; }
+.nav-links a:hover { color: var(--fg); }
+@media (min-width: 768px) { .nav-links { display: flex; } }
+
+.nav-actions { display: flex; gap: 0.5rem; align-items: center; }
+@media (min-width: 768px) { .nav-actions { gap: 1rem; } }
+.nav-signin {
+  font-size: 0.875rem; font-weight: 500; color: var(--fg);
+  transition: color 0.15s;
+  display: none;
+}
+@media (min-width: 768px) { .nav-signin { display: inline; } }
+.nav-signin:hover { color: var(--accent); }
+.nav-cta {
+  padding: 0.45rem 0.85rem;
+  background: var(--fg); color: var(--bg);
+  font-size: 0.8rem; font-weight: 500;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+@media (min-width: 768px) { .nav-cta { padding: 0.5rem 1rem; font-size: 0.875rem; } }
+.nav-cta:hover { background: var(--fg-90); border-color: var(--accent); }
+
+/* Theme toggle — sun in dark, moon in light */
+.theme-toggle {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 36px; height: 36px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid var(--fg-10);
+  border-radius: 6px;
+  color: var(--fg-70);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.theme-toggle:hover { background: var(--bg-50); color: var(--fg); border-color: var(--fg-20); }
+.theme-toggle:active { transform: scale(0.96); }
+.theme-toggle svg { width: 18px; height: 18px; }
+.theme-toggle .icon-sun { display: none; }
+.theme-toggle .icon-moon { display: block; }
+html[data-theme="dark"] .theme-toggle .icon-sun { display: block; }
+html[data-theme="dark"] .theme-toggle .icon-moon { display: none; }
+
+/* Mobile hamburger toggle */
+.nav-toggle {
+  display: inline-flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  width: 40px; height: 40px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid var(--fg-10);
+  border-radius: 6px;
+  cursor: pointer;
+  gap: 4px;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.15s;
+}
+.nav-toggle:hover { background: var(--bg-50); }
+.nav-toggle:active { transform: scale(0.96); }
+.nav-toggle span {
+  display: block;
+  width: 18px;
+  height: 2px;
+  background: var(--fg);
+  border-radius: 2px;
+  transition: transform 0.2s, opacity 0.2s;
+}
+@media (min-width: 768px) { .nav-toggle { display: none; } }
+body[data-menu-open="true"] .nav-toggle span:nth-child(1) { transform: translateY(6px) rotate(45deg); }
+body[data-menu-open="true"] .nav-toggle span:nth-child(2) { opacity: 0; }
+body[data-menu-open="true"] .nav-toggle span:nth-child(3) { transform: translateY(-6px) rotate(-45deg); }
+
+/* Mobile menu overlay */
+.nav-mobile {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: var(--bg);
+  z-index: 49;
+  padding: 5rem 1.5rem 2rem;
+  display: flex; flex-direction: column; gap: 1.5rem;
+  transform: translateX(100%);
+  transition: transform 0.25s ease-out;
+  overflow-y: auto;
+}
+body[data-menu-open="true"] .nav-mobile { transform: translateX(0); }
+@media (min-width: 768px) { .nav-mobile { display: none; } }
+.nav-mobile a {
+  font-size: 1.125rem; font-weight: 500; color: var(--fg);
+  padding: 0.625rem 0;
+  border-bottom: 1px solid var(--fg-10);
+}
+.nav-mobile a:last-child { border-bottom: none; }
+body[data-menu-open="true"] { overflow: hidden; }
+
+/* Hero */
+.hero {
+  position: relative;
+  min-height: 100vh;
+  display: flex; flex-direction: column; justify-content: center; align-items: center;
+  padding-top: 5rem; overflow: hidden;
+}
+#trail-graph {
+  position: fixed; inset: 0;
+  pointer-events: none; opacity: 0.4; z-index: -1;
+}
+.hero-inner {
+  position: relative; z-index: 10;
+  max-width: 56rem; margin: 0 auto;
+  padding: 0 2rem;
+  text-align: center;
+  width: 100%;
+}
+@media (min-width: 640px) { .hero-inner { padding: 0 2.5rem; } }
+.eyebrow {
+  display: inline-flex; align-items: center; gap: 0.5rem;
+  padding: 0.25rem 0.75rem; margin-bottom: 2rem;
+  border: 1px solid var(--fg-20); border-radius: 9999px;
+  font-size: 0.75rem; font-family: var(--font-mono);
+  background: var(--bg-50); backdrop-filter: blur(4px);
+}
+.eyebrow .dot {
+  width: 0.5rem; height: 0.5rem; border-radius: 9999px;
+  background: var(--accent);
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+.hero h1 {
+  font-size: clamp(2.5rem, 7vw, 4.5rem);
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  line-height: 1.1;
+  margin-bottom: 1.5rem;
+}
+.hero h1 .accent {
+  background: linear-gradient(to right, var(--fg), rgba(232, 168, 124, 0.8));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.hero p.lead {
+  font-size: 1.125rem;
+  color: var(--fg-70);
+  margin: 0 auto 2.5rem; max-width: 40rem;
+  line-height: 1.6;
+}
+@media (min-width: 768px) { .hero p.lead { font-size: 1.25rem; } }
+
+.cta-group {
+  display: flex; flex-direction: column; gap: 1rem;
+  justify-content: center; align-items: center;
+}
+@media (min-width: 640px) { .cta-group { flex-direction: row; } }
+
+.btn {
+  display: inline-flex; align-items: center; gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  border-radius: 6px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+.btn-primary {
+  background: var(--fg); color: var(--bg);
+}
+.btn-primary:hover {
+  background: var(--fg-90);
+  box-shadow: 0 10px 25px -5px rgba(232, 168, 124, 0.2);
+}
+.btn-secondary {
+  background: transparent; border: 1px solid var(--fg-20);
+  color: var(--fg);
+  font-family: var(--font-mono); font-size: 0.875rem;
+}
+.btn-secondary:hover { border-color: var(--fg); }
+
+.scroll-indicator {
+  position: absolute; bottom: 2rem; left: 50%;
+  transform: translateX(-50%);
+  width: 32px; height: 32px;
+  display: flex; align-items: center; justify-content: center;
+  border: 1px solid var(--fg-20);
+  border-radius: 9999px;
+  color: var(--fg-60);
+  opacity: 0.7;
+  animation: scroll-hint 2.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  transition: opacity 0.2s, border-color 0.2s;
+}
+.scroll-indicator:hover { opacity: 1; border-color: var(--fg); color: var(--fg); }
+.scroll-indicator svg { width: 14px; height: 14px; }
+@keyframes scroll-hint {
+  0%, 100% { transform: translate(-50%, 0); }
+  50%      { transform: translate(-50%, 6px); }
+}
+
+/* Features */
+.features {
+  padding: 4rem 2rem;
+  border-top: 1px solid var(--fg-10);
+}
+@media (min-width: 768px) { .features { padding: 6rem 1.5rem; } }
+.features-inner { max-width: 72rem; margin: 0 auto; }
+.features-header { margin-bottom: 4rem; }
+.features-header h2 {
+  font-size: clamp(1.75rem, 3.5vw, 2rem);
+  font-weight: 700; letter-spacing: -0.02em; margin-bottom: 1rem;
+}
+.features-header p {
+  color: var(--fg-60); max-width: 36rem;
+}
+.features-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.25rem;
+}
+@media (min-width: 768px) { .features-grid { grid-template-columns: repeat(3, 1fr); } }
+
+.feature-card {
+  position: relative; overflow: hidden;
+  padding: 1.5rem;
+  border: 1px solid var(--fg-10);
+  background: color-mix(in srgb, var(--bg) 78%, transparent);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  transition: background 0.2s;
+}
+.feature-card:hover { background: color-mix(in srgb, var(--bg-card) 90%, transparent); }
+.feature-card::before {
+  content: "";
+  position: absolute; top: 0; left: 0;
+  width: 100%; height: 2px;
+  background: var(--accent);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.3s;
+}
+.feature-card:hover::before { transform: scaleX(1); }
+.feature-card .icon { margin-bottom: 1rem; color: var(--fg); }
+.feature-card h3 {
+  font-family: var(--font-mono);
+  font-size: 1.125rem; font-weight: 600;
+  letter-spacing: -0.02em; margin-bottom: 0.5rem;
+  color: var(--fg);
+}
+.feature-card p {
+  color: var(--fg-70);
+  font-size: 0.875rem; line-height: 1.6;
+}
+
+/* Article (long-form pages) */
+.container { max-width: 48rem; margin: 0 auto; padding: 0 2rem; }
+@media (min-width: 640px) { .container { padding: 0 2.5rem; } }
+/* Use padding-block (top/bottom only) so .container's horizontal padding survives. */
+.article { padding-top: 6rem; padding-bottom: 3rem; }
+@media (min-width: 768px) { .article { padding-top: 7rem; padding-bottom: 4rem; } }
+.article-header { margin-bottom: 3rem; border-bottom: 1px solid var(--fg-10); padding-bottom: 2rem; }
+.article-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.75rem; letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 1rem;
+}
+.article-header h1 {
+  font-size: clamp(2rem, 5vw, 3rem);
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  line-height: 1.1;
+  margin-bottom: 1rem;
+}
+.article-lead {
+  font-size: 1.125rem;
+  color: var(--fg-70);
+  line-height: 1.6;
+  margin-bottom: 1.25rem;
+}
+.article-meta {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  color: var(--fg-60);
+}
+.article-tags { display: flex; flex-wrap: wrap; gap: 0.375rem; margin-top: 1rem; }
+.article-tags .tag {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  padding: 0.15rem 0.5rem;
+  border: 1px solid var(--fg-10);
+  border-radius: 9999px;
+  color: var(--fg-60);
+}
+.article-cover { margin: 2rem 0 0; }
+.article-cover img { width: 100%; border-radius: 4px; }
+
+.prose { font-size: 1.0625rem; line-height: 1.75; color: var(--fg); word-wrap: break-word; overflow-wrap: break-word; }
+.prose h1, .prose h2, .prose h3 { letter-spacing: -0.02em; }
+.prose h2 { font-size: 1.625rem; font-weight: 700; margin: 3rem 0 1rem; }
+.prose h3 { font-size: 1.25rem; font-weight: 600; margin: 2rem 0 0.75rem; }
+.prose p { margin-bottom: 1.25rem; }
+.prose strong { font-weight: 600; }
+.prose em { font-style: italic; }
+.prose a { color: var(--fg); border-bottom: 1px solid var(--accent); transition: color 0.15s; }
+.prose a:hover { color: var(--accent); }
+.prose blockquote {
+  border-left: 3px solid var(--accent);
+  padding: 0.5rem 0 0.5rem 1.25rem;
+  margin: 1.75rem 0;
+  color: var(--fg-70);
+  font-style: italic;
+}
+.prose blockquote p:last-child { margin-bottom: 0; }
+.prose ul, .prose ol { padding-left: 1.5rem; margin-bottom: 1.25rem; }
+.prose li { margin-bottom: 0.5rem; }
+.prose code {
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  background: var(--fg-10);
+  padding: 0.125rem 0.375rem;
+  border-radius: 3px;
+}
+.prose pre {
+  background: var(--fg); color: var(--bg);
+  padding: 1rem 1.25rem;
+  border-radius: 4px;
+  overflow-x: auto;
+  margin-bottom: 1.5rem;
+  font-size: 0.875rem;
+}
+.prose pre code { background: none; padding: 0; color: inherit; }
+.prose hr { border: none; border-top: 1px solid var(--fg-10); margin: 3rem 0; }
+.prose figure {
+  margin: 1rem 0 1.5rem;
+  text-align: center;
+  color: var(--fg); /* inline SVGs use currentColor so strokes/text swap with theme */
+}
+.prose figure svg { width: 100%; height: auto; display: block; }
+
+/* Fullscreen view for SVG figures — click to zoom, Escape to close */
+.prose .cms-svg { cursor: zoom-in; transition: opacity 0.15s; }
+.prose .cms-svg:hover { opacity: 0.85; }
+.svg-fullscreen {
+  position: fixed; inset: 0; z-index: 100;
+  background: color-mix(in srgb, var(--bg) 96%, transparent);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: none;
+  padding: 4rem 2rem 2rem;
+  cursor: zoom-out;
+  overflow-y: auto;
+}
+.svg-fullscreen[data-open="true"] {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 1.25rem;
+}
+.svg-fullscreen-content {
+  max-width: 96vw; max-height: 82vh;
+  display: flex; align-items: center; justify-content: center;
+}
+.svg-fullscreen-content svg {
+  width: auto; height: auto;
+  max-width: 96vw; max-height: 82vh;
+}
+.svg-fullscreen-caption {
+  font-family: var(--font-mono); font-size: 0.85rem;
+  color: var(--fg-70); max-width: 48rem; text-align: center; line-height: 1.5;
+  padding: 0 1rem;
+}
+.svg-fullscreen-close {
+  position: fixed; top: 1.25rem; right: 1.25rem;
+  width: 40px; height: 40px;
+  padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--bg-80);
+  border: 1px solid var(--fg-20);
+  border-radius: 50%;
+  color: var(--fg);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, transform 0.15s;
+}
+.svg-fullscreen-close svg { display: block; }
+.svg-fullscreen-close:hover { background: var(--fg-10); border-color: var(--accent); }
+.svg-fullscreen-close:active { transform: scale(0.95); }
+.prose figcaption {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  color: var(--fg-60);
+  margin-top: 0.75rem;
+  line-height: 1.5;
+}
+.prose img { max-width: 100%; border-radius: 4px; margin: 1.5rem auto; }
+
+/* Footer */
+.footer {
+  border-top: 1px solid var(--fg-10);
+  padding: 2.5rem 2rem;
+  background: var(--bg);
+}
+@media (min-width: 768px) { .footer { padding: 3rem 1.5rem; } }
+.footer-inner {
+  max-width: 72rem; margin: 0 auto;
+  display: flex; flex-direction: column;
+  gap: 1.5rem; align-items: center;
+  justify-content: space-between;
+}
+@media (min-width: 768px) { .footer-inner { flex-direction: row; } }
+.footer-brand { display: flex; align-items: center; gap: 0.625rem; color: var(--fg); }
+.footer-brand img, .footer-brand svg { width: 32px; height: 32px; }
+.footer-brand span {
+  font-family: var(--font-mono);
+  font-size: 1rem; font-weight: 600;
+}
+.footer-links { display: flex; gap: 1.5rem; font-family: var(--font-mono); font-size: 0.875rem; color: var(--fg-60); }
+.footer-links a { transition: color 0.15s; }
+.footer-links a:hover { color: var(--accent); }
+.footer-copy { font-family: var(--font-mono); font-size: 0.75rem; color: var(--fg-40); }
+.footer-copy a { color: var(--fg-60); border-bottom: 1px dotted var(--fg-20); transition: color 0.15s, border-color 0.15s; }
+.footer-copy a:hover { color: var(--accent); border-bottom-color: var(--accent); }
+
+/* Clickable article tags (reused by pages) */
+.article-tags .tag { transition: color 0.15s, border-color 0.15s; }
+.article-tags .tag:hover { color: var(--accent); border-color: var(--accent); }
+
+/* Trails index + category pages */
+.trails-section { margin: 3rem 0; }
+.trails-section-header {
+  display: flex; justify-content: space-between; align-items: baseline;
+  gap: 1rem; margin-bottom: 1.25rem;
+  border-bottom: 1px solid var(--fg-10); padding-bottom: 0.5rem;
+}
+.trails-section-header h2 {
+  font-size: 1.375rem; font-weight: 700; letter-spacing: -0.02em;
+}
+.trails-section-link {
+  font-family: var(--font-mono); font-size: 0.75rem;
+  color: var(--fg-60); letter-spacing: 0.06em;
+  transition: color 0.15s;
+}
+.trails-section-link:hover { color: var(--accent); }
+.post-empty { color: var(--fg-60); font-style: italic; margin: 2rem 0; }
+
+.post-grid {
+  display: grid; grid-template-columns: 1fr;
+  gap: 0.25rem;
+}
+@media (min-width: 640px) { .post-grid { grid-template-columns: repeat(2, 1fr); } }
+.post-card {
+  display: flex; flex-direction: column; gap: 0.5rem;
+  padding: 1.25rem;
+  border: 1px solid var(--fg-10);
+  background: color-mix(in srgb, var(--bg) 78%, transparent);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  transition: background 0.2s, border-color 0.2s;
+  position: relative; overflow: hidden;
+}
+.post-card::before {
+  content: "";
+  position: absolute; top: 0; left: 0;
+  width: 100%; height: 2px; background: var(--accent);
+  transform: scaleX(0); transform-origin: left;
+  transition: transform 0.3s;
+}
+.post-card:hover { background: var(--bg-card); border-color: var(--fg-20); }
+.post-card:hover::before { transform: scaleX(1); }
+.post-card-eyebrow {
+  font-family: var(--font-mono); font-size: 0.7rem;
+  letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--accent);
+}
+.post-card h3 {
+  font-size: 1.125rem; font-weight: 600;
+  letter-spacing: -0.02em; line-height: 1.3;
+}
+.post-card p {
+  color: var(--fg-70); font-size: 0.9rem; line-height: 1.55;
+  margin: 0;
+}
+.post-card-meta {
+  font-family: var(--font-mono); font-size: 0.7rem;
+  color: var(--fg-60); margin-top: auto; padding-top: 0.25rem;
+}
+
+/* Post footer (below prose): bottom tag pills + "more from category" */
+.post-footer {
+  margin: 3rem 0 0;
+  padding-top: 2rem;
+  border-top: 1px solid var(--fg-10);
+}
+.post-tags {
+  display: flex; flex-wrap: wrap; gap: 0.5rem;
+  margin-bottom: 1.5rem;
+}
+.post-tag {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  padding: 0.3rem 0.75rem;
+  border: 1px solid var(--fg-20);
+  border-radius: 9999px;
+  color: var(--fg-70);
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.post-tag:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-tint);
+}
+.post-more {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  letter-spacing: 0.06em;
+  color: var(--fg-60);
+  transition: color 0.15s;
+}
+.post-more:hover { color: var(--accent); }
+
+.post-related {
+  margin-bottom: 1.75rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid var(--fg-10);
+}
+.post-related-label {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--fg-60);
+  margin-bottom: 0.75rem;
+}
+.post-related ul { list-style: none; padding: 0; margin: 0; }
+.post-related li { margin: 0.4rem 0; }
+.post-related a {
+  font-size: 1rem;
+  color: var(--fg);
+  border-bottom: 1px solid var(--fg-10);
+  padding-bottom: 0.15rem;
+  transition: color 0.15s, border-color 0.15s;
+}
+.post-related a:hover { color: var(--accent); border-bottom-color: var(--accent); }
+.post-related-arrow {
+  color: var(--fg-60);
+  margin-left: 0.25rem;
+  transition: color 0.15s, transform 0.15s;
+  display: inline-block;
+}
+.post-related a:hover .post-related-arrow { color: var(--accent); transform: translateX(3px); }
+</style>
+
+  <!-- webhouse.app enrichment -->
+  <meta name="generator" content="webhouse.app" />
+  <link rel="canonical" href="https://trail.webhouse.app/trails/how-trail-works/knowledge-that-compounds/" />
+  <meta property="og:url" content="https://trail.webhouse.app/trails/how-trail-works/knowledge-that-compounds/" />
+  <meta property="og:site_name" content="trail" />
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="Why Your Knowledge Base Should Compile, Not Search" />
+  <meta name="twitter:description" content="Most AI knowledge systems are sophisticated search engines that forget between queries. The organizations winning are building something different — and the architectural choice has direct consequences for cost, accuracy, and defensibility." />
+  <link rel="manifest" href="/manifest.json" />
+</head>
+<body>
+  <canvas id="trail-graph" aria-hidden="true"></canvas>
+  <nav class="nav">
+    <a href="/" class="nav-brand">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="40" height="40" role="img" aria-label="trail">
+  <circle cx="16" cy="16" r="14" fill="none" stroke="currentColor" stroke-width="2"/>
+  <circle cx="16" cy="16" r="9" fill="none" stroke="#e8a87c" stroke-width="0.9" opacity="0.55"/>
+  <circle cx="16" cy="16" r="3.5" fill="#e8a87c"/>
+</svg>
+      <span class="brand-text">trail</span>
+    </a>
+    <div class="nav-links">
+      <a href="/#features">Architecture</a>
+      <a href="/#docs">Documentation</a>
+      <a href="/trails/">Trails</a>
+      <a href="/the-1945-concept/">The 1945 Concept</a>
+    </div>
+    <div class="nav-actions">
+      <button type="button" class="theme-toggle" aria-label="Toggle theme">
+        <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+      </button>
+      <a href="#" class="nav-signin">Sign In</a>
+      <a href="#" class="nav-cta">Initialize trail</a>
+      <button type="button" class="nav-toggle" aria-label="Open menu" aria-expanded="false" aria-controls="mobile-menu">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+  </nav>
+  <div id="mobile-menu" class="nav-mobile" role="navigation" aria-label="Mobile menu" aria-hidden="true">
+    <a href="/#features">Architecture</a>
+    <a href="/#docs">Documentation</a>
+    <a href="/trails/">Trails</a>
+    <a href="/the-1945-concept/">The 1945 Concept</a>
+    <a href="#">Sign In</a>
+  </div>
+  <script>
+    (function () {
+      var btn = document.querySelector('.nav-toggle');
+      var menu = document.getElementById('mobile-menu');
+      var body = document.body;
+      if (!btn || !menu) return;
+      function setOpen(open) {
+        body.dataset.menuOpen = open ? 'true' : 'false';
+        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        btn.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
+        menu.setAttribute('aria-hidden', open ? 'false' : 'true');
+      }
+      btn.addEventListener('click', function () { setOpen(body.dataset.menuOpen !== 'true'); });
+      menu.addEventListener('click', function (e) {
+        if (e.target instanceof HTMLAnchorElement) setOpen(false);
+      });
+      document.addEventListener('keydown', function (e) { if (e.key === 'Escape') setOpen(false); });
+    })();
+
+    (function () {
+      var tbtn = document.querySelector('.theme-toggle');
+      if (!tbtn) return;
+      tbtn.addEventListener('click', function () {
+        var current = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+        var next = current === 'dark' ? 'light' : 'dark';
+        document.documentElement.setAttribute('data-theme', next);
+        try { localStorage.setItem('trail.theme', next); } catch (e) {}
+        var meta = document.querySelector('meta[name="theme-color"]');
+        if (meta) meta.setAttribute('content', next === 'dark' ? '#17140F' : '#FAF9F5');
+      });
+    })();
+
+    function initSvgFullscreen() {
+      var figures = document.querySelectorAll('.prose .cms-svg');
+      if (!figures.length) return;
+      var overlay = document.createElement('div');
+      overlay.className = 'svg-fullscreen';
+      overlay.setAttribute('data-open', 'false');
+      overlay.setAttribute('role', 'dialog');
+      overlay.setAttribute('aria-modal', 'true');
+      overlay.setAttribute('aria-label', 'Enlarged figure');
+      overlay.innerHTML = '<button type="button" class="svg-fullscreen-close" aria-label="Close"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button><div class="svg-fullscreen-content"></div><div class="svg-fullscreen-caption"></div>';
+      document.body.appendChild(overlay);
+      var contentEl = overlay.querySelector('.svg-fullscreen-content');
+      var captionEl = overlay.querySelector('.svg-fullscreen-caption');
+      var closeBtn = overlay.querySelector('.svg-fullscreen-close');
+      function close() {
+        overlay.setAttribute('data-open', 'false');
+        contentEl.innerHTML = '';
+        captionEl.textContent = '';
+        document.body.style.overflow = '';
+      }
+      function open(fig) {
+        var svg = fig.querySelector('svg');
+        var caption = fig.querySelector('figcaption');
+        if (!svg) return;
+        contentEl.innerHTML = svg.outerHTML;
+        var placed = contentEl.querySelector('svg');
+        var vb = placed.getAttribute('viewBox');
+        if (vb) {
+          var parts = vb.split(/s+|,/).map(Number);
+          var ratio = parts[2] / parts[3];
+          var vw = window.innerWidth;
+          var vh = window.innerHeight - 140; /* room for caption + close */
+          var maxW = vw * 0.96;
+          var maxH = vh * 0.90;
+          var w, h;
+          if (maxW / ratio <= maxH) { w = maxW; h = maxW / ratio; }
+          else { h = maxH; w = maxH * ratio; }
+          placed.style.width = w + 'px';
+          placed.style.height = h + 'px';
+        }
+        captionEl.textContent = caption ? caption.textContent : '';
+        overlay.setAttribute('data-open', 'true');
+        document.body.style.overflow = 'hidden';
+      }
+      figures.forEach(function (fig) {
+        fig.setAttribute('role', 'button');
+        fig.setAttribute('tabindex', '0');
+        fig.setAttribute('aria-label', 'View figure in fullscreen');
+        fig.addEventListener('click', function () { open(fig); });
+        fig.addEventListener('keydown', function (e) {
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(fig); }
+        });
+      });
+      closeBtn.addEventListener('click', function (e) { e.stopPropagation(); close(); });
+      overlay.addEventListener('click', function () { close(); });
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && overlay.getAttribute('data-open') === 'true') close();
+      });
+    }
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initSvgFullscreen);
+    } else {
+      initSvgFullscreen();
+    }
+  </script>
+  <article class="article container"><header class="article-header">
+      <div class="article-eyebrow">How Trail Works</div>
+      <h1>Why Your Knowledge Base Should Compile, Not Search</h1>
+      <p class="article-lead">Most AI knowledge systems are sophisticated search engines that forget between queries. The organizations winning are building something different — and the architectural choice has direct consequences for cost, accuracy, and defensibility.</p>
+      <div class="article-meta">How Trail Works · trail by broberg.ai · April 15, 2026</div>
+      
+    </header><div class="prose"><h2>A strategic argument for compile-time knowledge infrastructure</h2>
+<p>If your organization is investing in AI for knowledge work — internal knowledge stores, customer-facing chat, expert systems, research support — there is a foundational architectural decision being made on your behalf, often without anyone naming it explicitly. The decision is between <strong>search-time</strong> and <strong>compile-time</strong> knowledge systems. The two are not interchangeable. They have different cost profiles, different accuracy characteristics, different defensibility properties, and they suit different classes of problem.</p>
+<p>The dominant pattern in the market right now is <strong>retrieval-augmented generation</strong>, or RAG. RAG is a search engine with a language model attached. It works well for some problems and poorly for others, and the difference matters for what you can build on top of it.</p>
+<p>Trail is a different architecture: compile-time knowledge infrastructure, modeled on how human memory actually works. This document explains the difference in terms that should matter to anyone deciding where to place an organizational bet.</p>
+<h2>The two architectures, plainly</h2>
+<p>A search-time system answers each question fresh. The user asks something; the system searches a database of document fragments; the language model writes an answer based on what was retrieved; the system forgets everything and waits for the next query. Nothing accumulates. Each query is independent.</p>
+<p>A compile-time system does the work in advance. Sources are read, integrated, cross-referenced, and compiled into structured knowledge pages as they enter the system. When a user asks a question, the system reads from already-integrated knowledge rather than searching raw fragments. The structure grows and improves with every source added.</p>
+<p>The analogy to human cognition is direct. When you ask a domain expert a question, they do not search their memory for relevant fragments. They draw on knowledge they have already integrated — knowledge that was built up over years of reading, practice, and reflection. The integration happened over time, mostly while they were not actively answering questions. The answer comes quickly and coherently because the work was done in advance.</p>
+<p>A search-time AI system is closer to a research assistant who Googles every question. A compile-time system is closer to the expert.</p>
+<p><figure class="cms-svg cms-svg--knowledge-compounds-curve"><svg viewBox="0 0 920 420" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Knowledge usefulness as a function of sources ingested: RAG stays flat while Trail compounds superlinearly">
+  <!-- Title -->
+  <text x="420" y="45" font-family="monospace" font-size="14" fill="currentColor" text-anchor="middle" opacity="0.6" letter-spacing="1.5">WHAT EACH NEW SOURCE BUYS YOU</text>
+
+  <!-- Axes -->
+  <line x1="90" y1="330" x2="780" y2="330" stroke="currentColor" stroke-width="1.2"/>
+  <line x1="90" y1="85"  x2="90"  y2="330" stroke="currentColor" stroke-width="1.2"/>
+
+  <!-- Axis labels -->
+  <text x="36"  y="95"  font-family="monospace" font-size="12" fill="currentColor" opacity="0.7">useful-</text>
+  <text x="36"  y="110" font-family="monospace" font-size="12" fill="currentColor" opacity="0.7">ness</text>
+  <text x="435" y="365" font-family="monospace" font-size="13" fill="currentColor" text-anchor="middle" letter-spacing="0.5">SOURCES INGESTED OVER TIME</text>
+
+  <!-- RAG: flat horizontal -->
+  <line x1="90" y1="265" x2="780" y2="265" stroke="currentColor" stroke-width="1.8"/>
+  <g fill="currentColor">
+    <circle cx="160" cy="265" r="3"/>
+    <circle cx="260" cy="265" r="3"/>
+    <circle cx="360" cy="265" r="3"/>
+    <circle cx="460" cy="265" r="3"/>
+    <circle cx="560" cy="265" r="3"/>
+    <circle cx="660" cy="265" r="3"/>
+    <circle cx="740" cy="265" r="3"/>
+  </g>
+  <text x="790" y="269" font-family="monospace" font-size="13" fill="currentColor" text-anchor="start" font-weight="bold">RAG</text>
+  <text x="790" y="285" font-family="monospace" font-size="11" fill="currentColor" text-anchor="start" opacity="0.55">flat</text>
+
+  <!-- TRAIL: exponential / superlinear upward -->
+  <path d="M 90 300 Q 200 290 300 260 Q 400 220 500 170 Q 600 125 700 100 L 780 92"
+        fill="none" stroke="#e8a87c" stroke-width="2"/>
+  <g fill="#e8a87c">
+    <circle cx="160" cy="295" r="3.5"/>
+    <circle cx="260" cy="280" r="3.5"/>
+    <circle cx="360" cy="240" r="3.5"/>
+    <circle cx="460" cy="195" r="3.5"/>
+    <circle cx="560" cy="145" r="3.5"/>
+    <circle cx="660" cy="115" r="3.5"/>
+    <circle cx="740" cy="95"  r="4.5"/>
+  </g>
+  <!-- halo on latest point -->
+  <circle cx="740" cy="95" r="9"  fill="none" stroke="#e8a87c" stroke-width="0.7" opacity="0.5"/>
+  <circle cx="740" cy="95" r="14" fill="none" stroke="#e8a87c" stroke-width="0.4" opacity="0.3"/>
+
+  <text x="790" y="100" font-family="monospace" font-size="13" fill="#e8a87c" text-anchor="start" font-weight="bold">Trail</text>
+  <text x="790" y="116" font-family="monospace" font-size="11" fill="currentColor" text-anchor="start" opacity="0.55">compounds</text>
+
+  <!-- Annotations -->
+  <g font-family="monospace" font-size="11" fill="currentColor" opacity="0.55" text-anchor="middle">
+    <text x="180" y="255">each query re-does the same work</text>
+    <text x="500" y="225">each source updates every related Neuron</text>
+  </g>
+
+  <!-- X axis tick labels -->
+  <g font-family="monospace" font-size="11" fill="currentColor" opacity="0.6" text-anchor="middle">
+    <text x="160" y="345">10</text>
+    <text x="360" y="345">100</text>
+    <text x="560" y="345">1 000</text>
+    <text x="740" y="345">10 000</text>
+  </g>
+
+  <!-- Caption -->
+  <text x="420" y="405" font-family="monospace" font-size="12" fill="currentColor" text-anchor="middle" opacity="0.5" letter-spacing="0.5">the tenth source improves the Neurons in light of the previous nine · the thousandth even more</text>
+</svg>
+<figcaption>RAG gets no better as you feed it more sources. Trail accelerates because each new source updates every Neuron it touches.</figcaption></figure></p>
+<h2>Where this matters strategically</h2>
+<p>Four properties of compile-time architecture have direct strategic consequences.</p>
+<p><strong>Knowledge accumulates as a defensible asset.</strong> Most AI investments today produce no durable artifact. The vector database underlying a RAG system is a commodity asset — same chunks, same embeddings, same retrieval. Switch vendors and you replace it in a week. A compiled Neurons, by contrast, is a structured knowledge asset specific to your organization. It contains the integrated understanding that emerged from your sources, your curators, your decisions. It compounds in value over time. It is not portable to a competitor without the same compilation effort.</p>
+<p>For organizations whose competitive advantage rests on accumulated expertise — clinical practice, legal research, scientific R&amp;D, specialized consulting — this is the difference between AI as a productivity tool and AI as an institutional memory layer.</p>
+<p><strong>Provenance is structural, not bolted on.</strong> In regulated industries, the question &quot;where did this answer come from?&quot; is not optional. Healthcare, legal, financial services, and government deployments all require traceable provenance from any AI-generated assertion back to its source material, with version history.</p>
+<p>RAG systems can generate citations, but the citations are correlations between vectors. The system does not actually know which source supports which claim — it knows which chunks were nearby in embedding space when the language model wrote the answer. Compile-time systems make provenance structural: every claim is linked to the specific source revisions that support it. When a source is updated, the affected pages are flagged automatically. When a claim is contested, the lineage is explicit and defensible.</p>
+<p>This is not a feature. It is a baseline requirement for any deployment where being wrong has consequences beyond user frustration.</p>
+<p><strong>The economics favor compile-time at scale.</strong> Search-time systems pay the language model cost on every query. Each query stuffs ten or twenty document chunks into a context window and asks the model to synthesize an answer. Compile-time systems pay the language model cost during ingest — once per source — and queries read from the already-compiled artifact, which is denser and faster to process.</p>
+<p>For a knowledge base serving high query volume, the math is straightforward. The compile-time architecture trades higher per-source ingest cost for lower per-query cost, and the crossover point typically arrives within weeks of deployment. For low-query-volume use cases (one-off lookups across a static corpus), search-time remains cheaper. Most organizational knowledge work is the former.</p>
+<p><strong>Quality improves with corpus size, rather than degrading.</strong> This is the property that surprises people most. Search-time systems get worse as the corpus grows: more documents means noisier retrieval, more candidates means harder filtering, more chunks means lower precision. Operators of large RAG deployments spend significant engineering effort fighting this degradation.</p>
+<p>Compile-time systems get better as the corpus grows because each new source can update existing pages, strengthen existing connections, and resolve previous contradictions. The tenth source improves the Neurons in light of the previous nine. The hundredth benefits from the integrated structure of the previous ninety-nine. This is the same property that makes a domain expert more knowledgeable after twenty years than after two — accumulated integration, not just accumulated information.</p>
+<h2>What this means for vendor selection</h2>
+<p>If you are evaluating AI knowledge infrastructure vendors, three diagnostic questions separate compile-time architectures from search-time architectures dressed up in compile-time language.</p>
+<p><strong>Does the system produce a persistent compiled artifact, or only retrieve raw chunks?</strong> Ask to see the Neurons, document store, or knowledge graph that grows with use. If the answer is &quot;we have a vector database with chunks of your documents,&quot; it is search-time. If the answer is &quot;we have markdown Neurons compiled from your sources, with cross-references and provenance,&quot; it is compile-time.</p>
+<p><strong>What happens when a source is updated?</strong> A compile-time system flags the affected pages for re-review and recompilation. A search-time system silently retains the older chunks and may continue to retrieve them. Ask the vendor to walk through this scenario explicitly.</p>
+<p><strong>Where does the human curator fit?</strong> Compile-time architectures have a first-class role for human review of proposed changes — usually a queue of candidates that the curator approves, edits, or rejects. Search-time systems have no such role because there is nothing to review; the system retrieves and answers in one step. If the vendor&#39;s answer to &quot;how does my expert correct the system?&quot; is &quot;we retrain the embeddings&quot; or &quot;we add to the prompt,&quot; that is search-time architecture.</p>
+<p>These three questions cannot be faked in a sales conversation. Either the architecture supports them or it does not.</p>
+<p><figure class="cms-svg cms-svg--vendor-decision"><svg viewBox="0 0 840 520" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="A 2x2 matrix for choosing between RAG and Trail based on whether the knowledge should accumulate and whether a persistent artifact is wanted">
+  <!-- Title -->
+  <text x="420" y="45" font-family="monospace" font-size="14" fill="currentColor" text-anchor="middle" opacity="0.6" letter-spacing="1.5">WHEN TO PICK WHICH</text>
+
+  <!-- Matrix axes -->
+  <!-- vertical axis label (rotated left) -->
+  <text x="60" y="270" font-family="monospace" font-size="13" fill="currentColor" text-anchor="middle" letter-spacing="0.5" transform="rotate(-90 60 270)">KNOWLEDGE ACCUMULATES</text>
+
+  <!-- horizontal axis label (bottom) -->
+  <text x="470" y="500" font-family="monospace" font-size="13" fill="currentColor" text-anchor="middle" letter-spacing="0.5">PERSISTENT ARTIFACT WANTED</text>
+
+  <!-- Matrix frame -->
+  <g fill="none" stroke="currentColor" stroke-width="1.2">
+    <rect x="120" y="90" width="700" height="380"/>
+    <line x1="120" y1="280" x2="820" y2="280"/>
+    <line x1="470" y1="90"  x2="470" y2="470"/>
+  </g>
+
+  <!-- Axis tick labels -->
+  <g font-family="monospace" font-size="12" fill="currentColor" opacity="0.7" text-anchor="middle">
+    <text x="90"  y="185">YES</text>
+    <text x="90"  y="380">NO</text>
+    <text x="295" y="485">NO</text>
+    <text x="645" y="485">YES</text>
+  </g>
+
+  <!-- Top-right: TRAIL (amber fill + halo) -->
+  <rect x="485" y="105" width="320" height="160" fill="#e8a87c" opacity="0.12"/>
+  <g font-family="monospace" text-anchor="middle">
+    <text x="645" y="165" font-size="22" fill="#e8a87c" font-weight="bold" letter-spacing="2">TRAIL</text>
+    <text x="645" y="195" font-size="13" fill="currentColor" opacity="0.75">clinical knowledge · research</text>
+    <text x="645" y="212" font-size="13" fill="currentColor" opacity="0.75">org-wide docs · ops playbooks</text>
+    <text x="645" y="238" font-size="12" fill="currentColor" opacity="0.55">source-grounded · persistent</text>
+    <text x="645" y="253" font-size="12" fill="currentColor" opacity="0.55">the Neuron graph grows with use</text>
+  </g>
+
+  <!-- Top-left: "compile without persistent artifact" edge case -->
+  <g font-family="monospace" text-anchor="middle">
+    <text x="295" y="170" font-size="14" fill="currentColor" opacity="0.55" letter-spacing="0.5">SESSION TOOLS</text>
+    <text x="295" y="195" font-size="12" fill="currentColor" opacity="0.4">e.g. NotebookLM</text>
+    <text x="295" y="225" font-size="11" fill="currentColor" opacity="0.4">accumulates within a session</text>
+    <text x="295" y="240" font-size="11" fill="currentColor" opacity="0.4">but the artifact is thrown away</text>
+  </g>
+
+  <!-- Bottom-right: "persist, but don't compound" — structured doc store -->
+  <g font-family="monospace" text-anchor="middle">
+    <text x="645" y="355" font-size="14" fill="currentColor" opacity="0.55" letter-spacing="0.5">STATIC DOC STORE</text>
+    <text x="645" y="380" font-size="12" fill="currentColor" opacity="0.4">read the source as-is</text>
+    <text x="645" y="405" font-size="11" fill="currentColor" opacity="0.4">the sources are the answer</text>
+    <text x="645" y="420" font-size="11" fill="currentColor" opacity="0.4">nothing needs synthesizing</text>
+  </g>
+
+  <!-- Bottom-left: RAG -->
+  <g font-family="monospace" text-anchor="middle">
+    <text x="295" y="365" font-size="22" fill="currentColor" font-weight="bold" letter-spacing="2">RAG</text>
+    <text x="295" y="395" font-size="13" fill="currentColor" opacity="0.75">customer-support chat</text>
+    <text x="295" y="412" font-size="13" fill="currentColor" opacity="0.75">product-doc Q&amp;A</text>
+    <text x="295" y="438" font-size="12" fill="currentColor" opacity="0.55">bounded corpus · Q&amp;A style</text>
+    <text x="295" y="453" font-size="12" fill="currentColor" opacity="0.55">each query independent</text>
+  </g>
+
+  <!-- caption -->
+  <!-- (axis labels are the caption) -->
+</svg>
+<figcaption>A two-axis matrix. Trail is the answer when knowledge should both accumulate and leave a persistent, queryable artifact — which is most of the interesting cases.</figcaption></figure></p>
+<h2>Where search-time is the right answer</h2>
+<p>To be balanced: search-time systems are the right architecture for some workloads. If your use case is question-answering over a static reference corpus, with no need for accumulation or expert correction, RAG works well. Examples include customer support chat over product documentation, code search across a repository, and Q&amp;A over recent news.</p>
+<p>The mistake is using search-time architecture for problems that require accumulation. Building a research wiki for a clinical practice. Maintaining institutional knowledge in a consulting firm. Supporting expert decision-making in any domain where the depth of integrated understanding matters more than the speed of any individual lookup. These are compile-time problems being forced into search-time architectures because RAG was the easiest pattern to deploy in 2023-2024.</p>
+<p>The market is now correcting. Compile-time architectures — under various names like &quot;AI knowledge graphs,&quot; &quot;LLM wikis,&quot; &quot;compiled knowledge systems&quot; — are emerging as the answer for the workloads where accumulation matters. Trail is one such system, designed explicitly around the architectural commitments described above.</p>
+<h2>A brief historical note</h2>
+<p>The compile-time architecture is not new in concept. It was first described in detail by Vannevar Bush, the wartime director of the U.S. Office of Scientific Research and Development, in a 1945 essay in <em>The Atlantic Monthly</em>. Bush proposed a hypothetical machine he called the <strong>memex</strong> — a desk with microfilm storage that would let a researcher build associative trails of knowledge through their personal corpus. His central argument was that human cognition operates by association and integration, not by retrieval from indexed storage, and that knowledge systems built on the latter model were structurally mismatched with how thinking actually works.</p>
+<p>Bush could not build the memex; the technology to compile knowledge automatically did not exist in 1945. But the architectural argument was correct, and it has been periodically rediscovered ever since — in Doug Engelbart&#39;s NLS in the 1960s, Ted Nelson&#39;s hypertext work, the Web itself, and most recently in the LLM Wiki pattern articulated by Andrej Karpathy in late 2025.</p>
+<p>Language models are the integration mechanism Bush could not build. They make compile-time knowledge infrastructure technically tractable for the first time. The microfilm reels in the base of Bush&#39;s memex desk — the visual mark we chose for Trail — were not a technical detail. They were the storage substrate for trails of meaning. Trail is the engine that builds and maintains those trails for the modern equivalent of Bush&#39;s vision.</p>
+<p>The SaaS successor to memxcloud is the commercial product built on trail. It is what most organizations will adopt; Trail is what runs underneath.</p>
+<h2>The decision</h2>
+<p>The architectural choice between search-time and compile-time is being made — explicitly or implicitly — every time an organization deploys AI knowledge infrastructure. Most teams default to RAG because it is the easiest pattern to ship and the most familiar. For some workloads, this is the right call. For workloads where knowledge should accumulate, where provenance matters, where experts need to curate, and where the goal is institutional memory rather than improved search, it is the wrong call.</p>
+<p>The organizations winning long-term with AI knowledge infrastructure are building compile-time systems. They are treating their knowledge base as a durable, compounding asset. They are paying the higher upfront cost of integration to get the lower ongoing cost and higher quality of compiled understanding.</p>
+<p>This is the bet Trail represents. We think the architecture matters more than the model — and that the architecture Bush described in 1945 is the right one for the problems organizations are actually trying to solve in 2026.</p>
+<hr>
+<h3>Further reading</h3>
+<ul>
+<li>Vannevar Bush, <a href="https://www.theatlantic.com/magazine/archive/1945/07/as-we-may-think/303881/"><em>As We May Think</em></a> — <em>The Atlantic</em>, July 1945</li>
+<li>Andrej Karpathy, <em>LLM Wiki</em> — described publicly in October 2025</li>
+<li>For implementation details, architectural specifications, and the case for compile-time architecture from an engineering perspective, see <a href="/trails/how-trail-works/compile-time-knowledge-vs-rag/">Compile-Time Knowledge: A Technical Argument Against RAG</a></li>
+<li>For the historical lineage from Bush&#39;s 1945 vision to Trail, see <a href="/the-1945-concept/">As We May Think: The 1945 Vision That Became Trail</a></li>
+</ul>
+</div><div class="post-footer"><div class="post-tags"><a class="post-tag" href="/tags/strategy/">#strategy</a><a class="post-tag" href="/tags/knowledge-infrastructure/">#knowledge-infrastructure</a><a class="post-tag" href="/tags/rag/">#rag</a><a class="post-tag" href="/tags/decision-making/">#decision-making</a></div><a class="post-more" href="/trails/how-trail-works/">← MORE FROM HOW TRAIL WORKS</a></div></article>
+  <footer class="footer">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" role="img" aria-label="trail">
+  <circle cx="16" cy="16" r="14" fill="none" stroke="currentColor" stroke-width="2"/>
+  <circle cx="16" cy="16" r="9" fill="none" stroke="#e8a87c" stroke-width="0.9" opacity="0.55"/>
+  <circle cx="16" cy="16" r="3.5" fill="#e8a87c"/>
+</svg>
+        <span>trail</span>
+      </div>
+      <div class="footer-links">
+        <a href="#">Twitter</a>
+        <a href="https://github.com/broberg-ai/trail">GitHub</a>
+        <a href="#">Status</a>
+      </div>
+      <div class="footer-copy">© 2026 Trail by broberg.ai. As we may think. Site built by <a href="https://webhouse.app" target="_blank" rel="noopener">@webhouse/cms</a></div>
+    </div>
+  </footer>
+  <script>
+(function(){
+  const canvas = document.getElementById('trail-graph');
+  if (!canvas) return;
+  /* Respect reduced-motion — draw one static frame and stop. */
+  const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const ctx = canvas.getContext('2d');
+  let animationFrameId = 0;
+  let running = false;
+  let particles = [];
+  const mouse = { x: null, y: null };
+  const DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+  /* Cache colors at mount; re-read only on theme change. Reading CSS vars
+   * with getComputedStyle on every frame forces style recalc and was
+   * pegging CPU/GPU on long-running pages. */
+  const colors = { node: '#1a1715', accent: '#e8a87c', line: '26, 23, 21', accentLine: '232, 168, 124' };
+  function refreshColors(){
+    const cs = getComputedStyle(document.documentElement);
+    const read = function(n, f){ return (cs.getPropertyValue(n).trim() || f); };
+    colors.node = read('--graph-node', colors.node);
+    colors.accent = read('--graph-accent', colors.accent);
+    colors.line = read('--graph-line', colors.line);
+    colors.accentLine = read('--graph-accent-line', colors.accentLine);
+  }
+  refreshColors();
+
+  /* Re-cache when theme toggles (data-theme attribute changes on <html>). */
+  if ('MutationObserver' in window) {
+    new MutationObserver(refreshColors).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+  }
+
+  function resize(){
+    canvas.width = window.innerWidth * DPR;
+    canvas.height = window.innerHeight * DPR;
+    canvas.style.width = window.innerWidth + 'px';
+    canvas.style.height = window.innerHeight + 'px';
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    initParticles();
+  }
+
+  function Particle(){
+    this.x = Math.random() * window.innerWidth;
+    this.y = Math.random() * window.innerHeight;
+    this.vx = (Math.random() - 0.5) * 0.3;
+    this.vy = (Math.random() - 0.5) * 0.3;
+    this.baseRadius = Math.random() > 0.95 ? 3 : 1.5;
+    this.isAccent = Math.random() > 0.98;
+  }
+  Particle.prototype.update = function(){
+    this.x += this.vx;
+    this.y += this.vy;
+    /* Bound by intent, not by position — a particle that has drifted
+     * past an edge should only flip if it's still moving outward. */
+    if ((this.x < 0 && this.vx < 0) || (this.x > window.innerWidth && this.vx > 0)) this.vx = -this.vx;
+    if ((this.y < 0 && this.vy < 0) || (this.y > window.innerHeight && this.vy > 0)) this.vy = -this.vy;
+    if (mouse.x !== null && mouse.y !== null) {
+      const dx = mouse.x - this.x;
+      const dy = mouse.y - this.y;
+      const d = Math.sqrt(dx*dx + dy*dy);
+      if (d < 100) { this.x -= dx * 0.01; this.y -= dy * 0.01; }
+    }
+  };
+  Particle.prototype.draw = function(){
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.baseRadius, 0, Math.PI * 2);
+    ctx.fillStyle = this.isAccent ? colors.accent : colors.node;
+    ctx.fill();
+  };
+
+  function initParticles(){
+    particles = [];
+    /* Cap at 150 — O(n²) linking loop becomes the bottleneck past that.
+     * On 4K screens the old formula produced 400+ particles. */
+    const count = Math.min(150, Math.floor((window.innerWidth * window.innerHeight) / 15000));
+    for (let i = 0; i < count; i++) particles.push(new Particle());
+  }
+
+  const LINK_DIST = 160;
+  const LINK_DIST_SQ = LINK_DIST * LINK_DIST;
+  function drawLines(){
+    for (let i = 0; i < particles.length; i++){
+      const pi = particles[i];
+      for (let j = i + 1; j < particles.length; j++){
+        const pj = particles[j];
+        const dx = pi.x - pj.x;
+        const dy = pi.y - pj.y;
+        /* Squared-distance early-bail — skip sqrt for the ~95% of pairs
+         * that are too far apart to draw a line between. */
+        const d2 = dx*dx + dy*dy;
+        if (d2 >= LINK_DIST_SQ) continue;
+        const opacity = 1 - (Math.sqrt(d2) / LINK_DIST);
+        ctx.beginPath();
+        if (pi.isAccent || pj.isAccent) {
+          ctx.strokeStyle = 'rgba(' + colors.accentLine + ', ' + (opacity * 0.5) + ')';
+        } else {
+          ctx.strokeStyle = 'rgba(' + colors.line + ', ' + (opacity * 0.18) + ')';
+        }
+        ctx.lineWidth = 0.6;
+        ctx.moveTo(pi.x, pi.y);
+        ctx.lineTo(pj.x, pj.y);
+        ctx.stroke();
+      }
+    }
+  }
+
+  function renderOneFrame(){
+    ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+    for (const p of particles){ p.update(); p.draw(); }
+    drawLines();
+  }
+
+  function loop(){
+    if (!running) return;
+    renderOneFrame();
+    animationFrameId = requestAnimationFrame(loop);
+  }
+  function start(){
+    if (running || reduceMotion) return;
+    running = true;
+    loop();
+  }
+  function stop(){
+    running = false;
+    if (animationFrameId) cancelAnimationFrame(animationFrameId);
+    animationFrameId = 0;
+  }
+
+  window.addEventListener('resize', resize);
+  window.addEventListener('mousemove', function(e){ mouse.x = e.clientX; mouse.y = e.clientY; });
+  window.addEventListener('mouseout', function(){ mouse.x = null; mouse.y = null; });
+  /* Pause when the tab is hidden — rAF keeps firing in some browsers for
+   * several seconds before throttling, and an invisible tab shouldn't
+   * burn GPU. */
+  document.addEventListener('visibilitychange', function(){
+    if (document.hidden) stop();
+    else start();
+  });
+
+  resize();
+  if (reduceMotion) {
+    /* Draw one static starfield so the background isn't empty. */
+    renderOneFrame();
+  } else {
+    start();
+  }
+})();
+</script>
+
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"WebPage","name":"Why Your Knowledge Base Should Compile, Not Search","url":"https://trail.webhouse.app/trails/how-trail-works/knowledge-that-compounds/","description":"Most AI knowledge systems are sophisticated search engines that forget between queries. The organizations winning are building something different — and the architectural choice has direct consequences for cost, accuracy, and defensibility.","inLanguage":"en","isPartOf":{"@type":"WebSite","name":"trail","url":"https://trail.webhouse.app/"}}</script>
+</body>
+</html>

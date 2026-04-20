@@ -109,10 +109,14 @@ documentRoutes.get('/knowledge-bases/:kbId/documents', async (c) => {
       // `ready` + neuronCount=0 → EXTRACTED (compile ran but yielded
       // nothing); `ready` + neuronCount>0 → SUCCESS. Subquery avoids
       // N+1 and costs near-zero on the existing idx_refs_source index.
+      // `documents.id` must be written as raw SQL (not a Drizzle column ref)
+      // so SQLite resolves it against the OUTER query's `documents` rather
+      // than binding inside the correlated subquery, where it would silently
+      // match the subquery's own scope and return 0 for every row.
       neuronCount: sql<number>`(
         SELECT COUNT(DISTINCT ${documentReferences.wikiDocumentId})
         FROM ${documentReferences}
-        WHERE ${documentReferences.sourceDocumentId} = ${documents.id}
+        WHERE ${documentReferences.sourceDocumentId} = documents.id
       )`.as('neuron_count'),
     })
     .from(documents)

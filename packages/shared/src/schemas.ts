@@ -57,7 +57,36 @@ export const UpdateKBSchema = z.object({
 // ── Sources & Wiki Pages ──────────────────────────────────────────────────────
 
 export const DocumentStatusEnum = z.enum(['pending', 'processing', 'ready', 'failed', 'archived']);
-export const DocumentKindEnum = z.enum(['source', 'wiki']);
+export const DocumentKindEnum = z.enum(['source', 'wiki', 'work']);
+
+// ── F138 — Work Layer ─────────────────────────────────────────────────────────
+// Work items live in the documents table as kind='work' rows. Status +
+// assignee + due date are stored on documents.work_* columns so the
+// panel can render Kanban without a separate join.
+
+export const WorkStatusEnum = z.enum(['open', 'in-progress', 'done', 'blocked']);
+export type WorkStatus = z.infer<typeof WorkStatusEnum>;
+
+export const WorkKindEnum = z.enum(['task', 'bug', 'milestone', 'decision']);
+export type WorkKind = z.infer<typeof WorkKindEnum>;
+
+export const CreateWorkSchema = z.object({
+  title: z.string().min(1).max(200),
+  content: z.string().default(''),
+  workKind: WorkKindEnum.default('task'),
+  workStatus: WorkStatusEnum.default('open'),
+  workAssignee: z.string().max(200).nullable().optional(),
+  workDueAt: z.string().max(40).nullable().optional(),
+  path: z.string().default('/work/'),
+  tags: z.string().nullable().optional(),
+});
+
+export const UpdateWorkStateSchema = z.object({
+  workStatus: WorkStatusEnum.optional(),
+  workAssignee: z.string().max(200).nullable().optional(),
+  workDueAt: z.string().max(40).nullable().optional(),
+  workKind: WorkKindEnum.optional(),
+});
 
 export const DocumentSchema = z.object({
   id: z.string(),
@@ -81,6 +110,10 @@ export const DocumentSchema = z.object({
   sortOrder: z.number().int(),
   archived: z.boolean(),
   isCanonical: z.boolean(),
+  workStatus: WorkStatusEnum.nullable().optional(),
+  workAssignee: z.string().nullable().optional(),
+  workDueAt: z.string().nullable().optional(),
+  workKind: WorkKindEnum.nullable().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

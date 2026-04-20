@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'preact/hooks';
+import { useCallback, useEffect, useMemo, useState } from 'preact/hooks';
 import { useRoute } from 'preact-iso';
 import { marked } from 'marked';
 import type { Document } from '@trail/shared';
@@ -31,20 +31,50 @@ import { CopyId } from '../components/copy-id';
  * else in the engine's whitelist). Uploaded docs trigger the ingest
  * pipeline; when it finishes, Neurons appear in the queue for approval.
  */
-type FilterStatus = 'active' | 'archived' | 'all';
+type FilterStatus = 'active' | 'extracted' | 'success' | 'failed' | 'archived' | 'all';
 
 const FILTER_TABS: ReadonlyArray<{ value: FilterStatus }> = [
   { value: 'active' },
+  { value: 'extracted' },
+  { value: 'success' },
+  { value: 'failed' },
   { value: 'archived' },
   { value: 'all' },
 ];
+
+// We fetch `archived=all` once and narrow client-side for every tab.
+// One round-trip funds all 6 tabs' lists AND their count badges, and
+// switching tabs is instant (no refetch). The tradeoff — a slightly
+// bigger payload that includes archived rows — is negligible at the
+// scale Trail operates (single-tenant, hundreds of sources at most).
+function narrowByFilter(docs: Document[], f: FilterStatus): Document[] {
+  if (f === 'all') return docs;
+  if (f === 'archived') return docs.filter((d) => d.archived);
+  // Non-archived scope for the 4 status-based filters.
+  const pool = docs.filter((d) => !d.archived);
+  return pool.filter((d) => {
+    const neuronCount = (d as Document & { neuronCount?: number }).neuronCount ?? 0;
+    switch (f) {
+      case 'active':
+        return d.status === 'processing' || d.status === 'pending';
+      case 'extracted':
+        return d.status === 'ready' && neuronCount === 0;
+      case 'success':
+        return d.status === 'ready' && neuronCount > 0;
+      case 'failed':
+        return d.status === 'failed';
+    }
+  });
+}
 
 export function SourcesPanel() {
   const route = useRoute();
   const kbId = route.params.kbId ?? '';
   useLocale();
   const [filter, setFilter] = useState<FilterStatus>('active');
-  const [docs, setDocs] = useState<Document[] | null>(null);
+  // Always the full unfiltered list (archived=all). The displayed list
+  // and the tab counts are both derived from it via narrowByFilter.
+  const [allDocs, setAllDocs] = useState<Document[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -62,10 +92,31 @@ export function SourcesPanel() {
 
   const reload = useCallback(() => {
     if (!kbId) return;
-    listSources(kbId, filter)
-      .then((list) => setDocs(list.slice().sort((a, b) => a.filename.localeCompare(b.filename))))
+    listSources(kbId, 'all')
+      .then((list) => {
+        setAllDocs(list.slice().sort((a, b) => a.filename.localeCompare(b.filename)));
+      })
       .catch((err: ApiError) => setError(err.message));
-  }, [kbId, filter]);
+  }, [kbId]);
+
+  // Derived list for the current tab + per-tab counts. Both flow from
+  // `allDocs` so they stay consistent — the count in the tab badge
+  // always matches the row-count the user sees after the click.
+  const docs = useMemo(
+    () => (allDocs ? narrowByFilter(allDocs, filter) : null),
+    [allDocs, filter],
+  );
+  const tabCounts = useMemo(() => {
+    if (!allDocs) return null;
+    return {
+      active: narrowByFilter(allDocs, 'active').length,
+      extracted: narrowByFilter(allDocs, 'extracted').length,
+      success: narrowByFilter(allDocs, 'success').length,
+      failed: narrowByFilter(allDocs, 'failed').length,
+      archived: narrowByFilter(allDocs, 'archived').length,
+      all: allDocs.length,
+    };
+  }, [allDocs]);
   const reloadDebounced = useCallback(debounce(reload, 100), [reload]);
 
   useEffect(() => {
@@ -85,9 +136,14 @@ export function SourcesPanel() {
   useEffect(() => onStreamOpen(reload), [reload]);
   useEffect(() => onFocusRefresh(reload), [reload]);
 
+  // All optimistic updates mutate `allDocs` (the unfiltered list) and let
+  // narrowByFilter re-derive both the visible rows and the tab counts.
+  // No handler needs to think about which tab is active — a state flip
+  // like archived→true or status→processing automatically moves the row
+  // to the correct tab and updates every badge.
   const onUploaded = useCallback(
     (doc: Document) => {
-      setDocs((prev) => (prev ? [doc, ...prev.filter((d) => d.id !== doc.id)] : [doc]));
+      setAllDocs((prev) => (prev ? [doc, ...prev.filter((d) => d.id !== doc.id)] : [doc]));
       reload();
     },
     [reload],
@@ -105,50 +161,38 @@ export function SourcesPanel() {
     setArchiveBusy(true);
     try {
       await archiveDocument(doc.id);
-      // Optimistic remove only when the Archived / All filters wouldn't
-      // have kept the row on screen — otherwise reload so it re-appears
-      // correctly styled in the Archived view.
-      if (filter === 'active') {
-        setDocs((prev) => (prev ? prev.filter((d) => d.id !== doc.id) : prev));
-      } else {
-        reload();
-      }
+      setAllDocs((prev) =>
+        prev?.map((d) => (d.id === doc.id ? { ...d, archived: true } : d)) ?? prev,
+      );
       setArchiveTarget(null);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : String(err));
     } finally {
       setArchiveBusy(false);
     }
-  }, [archiveTarget, filter, reload]);
+  }, [archiveTarget]);
 
   // Restore an archived source back to active. No confirmation modal —
   // restore is a pure undo, zero data loss, so a one-click action is the
   // right UX weight.
-  const onRestore = useCallback(
-    async (doc: Document) => {
-      try {
-        await restoreDocument(doc.id);
-        if (filter === 'archived') {
-          setDocs((prev) => (prev ? prev.filter((d) => d.id !== doc.id) : prev));
-        } else {
-          reload();
-        }
-      } catch (err) {
-        setError(err instanceof ApiError ? err.message : String(err));
-      }
-    },
-    [filter, reload],
-  );
+  const onRestore = useCallback(async (doc: Document) => {
+    try {
+      await restoreDocument(doc.id);
+      setAllDocs((prev) =>
+        prev?.map((d) => (d.id === doc.id ? { ...d, archived: false } : d)) ?? prev,
+      );
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : String(err));
+    }
+  }, []);
 
   const onRetry = useCallback(async (doc: Document) => {
     try {
       await retryDocument(doc.id);
-      setDocs((prev) =>
-        prev
-          ? prev.map((d) =>
-              d.id === doc.id ? { ...d, status: 'processing', errorMessage: null } : d,
-            )
-          : prev,
+      setAllDocs((prev) =>
+        prev?.map((d) =>
+          d.id === doc.id ? { ...d, status: 'processing' as const, errorMessage: null } : d,
+        ) ?? prev,
       );
     } catch (err) {
       setError(err instanceof ApiError ? err.message : String(err));
@@ -172,12 +216,10 @@ export function SourcesPanel() {
     try {
       const result = await reingestDocument(doc.id);
       if (!result.alreadyRunning) {
-        setDocs((prev) =>
-          prev
-            ? prev.map((d) =>
-                d.id === doc.id ? { ...d, status: 'processing', errorMessage: null } : d,
-              )
-            : prev,
+        setAllDocs((prev) =>
+          prev?.map((d) =>
+            d.id === doc.id ? { ...d, status: 'processing' as const, errorMessage: null } : d,
+          ) ?? prev,
         );
       }
       setReingestTarget(null);
@@ -277,20 +319,28 @@ export function SourcesPanel() {
           default; Archived shows soft-deleted sources with a Restore
           button on each row so an accidental archive is one-click reversible. */}
       <nav class="flex gap-1 mb-5 border-b border-[color:var(--color-border)]">
-        {FILTER_TABS.map((tab) => (
-          <button
-            key={tab.value}
-            onClick={() => setFilter(tab.value)}
-            class={
-              'px-3 py-2 text-sm font-medium transition border-b-2 -mb-px ' +
-              (filter === tab.value
-                ? 'border-[color:var(--color-accent)] text-[color:var(--color-fg)]'
-                : 'border-transparent text-[color:var(--color-fg-muted)] hover:text-[color:var(--color-fg)]')
-            }
-          >
-            {t(`sources.filter.${tab.value}`)}
-          </button>
-        ))}
+        {FILTER_TABS.map((tab) => {
+          const count = tabCounts?.[tab.value];
+          return (
+            <button
+              key={tab.value}
+              onClick={() => setFilter(tab.value)}
+              class={
+                'inline-flex items-baseline gap-1.5 px-3 py-2 text-sm font-medium transition border-b-2 -mb-px ' +
+                (filter === tab.value
+                  ? 'border-[color:var(--color-accent)] text-[color:var(--color-fg)]'
+                  : 'border-transparent text-[color:var(--color-fg-muted)] hover:text-[color:var(--color-fg)]')
+              }
+            >
+              {t(`sources.filter.${tab.value}`)}
+              {count !== undefined ? (
+                <span class="text-[11px] font-mono text-[color:var(--color-fg-subtle)]">
+                  ({count})
+                </span>
+              ) : null}
+            </button>
+          );
+        })}
       </nav>
 
       {error ? (
@@ -303,7 +353,7 @@ export function SourcesPanel() {
 
       {docs && docs.length === 0 ? (
         <div class="text-center py-16 text-[color:var(--color-fg-subtle)]">
-          {filter === 'archived' ? t('sources.emptyArchived') : t('sources.empty')}
+          {t(`sources.empty.${filter}` as never)}
         </div>
       ) : null}
 

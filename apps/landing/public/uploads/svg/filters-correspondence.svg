@@ -1,0 +1,77 @@
+<svg viewBox="0 0 840 500" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Correspondence between Bandler and Grinder's NLP filters, biological brain structures, and Trail's curation filters">
+  <!-- Title -->
+  <text x="420" y="40" font-family="monospace" font-size="14" fill="currentColor" text-anchor="middle" opacity="0.6" letter-spacing="1.5">THE SAME SHAPE, THREE VOCABULARIES</text>
+
+  <!-- Column headers -->
+  <g font-family="monospace" fill="currentColor" text-anchor="middle">
+    <text x="150" y="85"  font-size="16" font-weight="bold" letter-spacing="1">NLP</text>
+    <text x="150" y="103" font-size="12" opacity="0.55">Bandler · Grinder · 1975</text>
+    <text x="420" y="85"  font-size="16" font-weight="bold" letter-spacing="1">BRAIN</text>
+    <text x="420" y="103" font-size="12" opacity="0.55">thalamic gate · cortex</text>
+    <text x="690" y="85"  font-size="16" font-weight="bold" letter-spacing="1" fill="#e8a87c">TRAIL</text>
+    <text x="690" y="103" font-size="12" opacity="0.55">policy engine</text>
+  </g>
+
+  <!-- Header underline -->
+  <line x1="40" y1="125" x2="800" y2="125" stroke="currentColor" stroke-width="0.8" opacity="0.45"/>
+
+  <!-- Row 1: Deletion -->
+  <g fill="none" stroke="currentColor" stroke-width="1">
+    <rect x="50"  y="150" width="200" height="64"/>
+    <rect x="320" y="150" width="200" height="64"/>
+    <rect x="590" y="150" width="200" height="64"/>
+  </g>
+  <g font-family="monospace" fill="currentColor" text-anchor="middle">
+    <text x="150" y="178" font-size="14" letter-spacing="0.5">DELETION</text>
+    <text x="150" y="198" font-size="12" opacity="0.65">signal admitted or not</text>
+    <text x="420" y="178" font-size="14" letter-spacing="0.5">THALAMIC GATE</text>
+    <text x="420" y="198" font-size="12" opacity="0.65">sensory relay · attention</text>
+    <text x="690" y="178" font-size="14" letter-spacing="0.5">TRUSTED PIPELINE</text>
+    <text x="690" y="198" font-size="12" opacity="0.65">deletion by provenance</text>
+  </g>
+  <g stroke="#e8a87c" stroke-width="1.2" stroke-dasharray="3,3">
+    <line x1="250" y1="182" x2="320" y2="182"/>
+    <line x1="520" y1="182" x2="590" y2="182"/>
+  </g>
+
+  <!-- Row 2: Generalisation -->
+  <g fill="none" stroke="currentColor" stroke-width="1">
+    <rect x="50"  y="245" width="200" height="64"/>
+    <rect x="320" y="245" width="200" height="64"/>
+    <rect x="590" y="245" width="200" height="64"/>
+  </g>
+  <g font-family="monospace" fill="currentColor" text-anchor="middle">
+    <text x="150" y="273" font-size="14" letter-spacing="0.5">GENERALISATION</text>
+    <text x="150" y="293" font-size="12" opacity="0.65">priors from experience</text>
+    <text x="420" y="273" font-size="14" letter-spacing="0.5">CORTICAL PRIORS</text>
+    <text x="420" y="293" font-size="12" opacity="0.65">predictive coding · Friston</text>
+    <text x="690" y="273" font-size="14" letter-spacing="0.5">CONFIDENCE ≥ Θ</text>
+    <text x="690" y="293" font-size="12" opacity="0.65">signal-strength threshold</text>
+  </g>
+  <g stroke="#e8a87c" stroke-width="1.2" stroke-dasharray="3,3">
+    <line x1="250" y1="277" x2="320" y2="277"/>
+    <line x1="520" y1="277" x2="590" y2="277"/>
+  </g>
+
+  <!-- Row 3: Distortion -->
+  <g fill="none" stroke="currentColor" stroke-width="1">
+    <rect x="50"  y="340" width="200" height="64"/>
+    <rect x="320" y="340" width="200" height="64"/>
+    <rect x="590" y="340" width="200" height="64"/>
+  </g>
+  <g font-family="monospace" fill="currentColor" text-anchor="middle">
+    <text x="150" y="368" font-size="14" letter-spacing="0.5">DISTORTION</text>
+    <text x="150" y="388" font-size="12" opacity="0.65">reshape to fit model</text>
+    <text x="420" y="368" font-size="14" letter-spacing="0.5">PREFRONTAL RECON</text>
+    <text x="420" y="388" font-size="12" opacity="0.65">cognitive dissonance · ACC</text>
+    <text x="690" y="368" font-size="14" letter-spacing="0.5">NO CONTRADICTIONS</text>
+    <text x="690" y="388" font-size="12" opacity="0.65">cross-check vs. Neurons</text>
+  </g>
+  <g stroke="#e8a87c" stroke-width="1.2" stroke-dasharray="3,3">
+    <line x1="250" y1="372" x2="320" y2="372"/>
+    <line x1="520" y1="372" x2="590" y2="372"/>
+  </g>
+
+  <!-- Sub-caption -->
+  <text x="420" y="450" font-family="monospace" font-size="12" fill="currentColor" text-anchor="middle" opacity="0.5" letter-spacing="0.5">two billion years of evolution converged on this pattern</text>
+</svg>

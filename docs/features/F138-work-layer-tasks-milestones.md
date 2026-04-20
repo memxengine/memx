@@ -42,7 +42,7 @@ Chat-endpoint kan svare "hvilke åbne bugs handler om NADA?" fordi Work-items de
 - Wiki-link-parser behandler `[[work-item]]`-refs ens med Neuron-refs
 - F99 graph farver Work-items anderledes end Knowledge-Neuroner (fx firkantede noder vs. cirkler)
 - F138 samkompatibel med F137: Work-items kan have typed edges (`blocks`, `duplicates-of`, `relates-to`)
-- F130 llms.txt inkluderer en ny `## Work` sektion med åbne items grupperet på kind
+- F130 llms.txt inkluderer en ny `## Work` sektion med åbne items grupperet på kind — landes sammen med F130 selv (F130 er endnu ikke shippet pr. F138 MVP)
 
 ## Dependencies
 

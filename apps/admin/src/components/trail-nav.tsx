@@ -23,6 +23,7 @@ export function TrailNav({ kbId }: { kbId: string }) {
   const tabs = [
     { href: `/kb/${kbId}/neurons`, label: t('nav.neurons'), match: '/neurons' },
     { href: `/kb/${kbId}/graph`, label: t('nav.graph'), match: '/graph' },
+    { href: `/kb/${kbId}/work`, label: t('nav.work'), match: '/work' },
     { href: `/kb/${kbId}/chat`, label: t('nav.chat'), match: '/chat' },
     { href: `/kb/${kbId}/search`, label: t('nav.search'), match: '/search' },
     { href: `/kb/${kbId}/queue`, label: t('nav.queue'), match: '/queue', badge: pending },

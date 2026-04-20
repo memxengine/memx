@@ -9,6 +9,7 @@
 set -euo pipefail
 
 APP="trail-engine"
+ORG="${TRAIL_FLY_ORG:-personal}"
 REGION="arn"
 VOLUME_NAME="trail_data"
 VOLUME_SIZE_GB=10
@@ -21,11 +22,14 @@ if ! command -v fly >/dev/null 2>&1; then
 fi
 
 if [[ "${1:-}" == "--first-time" ]]; then
-  echo "==> provisioning app ${APP} in ${REGION}"
-  fly apps create "${APP}" --org broberg-ai || echo "  (app already exists, continuing)"
+  echo "==> provisioning app ${APP} in ${REGION} (org=${ORG})"
+  fly apps create "${APP}" --org "${ORG}" || echo "  (app already exists, continuing)"
 
   echo "==> provisioning volume ${VOLUME_NAME}"
-  fly volumes create "${VOLUME_NAME}" --region "${REGION}" --size "${VOLUME_SIZE_GB}" --app "${APP}" || echo "  (volume already exists, continuing)"
+  # --yes accepts Fly's single-volume-warning prompt non-interactively.
+  # A second volume for HA is a Phase 2 concern (F40.2 adds horizontal
+  # scaling); Phase 1 single-tenant tolerates the single-volume pin.
+  fly volumes create "${VOLUME_NAME}" --region "${REGION}" --size "${VOLUME_SIZE_GB}" --app "${APP}" --yes || echo "  (volume already exists, continuing)"
 
   echo "==> checking required secrets"
   # List the secrets expected before a healthy run. `fly secrets list` is

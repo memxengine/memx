@@ -1,0 +1,136 @@
+{
+  "checkedAt": "2026-04-15T21:07:56.289Z",
+  "total": 11,
+  "broken": 2,
+  "results": [
+    {
+      "docCollection": "global",
+      "docSlug": "global",
+      "docTitle": "global",
+      "field": "logo",
+      "kind": "image",
+      "text": "logo",
+      "url": "/uploads/memx-logo.svg",
+      "type": "internal",
+      "status": "ok"
+    },
+    {
+      "docCollection": "pages",
+      "docSlug": "the-1945-concept",
+      "docTitle": "As We May Think",
+      "field": "content",
+      "kind": "link",
+      "text": "*As We May Think*",
+      "url": "https://www.theatlantic.com/magazine/archive/1945/07/as-we-may-think/303881/",
+      "type": "external",
+      "status": "ok",
+      "httpStatus": 200
+    },
+    {
+      "docCollection": "posts",
+      "docSlug": "compile-time-knowledge-vs-rag",
+      "docTitle": "Compile-Time Knowledge: A Technical Argument Against RAG",
+      "field": "content",
+      "kind": "link",
+      "text": "*As We May Think*",
+      "url": "https://www.theatlantic.com/magazine/archive/1945/07/as-we-may-think/303881/",
+      "type": "external",
+      "status": "ok",
+      "httpStatus": 200
+    },
+    {
+      "docCollection": "pages",
+      "docSlug": "the-1945-concept",
+      "docTitle": "As We May Think",
+      "field": "content",
+      "kind": "link",
+      "text": "*As We May Think* on Wikipedia",
+      "url": "https://en.wikipedia.org/wiki/As_We_May_Think",
+      "type": "external",
+      "status": "ok",
+      "httpStatus": 200
+    },
+    {
+      "docCollection": "pages",
+      "docSlug": "the-1945-concept",
+      "docTitle": "As We May Think",
+      "field": "content",
+      "kind": "link",
+      "text": "History of Information — *In \"As We May Think\" Vannevar Bush Envisions Mechanized Information Retrieval and the Concept of Hypertext*",
+      "url": "https://www.historyofinformation.com/detail.php?id=676",
+      "type": "external",
+      "status": "ok",
+      "httpStatus": 200
+    },
+    {
+      "docCollection": "posts",
+      "docSlug": "how-a-brain-actually-remembers",
+      "docTitle": "How a Brain Actually Remembers: Why Trail Compiles Knowledge Instead of Searching For It",
+      "field": "content",
+      "kind": "link",
+      "text": "*As We May Think*",
+      "url": "https://www.theatlantic.com/magazine/archive/1945/07/as-we-may-think/303881/",
+      "type": "external",
+      "status": "ok",
+      "httpStatus": 200
+    },
+    {
+      "docCollection": "posts",
+      "docSlug": "how-a-brain-actually-remembers",
+      "docTitle": "How a Brain Actually Remembers: Why Trail Compiles Knowledge Instead of Searching For It",
+      "field": "content",
+      "kind": "link",
+      "text": "As We May Think: The 1945 Vision That Became Trail",
+      "url": "/the-1945-concept/",
+      "type": "internal",
+      "status": "ok"
+    },
+    {
+      "docCollection": "posts",
+      "docSlug": "knowledge-that-compounds",
+      "docTitle": "Why Your Knowledge Base Should Compile, Not Search",
+      "field": "content",
+      "kind": "link",
+      "text": "*As We May Think*",
+      "url": "https://www.theatlantic.com/magazine/archive/1945/07/as-we-may-think/303881/",
+      "type": "external",
+      "status": "ok",
+      "httpStatus": 200
+    },
+    {
+      "docCollection": "posts",
+      "docSlug": "knowledge-that-compounds",
+      "docTitle": "Why Your Knowledge Base Should Compile, Not Search",
+      "field": "content",
+      "kind": "link",
+      "text": "Compile-Time Knowledge: A Technical Argument Against RAG",
+      "url": "/trails/how-trail-works/compile-time-knowledge-vs-rag/",
+      "type": "internal",
+      "status": "broken",
+      "error": "No matching document found"
+    },
+    {
+      "docCollection": "posts",
+      "docSlug": "compile-time-knowledge-vs-rag",
+      "docTitle": "Compile-Time Knowledge: A Technical Argument Against RAG",
+      "field": "content",
+      "kind": "link",
+      "text": "trail.broberg.ai/docs",
+      "url": "https://trail.broberg.ai/docs",
+      "type": "external",
+      "status": "error",
+      "error": "fetch failed"
+    },
+    {
+      "docCollection": "posts",
+      "docSlug": "knowledge-that-compounds",
+      "docTitle": "Why Your Knowledge Base Should Compile, Not Search",
+      "field": "content",
+      "kind": "link",
+      "text": "As We May Think: The 1945 Vision That Became Trail",
+      "url": "/the-1945-concept/",
+      "type": "internal",
+      "status": "ok"
+    }
+  ]
+}

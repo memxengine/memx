@@ -83,7 +83,7 @@ export const documents = sqliteTable(
     tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
     knowledgeBaseId: text('knowledge_base_id').notNull().references(() => knowledgeBases.id, { onDelete: 'cascade' }),
     userId: text('user_id').notNull().references(() => users.id),
-    kind: text('kind', { enum: ['source', 'wiki'] }).notNull(),
+    kind: text('kind', { enum: ['source', 'wiki', 'work'] }).notNull(),
     filename: text('filename').notNull(),
     title: text('title'),
     path: text('path').notNull().default('/'),
@@ -104,6 +104,14 @@ export const documents = sqliteTable(
     // Meaningful when kind='source': marks the document as authoritative for its topic.
     // Used later for trust-tier rules (e.g. reject auto-approval of contradicting sources).
     isCanonical: integer('is_canonical', { mode: 'boolean' }).notNull().default(false),
+    // F138 — Work Layer fields. Only meaningful when kind='work'; null on
+    // all other rows. Kept on documents (not a separate table) so wiki-
+    // links, backlinks, F99 graph, search and chat treat Work items as
+    // regular documents with extra state.
+    workStatus: text('work_status', { enum: ['open', 'in-progress', 'done', 'blocked'] }),
+    workAssignee: text('work_assignee'),
+    workDueAt: text('work_due_at'),
+    workKind: text('work_kind', { enum: ['task', 'bug', 'milestone', 'decision'] }),
     createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
     updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
   },
@@ -114,6 +122,8 @@ export const documents = sqliteTable(
     index('idx_docs_kb_path').on(table.knowledgeBaseId, table.path),
     index('idx_docs_status').on(table.knowledgeBaseId, table.status),
     index('idx_docs_kb_canonical').on(table.knowledgeBaseId, table.isCanonical),
+    index('idx_docs_work_status').on(table.knowledgeBaseId, table.workStatus),
+    index('idx_docs_work_assignee').on(table.knowledgeBaseId, table.workAssignee),
   ],
 );
 

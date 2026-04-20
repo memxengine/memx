@@ -1,0 +1,10 @@
+{
+  "onboarding": {
+    "tourCompleted": true,
+    "completedSteps": [],
+    "activeTour": null,
+    "firstLoginAt": null
+  },
+  "updatedAt": "2026-04-15T21:06:40.704Z",
+  "sidebarToolsOpen": true
+}

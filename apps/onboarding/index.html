@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="da" data-theme="light">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>trail · onboarding</title>
+    <meta name="theme-color" content="#FAF9F5" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#17140F" media="(prefers-color-scheme: dark)" />
+    <link rel="icon" type="image/svg+xml" href="/trail-logo.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;1,9..144,400&family=JetBrains+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <script>
+      // Apply persisted theme before first paint — mirrors the approach in apps/admin
+      // so the onboarding never flashes the wrong palette on reload.
+      (function () {
+        try {
+          var t = localStorage.getItem('trail.onboarding.theme');
+          document.documentElement.setAttribute(
+            'data-theme',
+            t === 'dark' ? 'dark' : 'light',
+          );
+        } catch (_) {}
+      })();
+    </script>
+    <style>
+      html { background: #FAF9F5; color: #1A1715; }
+      html[data-theme="dark"] { background: #17140F; color: #F5F1EA; }
+      body { background: transparent; margin: 0; }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

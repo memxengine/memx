@@ -68,6 +68,14 @@ interface HoverState {
   node: GraphNode;
 }
 
+interface EdgeHoverState {
+  x: number;
+  y: number;
+  edgeType: GraphEdgeType;
+  sourceLabel: string;
+  targetLabel: string;
+}
+
 type NodeCategory = 'neuron' | 'orphan' | 'hub';
 
 function categoryOf(node: GraphNode): NodeCategory {
@@ -132,6 +140,8 @@ export function GraphPanel() {
   const [edgeCount, setEdgeCount] = useState(0);
   const [search, setSearch] = useState('');
   const [hover, setHover] = useState<HoverState | null>(null);
+  const [edgeHover, setEdgeHover] = useState<EdgeHoverState | null>(null);
+  const [hotNodes, setHotNodes] = useState<GraphNode[]>([]);
   // Legend-chip-driven category filter. Default = all three active,
   // so the graph renders the same as pre-filter until the user
   // clicks a chip. Clicking a chip toggles its category; clicking
@@ -200,6 +210,10 @@ export function GraphPanel() {
         hub: '#a78bfa',
         edge: 'rgba(140,140,150,0.35)',
         label: '#e4e4e7',
+        workOpen: '#60a5fa',
+        workInProgress: '#fbbf24',
+        workBlocked: '#f87171',
+        workDone: '#6b7280',
       };
     }
     const style = getComputedStyle(document.documentElement);
@@ -220,6 +234,15 @@ export function GraphPanel() {
       hub: '#a78bfa',
       edge: 'rgba(140,140,150,0.35)',
       label: style.getPropertyValue('--color-fg').trim() || '#e4e4e7',
+      // F138 — Work node palette. Sigma 3 only ships the 'circle'
+      // program out of the box, so instead of a square shape we
+      // differentiate Work visually through a distinct hue per status.
+      // Keeps the single-program render path (no custom shader, no new
+      // dependency) while still reading as "not a Neuron" at a glance.
+      workOpen: '#60a5fa',
+      workInProgress: '#fbbf24',
+      workBlocked: '#f87171',
+      workDone: '#6b7280',
     };
   }, []);
 
@@ -230,6 +253,7 @@ export function GraphPanel() {
     const container = containerRef.current;
 
     async function load() {
+      setHotNodes([]);
       setLoading(true);
       setError(null);
       try {
@@ -254,11 +278,27 @@ export function GraphPanel() {
 
         for (const n of data.nodes) {
           nodeLookup.current.set(n.id, n);
-          const color = n.hub
-            ? colours.hub
-            : n.orphan
-              ? colours.orphan
-              : colours.accent;
+          // F138 — Work nodes get a status-coloured palette; Neurons
+          // keep the existing hub/orphan/accent scheme. Sigma 3 ships
+          // only the 'circle' program out of the box so we skip the
+          // square-shape route and differentiate by hue instead.
+          let color: string;
+          if (n.kind === 'work') {
+            color =
+              n.workStatus === 'done'
+                ? colours.workDone
+                : n.workStatus === 'blocked'
+                  ? colours.workBlocked
+                  : n.workStatus === 'in-progress'
+                    ? colours.workInProgress
+                    : colours.workOpen;
+          } else if (n.hub) {
+            color = colours.hub;
+          } else if (n.orphan) {
+            color = colours.orphan;
+          } else {
+            color = colours.accent;
+          }
           // F141 — scale UP from baseline using usage weight. We pick
           // `1 + w*0.8` (range [1.0, 1.8]) not trail-optimizer's
           // suggested `0.5 + w*1.5` because w=0 means "unknown" not
@@ -278,6 +318,12 @@ export function GraphPanel() {
             y: n.y ?? Math.random(),
           });
         }
+        setHotNodes(
+          data.nodes
+            .filter((n) => n.usageWeight > 0)
+            .sort((a, b) => b.usageWeight - a.usageWeight)
+            .slice(0, 5),
+        );
         edgeTypeLookup.current.clear();
         for (const e of data.edges) {
           // Sigma refuses duplicate undirected edges between the same
@@ -437,10 +483,27 @@ export function GraphPanel() {
         renderer.on('enterNode', ({ node, event }) => {
           const n = nodeLookup.current.get(node);
           if (!n) return;
+          setEdgeHover(null);
           setHover({ x: event.x, y: event.y, node: n });
         });
         renderer.on('leaveNode', () => setHover(null));
-        renderer.on('downStage', () => setHover(null));
+        renderer.on('enterEdge', ({ edge, event }) => {
+          const type = edgeTypeLookup.current.get(edge) ?? 'cites';
+          const [src, tgt] = graph.extremities(edge);
+          const srcNode = nodeLookup.current.get(src);
+          const tgtNode = nodeLookup.current.get(tgt);
+          if (!srcNode || !tgtNode) return;
+          setHover(null);
+          setEdgeHover({
+            x: event.x,
+            y: event.y,
+            edgeType: type as GraphEdgeType,
+            sourceLabel: srcNode.label,
+            targetLabel: tgtNode.label,
+          });
+        });
+        renderer.on('leaveEdge', () => setEdgeHover(null));
+        renderer.on('downStage', () => { setHover(null); setEdgeHover(null); });
 
         sigmaRef.current = renderer;
         setNodeCount(data.nodes.length);
@@ -641,6 +704,66 @@ export function GraphPanel() {
               ))}
             </div>
           ) : null}
+        </div>
+      ) : null}
+      {edgeHover ? (
+        <div
+          class="absolute pointer-events-none z-20 bg-[color:var(--color-bg-card)]/95 backdrop-blur-sm border border-[color:var(--color-border)] rounded-md px-3 py-2 shadow-lg text-xs max-w-[300px]"
+          style={{
+            left: `${Math.min(edgeHover.x + 12, (typeof window !== 'undefined' ? window.innerWidth : 1200) - 320)}px`,
+            top: `${edgeHover.y + 12}px`,
+          }}
+        >
+          <div class="flex items-center gap-1.5 mb-1.5">
+            <span
+              class="inline-block w-5 h-[2px] rounded-full flex-shrink-0"
+              style={{ background: EDGE_TYPE_PALETTE[edgeHover.edgeType] }}
+            />
+            <span class="font-mono text-[10px] uppercase tracking-wider text-[color:var(--color-fg-subtle)]">
+              {t(`graph.edgeType.${edgeHover.edgeType}` as never)}
+            </span>
+          </div>
+          <div class="flex items-center gap-1 text-[11px] text-[color:var(--color-fg-muted)]">
+            <span class="truncate max-w-[110px] font-medium">{edgeHover.sourceLabel}</span>
+            <span class="text-[color:var(--color-fg-subtle)] flex-shrink-0">→</span>
+            <span class="truncate max-w-[110px] font-medium">{edgeHover.targetLabel}</span>
+          </div>
+        </div>
+      ) : null}
+      {hotNodes.length > 0 ? (
+        <div class="absolute bottom-4 left-4 z-10 bg-[color:var(--color-bg-card)]/95 backdrop-blur-sm border border-[color:var(--color-border)] rounded-md p-3 shadow-lg min-w-[200px] max-w-[260px]">
+          <div class="text-[10px] font-mono uppercase tracking-wider text-[color:var(--color-fg-subtle)] mb-2">
+            {t('graph.hotTitle')}
+          </div>
+          <div class="space-y-1.5">
+            {hotNodes.map((n) => {
+              const slug = n.filename.replace(/\.md$/i, '');
+              return (
+                <button
+                  key={n.id}
+                  type="button"
+                  onClick={() => {
+                    const cam = sigmaRef.current?.getCamera().getState();
+                    if (cam) saveCamera(kbId, cam as CameraState);
+                    route(`/kb/${kbId}/neurons/${encodeURIComponent(slug)}`);
+                  }}
+                  class="w-full flex items-center gap-2 text-left hover:bg-[color:var(--color-bg)]/60 rounded px-1.5 py-1 transition group"
+                >
+                  <div class="flex-1 min-w-0">
+                    <div class="text-[11px] truncate text-[color:var(--color-fg-muted)] group-hover:text-[color:var(--color-fg)] transition">
+                      {n.label}
+                    </div>
+                    <div class="mt-0.5 h-[3px] rounded-full bg-[color:var(--color-border)] overflow-hidden">
+                      <div
+                        class="h-full rounded-full bg-[color:var(--color-accent)]"
+                        style={{ width: `${Math.round(n.usageWeight * 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
         </div>
       ) : null}
     </div>

@@ -13,6 +13,8 @@ import {
   listWikiPages,
   getDocumentContent,
   getNeuronProvenance,
+  saveNeuronEdit,
+  NeuronEditConflictError,
   ApiError,
   type NeuronProvenance,
 } from '../api';
@@ -43,6 +45,7 @@ function ReaderView() {
   const [content, setContent] = useState<string | null>(null);
   const [provenance, setProvenance] = useState<NeuronProvenance | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [localVersion, setLocalVersion] = useState<number | null>(null);
 
   useEffect(() => {
     if (!kbId) return;
@@ -91,6 +94,7 @@ function ReaderView() {
   }, [content, kbId]);
 
   const d = doc as (Document & { filename: string; title: string | null; version: number; path?: string; tags?: string | null; createdAt?: string; updatedAt?: string }) | null;
+  const effectiveVersion = localVersion ?? (d?.version ?? 0);
   const editHref = d ? `/kb/${kbId}/neurons/${encodeURIComponent(slug)}?edit=1` : null;
   const readerTags = d ? parseTags(d.tags) : [];
 
@@ -166,6 +170,17 @@ function ReaderView() {
                   content={content}
                 />
               ) : null}
+              {d && isHeuristicPath(d.path) ? (
+                <PinButton
+                  docId={d.id}
+                  version={effectiveVersion}
+                  content={content}
+                  onSaved={(newContent, newVersion) => {
+                    setContent(newContent);
+                    setLocalVersion(newVersion);
+                  }}
+                />
+              ) : null}
             </div>
             {provenance?.connector ? (
               <div class="mt-3 flex items-center gap-2 text-[11px] font-mono text-[color:var(--color-fg-subtle)] flex-wrap">
@@ -187,6 +202,79 @@ function ReaderView() {
             />
           )}
         </article>
+      ) : null}
+    </div>
+  );
+}
+
+function togglePinned(content: string, pin: boolean): string {
+  if (pin) {
+    if (content.startsWith('---')) {
+      const afterFence = content.indexOf('\n');
+      if (afterFence === -1) return `---\npinned: true\n---\n\n${content}`;
+      return content.slice(0, afterFence + 1) + 'pinned: true\n' + content.slice(afterFence + 1);
+    }
+    return `---\npinned: true\n---\n\n${content}`;
+  } else {
+    if (!content.startsWith('---')) return content;
+    const end = content.indexOf('\n---', 3);
+    if (end === -1) return content;
+    const beforeFm = content.slice(0, end + 4);
+    const afterFm = content.slice(end + 4);
+    const cleanedFm = beforeFm.replace(/^pinned\s*:\s*(true|yes)\s*$/im, '').replace(/\n\n+/g, '\n');
+    return cleanedFm + afterFm;
+  }
+}
+
+function PinButton({
+  docId,
+  version,
+  content,
+  onSaved,
+}: {
+  docId: string;
+  version: number;
+  content: string | null;
+  onSaved: (newContent: string, newVersion: number) => void;
+}) {
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  if (content === null) return null;
+  const pinned = isPinned(content);
+
+  async function handleToggle() {
+    if (saving) return;
+    setSaving(true);
+    setError(null);
+    const newContent = togglePinned(content!, !pinned);
+    try {
+      const res = await saveNeuronEdit(docId, { content: newContent, expectedVersion: version });
+      onSaved(newContent, res.version);
+    } catch (err) {
+      setError(err instanceof NeuronEditConflictError ? t('heuristic.pinError') : String(err));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div class="flex items-center gap-2">
+      <button
+        type="button"
+        onClick={handleToggle}
+        disabled={saving}
+        class={
+          'px-2.5 py-1 rounded text-[11px] font-mono border transition ' +
+          (pinned
+            ? 'border-[color:var(--color-accent)]/40 text-[color:var(--color-accent)] hover:bg-[color:var(--color-accent)]/10'
+            : 'border-[color:var(--color-border)] text-[color:var(--color-fg-muted)] hover:border-[color:var(--color-border-strong)] hover:text-[color:var(--color-fg)]') +
+          ' active:scale-[0.97] disabled:opacity-50 disabled:cursor-not-allowed'
+        }
+      >
+        {saving ? t('heuristic.pinSaving') : pinned ? t('heuristic.unpinAction') : t('heuristic.pinAction')}
+      </button>
+      {error ? (
+        <span class="text-[10px] font-mono text-[color:var(--color-danger)]">{error}</span>
       ) : null}
     </div>
   );

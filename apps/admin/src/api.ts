@@ -257,6 +257,11 @@ export interface GraphNode {
    *  0 means unknown (Neuron never read OR rollup hasn't fired yet) —
    *  treat as baseline, not "cold". */
   usageWeight: number;
+  /** F138 — document kind drives node shape:
+   *  'wiki' → circle (knowledge), 'work' → square (tasks/bugs/etc.). */
+  kind?: 'wiki' | 'work';
+  workStatus?: WorkStatus | null;
+  workKind?: WorkKind | null;
 }
 /** F137 — the closed set of edge types the LLM can emit via `[[target|type]]`
  *  syntax. Mirrors `VALID_EDGE_TYPES` on the server-side extractor. */
@@ -288,6 +293,75 @@ export interface GraphResponse {
 }
 export function fetchGraph(kbId: string): Promise<GraphResponse> {
   return api(`/api/v1/knowledge-bases/${encodeURIComponent(kbId)}/graph`);
+}
+
+// ── F138 — Work Layer ─────────────────────────────────────────────────────
+export type WorkStatus = 'open' | 'in-progress' | 'done' | 'blocked';
+export type WorkKind = 'task' | 'bug' | 'milestone' | 'decision';
+
+export interface WorkItem {
+  id: string;
+  title: string | null;
+  filename: string;
+  path: string;
+  tags: string | null;
+  workStatus: WorkStatus | null;
+  workKind: WorkKind | null;
+  workAssignee: string | null;
+  workDueAt: string | null;
+  version: number;
+  archived: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export function listWorkItems(
+  kbId: string,
+  opts: { status?: WorkStatus; kind?: WorkKind; assignee?: string; archived?: 'true' | 'false' | 'all' } = {},
+): Promise<WorkItem[]> {
+  const params = new URLSearchParams();
+  if (opts.status) params.set('status', opts.status);
+  if (opts.kind) params.set('kind', opts.kind);
+  if (opts.assignee) params.set('assignee', opts.assignee);
+  if (opts.archived) params.set('archived', opts.archived);
+  const qs = params.toString();
+  return api(
+    `/api/v1/knowledge-bases/${encodeURIComponent(kbId)}/work${qs ? `?${qs}` : ''}`,
+  );
+}
+
+export function createWorkItem(
+  kbId: string,
+  body: {
+    title: string;
+    content?: string;
+    workKind?: WorkKind;
+    workStatus?: WorkStatus;
+    workAssignee?: string | null;
+    workDueAt?: string | null;
+    path?: string;
+    tags?: string | null;
+  },
+): Promise<WorkItem> {
+  return api(`/api/v1/knowledge-bases/${encodeURIComponent(kbId)}/work`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+export function updateWorkState(
+  docId: string,
+  patch: {
+    workStatus?: WorkStatus;
+    workAssignee?: string | null;
+    workDueAt?: string | null;
+    workKind?: WorkKind;
+  },
+): Promise<WorkItem> {
+  return api(`/api/v1/work/${encodeURIComponent(docId)}/state`, {
+    method: 'PATCH',
+    body: JSON.stringify(patch),
+  });
 }
 
 /**
@@ -568,6 +642,37 @@ export function saveChatAsNeuron(args: {
       content,
       metadata,
       confidence: args.confidence ?? 0.6,
+    }),
+  });
+}
+
+/** Manually create a Neuron — lands in queue as a curator candidate. */
+export function createNeuron(args: {
+  kbId: string;
+  title: string;
+  path: string;
+  content?: string;
+  tags?: string;
+}): Promise<{ id: string }> {
+  const slug = slugify(args.title);
+  const metadata = JSON.stringify({
+    op: 'create',
+    filename: `${slug}.md`,
+    path: args.path,
+    source: 'curator',
+    connector: 'curator',
+  });
+  const fm = args.tags ? `---\ntags: [${args.tags}]\n---\n\n` : '';
+  const content = `${fm}# ${args.title}\n\n${args.content ?? ''}`.trimEnd() + '\n';
+  return api(`/api/v1/queue/candidates`, {
+    method: 'POST',
+    body: JSON.stringify({
+      knowledgeBaseId: args.kbId,
+      kind: 'external-feed',
+      title: args.title,
+      content,
+      metadata,
+      confidence: 1,
     }),
   });
 }

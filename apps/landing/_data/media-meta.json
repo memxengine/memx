@@ -1,0 +1,26 @@
+[
+  {
+    "key": "svg/trail.svg",
+    "name": "trail.svg",
+    "folder": "svg",
+    "status": "active",
+    "aiCaption": "Et diagrammatisk SVG der viser tre forbundne dokumenter (Encyclopedia, Historie om Korstogene, og Elasticitet) forbundet af en orange associativ sti som illustrerer Vannevar Bushs koncept om hvordan information kan linkes sammen.",
+    "aiAlt": "Diagram af tre dokumenter forbundet med orange linjer, viser Bushs associative trail koncept",
+    "aiTags": [
+      "dokument",
+      "diagram",
+      "information",
+      "associativ",
+      "orange",
+      "sort",
+      "minimalisme",
+      "konceptuel"
+    ],
+    "aiAnalyzedAt": "2026-04-15T22:06:38.454Z",
+    "aiProvider": "claude-sonnet-4-20250514",
+    "tags": [
+      "trail",
+      "trailmem"
+    ]
+  }
+]

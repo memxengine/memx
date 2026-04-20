@@ -1,0 +1,220 @@
+{
+  "deploys": [
+    {
+      "id": "dpl-1776689076823-pq7s",
+      "provider": "github-pages",
+      "status": "success",
+      "timestamp": "2026-04-20T12:44:36.823Z",
+      "url": "https://trail.webhouse.app",
+      "duration": 4581
+    },
+    {
+      "id": "dpl-1776688974525-7jot",
+      "provider": "github-pages",
+      "status": "success",
+      "timestamp": "2026-04-20T12:42:54.525Z",
+      "url": "https://trail.webhouse.app",
+      "duration": 10471
+    },
+    {
+      "id": "dpl-1776687031447-eh7p",
+      "provider": "github-pages",
+      "status": "success",
+      "timestamp": "2026-04-20T12:10:31.447Z",
+      "url": "https://trail.webhouse.app",
+      "duration": 11793
+    },
+    {
+      "id": "dpl-1776686388809-vdrl",
+      "provider": "github-pages",
+      "status": "success",
+      "timestamp": "2026-04-20T11:59:48.809Z",
+      "url": "https://trail.webhouse.app",
+      "duration": 5178
+    },
+    {
+      "id": "dpl-1776686093753-qygp",
+      "provider": "github-pages",
+      "status": "success",
+      "timestamp": "2026-04-20T11:54:53.754Z",
+      "url": "https://trail.webhouse.app",
+      "duration": 4351
+    },
+    {
+      "id": "dpl-1776684564119-s45q",
+      "provider": "github-pages",
+      "status": "success",
+      "timestamp": "2026-04-20T11:29:24.119Z",
+      "url": "https://trail.webhouse.app",
+      "duration": 5615
+    },
+    {
+      "id": "dpl-1776684253299-arx9",
+      "provider": "github-pages",
+      "status": "success",
+      "timestamp": "2026-04-20T11:24:13.299Z",
+      "url": "https://trail.webhouse.app",
+      "duration": 7125
+    },
+    {
+      "id": "dpl-1776683894593-phm5",
+      "provider": "github-pages",
+      "status": "success",
+      "timestamp": "2026-04-20T11:18:14.593Z",
+      "url": "https://trail.webhouse.app",
+      "duration": 4368
+    },
+    {
+      "id": "dpl-1776680683791-gco0",
+      "provider": "github-pages",
+      "status": "success",
+      "timestamp": "2026-04-20T10:24:43.791Z",
+      "url": "https://trail.webhouse.app",
+      "duration": 4668
+    },
+    {
+      "id": "dpl-1776680380469-fmvc",
+      "provider": "github-pages",
+      "status": "success",
+      "timestamp": "2026-04-20T10:19:40.469Z",
+      "url": "https://trail.webhouse.app",
+      "duration": 11826
+    },
+    {
+      "id": "dpl-1776650273064-t04c",
+      "provider": "github-pages",
+      "status": "success",
+      "timestamp": "2026-04-20T01:57:53.064Z",
+      "url": "https://trail.webhouse.app",
+      "duration": 4076
+    },
+    {
+      "id": "dpl-1776650254593-69k4",
+      "provider": "github-pages",
+      "status": "success",
+      "timestamp": "2026-04-20T01:57:34.593Z",
+      "url": "https://trail.webhouse.app",
+      "duration": 5199
+    },
+    {
+      "id": "dpl-1776649852268-8rhb",
+      "provider": "github-pages",
+      "status": "success",
+      "timestamp": "2026-04-20T01:50:52.268Z",
+      "url": "https://trail.webhouse.app",
+      "duration": 7117
+    },
+    {
+      "id": "dpl-1776648958851-1936",
+      "provider": "github-pages",
+      "status": "success",
+      "timestamp": "2026-04-20T01:35:58.851Z",
+      "url": "https://trail.webhouse.app",
+      "duration": 11385
+    },
+    {
+      "id": "dpl-1776648344644-4qx5",
+      "provider": "github-pages",
+      "status": "error",
+      "timestamp": "2026-04-20T01:25:44.644Z",
+      "error": "Build failed: 6648345648:2:3744)\n    at resolveDirectory (file:///Users/cb/.npm/_npx/fd45a72a545557e9/node_modules/tsx/dist/esm/index.mjs?1776648345648:2:4243)\n    at resolveTsPaths (file:///Users/cb/.npm/_npx/fd45a72a545557e9/node_modules/tsx/dist/esm/index.mjs?1776648345648:2:4984)\n    at resolve (file:///Users/cb/.npm/_npx/fd45a72a545557e9/node_modules/tsx/dist/esm/index.mjs?1776648345648:2:5361)\n    at nextResolve (node:internal/modules/esm/hooks:769:28) {\n  code: 'ERR_MODULE_NOT_FOUND'\n}\n\nNode.js v25.7.0",
+      "duration": 1059
+    },
+    {
+      "id": "dpl-1776648201764-bi43",
+      "provider": "github-pages",
+      "status": "error",
+      "timestamp": "2026-04-20T01:23:21.764Z",
+      "error": "Build failed: npm warn Unknown env config \"allow-scripts\". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.\nnpm warn Unknown env config \"npm-globalconfig\". This will stop working in the next major version of npm. See `npm help npmrc` for supported config ",
+      "duration": 1470
+    },
+    {
+      "id": "dpl-1776509734901-wp52",
+      "provider": "github-pages",
+      "status": "success",
+      "timestamp": "2026-04-18T10:55:34.901Z",
+      "url": "https://trail.webhouse.app",
+      "duration": 20639
+    },
+    {
+      "id": "dpl-1776378210428-ohjx",
+      "provider": "github-pages",
+      "status": "success",
+      "timestamp": "2026-04-16T22:23:30.428Z",
+      "url": "https://trail.webhouse.app",
+      "duration": 19416
+    },
+    {
+      "id": "dpl-1776378205128-qoaz",
+      "provider": "github-pages",
+      "status": "success",
+      "timestamp": "2026-04-16T22:23:25.128Z",
+      "url": "https://trail.webhouse.app",
+      "duration": 20544
+    },
+    {
+      "id": "dpl-1776378200360-e6a3",
+      "provider": "github-pages",
+      "status": "success",
+      "timestamp": "2026-04-16T22:23:20.360Z",
+      "url": "https://trail.webhouse.app",
+      "duration": 21568
+    },
+    {
+      "id": "dpl-1776366504912-2850",
+      "provider": "github-pages",
+      "status": "success",
+      "timestamp": "2026-04-16T19:08:24.912Z",
+      "url": "https://trail.webhouse.app",
+      "duration": 16894
+    },
+    {
+      "id": "dpl-1776344598604-lyfy",
+      "provider": "github-pages",
+      "status": "success",
+      "timestamp": "2026-04-16T13:03:18.604Z",
+      "url": "https://trail.webhouse.app",
+      "duration": 17677
+    },
+    {
+      "id": "dpl-1776344547094-yfbq",
+      "provider": "github-pages",
+      "status": "success",
+      "timestamp": "2026-04-16T13:02:27.094Z",
+      "url": "https://cbroberg.github.io/trail-site/",
+      "duration": 4920
+    },
+    {
+      "id": "dpl-1776344460129-g5le",
+      "provider": "github-pages",
+      "status": "success",
+      "timestamp": "2026-04-16T13:01:00.129Z",
+      "url": "https://cbroberg.github.io/trail-site/",
+      "duration": 3821
+    },
+    {
+      "id": "dpl-1776344221672-8rg2",
+      "provider": "github-pages",
+      "status": "success",
+      "timestamp": "2026-04-16T12:57:01.672Z",
+      "url": "https://cbroberg.github.io/trail-site/",
+      "duration": 4548
+    },
+    {
+      "id": "dpl-1776298464804-aadg",
+      "provider": "github-pages",
+      "status": "success",
+      "timestamp": "2026-04-16T00:14:24.804Z",
+      "url": "https://cbroberg.github.io/trail-site/",
+      "duration": 5261
+    },
+    {
+      "id": "dpl-1776298227196-ttgx",
+      "provider": "github-pages",
+      "status": "success",
+      "timestamp": "2026-04-16T00:10:27.196Z",
+      "url": "https://cbroberg.github.io/trail-site",
+      "duration": 18308
+    }
+  ]
+}

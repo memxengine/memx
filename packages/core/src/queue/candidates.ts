@@ -71,6 +71,21 @@ export interface CandidateOp {
    * current version has moved past this value since the editor loaded.
    */
   expectedVersion?: number;
+  /**
+   * F138 — target document kind. Defaults to 'wiki' for every
+   * pre-F138 candidate + any candidate that doesn't explicitly opt into
+   * the Work layer. When set to 'work', `approveCreate` writes
+   * `kind='work'` and copies the work_* fields from the op into the
+   * documents row so the Work panel can render status / assignee / due
+   * date without a separate table. `approveUpdate` and `approveArchive`
+   * match on kind IN ('wiki', 'work') so Work items can flow through the
+   * same edit + archive paths as Neurons.
+   */
+  docKind?: 'wiki' | 'work';
+  workStatus?: 'open' | 'in-progress' | 'done' | 'blocked';
+  workAssignee?: string | null;
+  workDueAt?: string | null;
+  workKind?: 'task' | 'bug' | 'milestone' | 'decision';
 }
 
 /**
@@ -262,6 +277,7 @@ function parseMetadataForDedup(raw: string | null | undefined): {
   op?: string;
   path?: string;
   filename?: string;
+  docKind?: string;
 } | null {
   if (!raw) return null;
   try {
@@ -269,11 +285,13 @@ function parseMetadataForDedup(raw: string | null | undefined): {
       op?: unknown;
       path?: unknown;
       filename?: unknown;
+      docKind?: unknown;
     };
     return {
       op: typeof parsed.op === 'string' ? parsed.op : undefined,
       path: typeof parsed.path === 'string' ? parsed.path : undefined,
       filename: typeof parsed.filename === 'string' ? parsed.filename : undefined,
+      docKind: typeof parsed.docKind === 'string' ? parsed.docKind : undefined,
     };
   } catch {
     return null;
@@ -326,6 +344,7 @@ export async function createCandidate(
   if (input.kind === 'external-feed') {
     const meta = parseMetadataForDedup(input.metadata);
     if (meta && meta.op === 'create' && meta.filename) {
+      const targetKind = meta.docKind === 'work' ? 'work' : 'wiki';
       const existing = await db
         .select({ id: documents.id })
         .from(documents)
@@ -333,7 +352,7 @@ export async function createCandidate(
           and(
             eq(documents.knowledgeBaseId, input.knowledgeBaseId),
             eq(documents.tenantId, tenantId),
-            eq(documents.kind, 'wiki'),
+            eq(documents.kind, targetKind),
             eq(documents.archived, false),
             eq(documents.path, meta.path ?? '/'),
             eq(documents.filename, meta.filename),
@@ -441,7 +460,7 @@ export async function submitCuratorEdit(
       and(
         eq(documents.id, docId),
         eq(documents.tenantId, tenantId),
-        eq(documents.kind, 'wiki'),
+        or(eq(documents.kind, 'wiki'), eq(documents.kind, 'work')),
       ),
     )
     .get();
@@ -660,6 +679,7 @@ async function approveCreate(
   const path = pathIn.endsWith('/') ? pathIn : `${pathIn}/`;
 
   const docId = `doc_${crypto.randomUUID().slice(0, 12)}`;
+  const docKind = op.docKind ?? 'wiki';
   await tx
     .insert(documents)
     .values({
@@ -667,7 +687,7 @@ async function approveCreate(
       tenantId: candidate.tenantId,
       knowledgeBaseId: candidate.knowledgeBaseId,
       userId: actor.kind === 'user' ? actor.id : candidate.createdBy ?? actor.id,
-      kind: 'wiki',
+      kind: docKind,
       filename,
       title: candidate.title,
       path,
@@ -677,6 +697,14 @@ async function approveCreate(
       tags: op.tags ?? null,
       status: 'ready',
       version: 1,
+      ...(docKind === 'work'
+        ? {
+            workStatus: op.workStatus ?? 'open',
+            workAssignee: op.workAssignee ?? null,
+            workDueAt: op.workDueAt ?? null,
+            workKind: op.workKind ?? 'task',
+          }
+        : {}),
     })
     .run();
 
@@ -724,7 +752,7 @@ async function approveUpdate(
       and(
         eq(documents.id, op.targetDocumentId),
         eq(documents.tenantId, candidate.tenantId),
-        eq(documents.kind, 'wiki'),
+        or(eq(documents.kind, 'wiki'), eq(documents.kind, 'work')),
       ),
     )
     .get();
@@ -800,7 +828,7 @@ async function approveArchive(
       and(
         eq(documents.id, op.targetDocumentId),
         eq(documents.tenantId, candidate.tenantId),
-        eq(documents.kind, 'wiki'),
+        or(eq(documents.kind, 'wiki'), eq(documents.kind, 'work')),
       ),
     )
     .get();

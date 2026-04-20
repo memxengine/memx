@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'preact/hooks';
 import { useRoute } from 'preact-iso';
 import type { Document } from '@trail/shared';
-import { listWikiPages, listTags, runLint, ApiError, type WikiSortOrder, type TagCount } from '../api';
+import { listWikiPages, listTags, runLint, createNeuron, ApiError, type WikiSortOrder, type TagCount } from '../api';
 import { displayPath } from '../lib/display-path';
 import { useEvents, onStreamOpen, onFocusRefresh, debounce } from '../lib/event-stream';
 import { t, useLocale } from '../lib/i18n';
 import { CenteredLoader } from '../components/centered-loader';
 import { parseTags } from '../components/tag-chips';
+import { Modal, ModalButton } from '../components/modal';
 
 /**
  * Neurons tree — groups all compiled wiki pages in a KB by their
@@ -21,6 +22,7 @@ export function WikiTreePanel() {
   const [error, setError] = useState<string | null>(null);
   const [lintBusy, setLintBusy] = useState(false);
   const [toast, setToast] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
   // Sort preference persists in localStorage so returning curators see
   // the same order they left with. `newest` is the default when nothing
   // is cached — living knowledge bases are scanned by "what changed
@@ -234,6 +236,13 @@ export function WikiTreePanel() {
           >
             {lintBusy ? t('wikiTree.lintRunning') : t('wikiTree.runLint')}
           </button>
+          <button
+            onClick={() => setCreateOpen(true)}
+            title={t('wikiTree.newNeuronHint')}
+            class="shrink-0 px-3 py-1.5 text-[11px] font-mono uppercase tracking-wider rounded-md border border-[color:var(--color-border-strong)] hover:border-[color:var(--color-accent)] hover:text-[color:var(--color-accent)] transition"
+          >
+            {t('wikiTree.newNeuron')}
+          </button>
         </div>
       </header>
 
@@ -381,7 +390,152 @@ export function WikiTreePanel() {
           {toast.text}
         </div>
       ) : null}
+
+      <CreateNeuronModal
+        open={createOpen}
+        kbId={kbId}
+        onClose={() => setCreateOpen(false)}
+        onCreated={(title) => {
+          setCreateOpen(false);
+          setToast({ kind: 'success', text: `"${title}" sent to queue.` });
+          reload();
+        }}
+      />
     </div>
+  );
+}
+
+const PATH_OPTIONS = [
+  { value: '/neurons/concepts/', labelKey: 'wikiTree.newNeuronModal.paths.concepts' },
+  { value: '/neurons/entities/', labelKey: 'wikiTree.newNeuronModal.paths.entities' },
+  { value: '/neurons/heuristics/', labelKey: 'wikiTree.newNeuronModal.paths.heuristics' },
+  { value: '/neurons/decisions/', labelKey: 'wikiTree.newNeuronModal.paths.decisions' },
+] as const;
+
+function CreateNeuronModal({
+  open,
+  kbId,
+  onClose,
+  onCreated,
+}: {
+  open: boolean;
+  kbId: string;
+  onClose: () => void;
+  onCreated: (title: string) => void;
+}) {
+  const [title, setTitle] = useState('');
+  const [path, setPath] = useState('/neurons/concepts/');
+  const [content, setContent] = useState('');
+  const [tags, setTags] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function reset() {
+    setTitle('');
+    setPath('/neurons/concepts/');
+    setContent('');
+    setTags('');
+    setError(null);
+  }
+
+  async function handleCreate() {
+    const trimmed = title.trim();
+    if (!trimmed || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await createNeuron({ kbId, title: trimmed, path, content: content.trim() || undefined, tags: tags.trim() || undefined });
+      reset();
+      onCreated(trimmed);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal
+      open={open}
+      title={t('wikiTree.newNeuronModal.title')}
+      onClose={() => { reset(); onClose(); }}
+      footer={
+        <>
+          <ModalButton onClick={() => { reset(); onClose(); }}>{t('common.cancel')}</ModalButton>
+          <ModalButton variant="primary" onClick={handleCreate} disabled={!title.trim() || busy}>
+            {busy ? t('wikiTree.newNeuronModal.creating') : t('wikiTree.newNeuronModal.create')}
+          </ModalButton>
+        </>
+      }
+    >
+      <div class="space-y-4">
+        <div>
+          <label class="block text-[11px] font-mono uppercase tracking-wider text-[color:var(--color-fg-subtle)] mb-1">
+            {t('wikiTree.newNeuronModal.titleLabel')}
+          </label>
+          <input
+            type="text"
+            value={title}
+            placeholder={t('wikiTree.newNeuronModal.titlePlaceholder')}
+            onInput={(e) => setTitle((e.currentTarget as HTMLInputElement).value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleCreate(); }}
+            class="w-full rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)]/60 px-3 py-2 text-sm focus:outline-none focus:border-[color:var(--color-accent)] transition"
+            // eslint-disable-next-line jsx-a11y/no-autofocus
+            autofocus
+          />
+        </div>
+        <div>
+          <label class="block text-[11px] font-mono uppercase tracking-wider text-[color:var(--color-fg-subtle)] mb-1">
+            {t('wikiTree.newNeuronModal.pathLabel')}
+          </label>
+          <div class="flex flex-wrap gap-1.5">
+            {PATH_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => setPath(opt.value)}
+                class={
+                  'px-2.5 py-1 rounded text-[11px] font-mono border transition ' +
+                  (path === opt.value
+                    ? 'border-[color:var(--color-accent)] bg-[color:var(--color-accent)]/15 text-[color:var(--color-fg)]'
+                    : 'border-[color:var(--color-border)] text-[color:var(--color-fg-muted)] hover:border-[color:var(--color-border-strong)]')
+                }
+              >
+                {t(opt.labelKey as never)}
+                <span class="opacity-50 ml-1">{opt.value}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+        <div>
+          <label class="block text-[11px] font-mono uppercase tracking-wider text-[color:var(--color-fg-subtle)] mb-1">
+            {t('wikiTree.newNeuronModal.tagsLabel')}
+          </label>
+          <input
+            type="text"
+            value={tags}
+            placeholder={t('wikiTree.newNeuronModal.tagsPlaceholder')}
+            onInput={(e) => setTags((e.currentTarget as HTMLInputElement).value)}
+            class="w-full rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)]/60 px-3 py-2 text-sm focus:outline-none focus:border-[color:var(--color-accent)] transition"
+          />
+        </div>
+        <div>
+          <label class="block text-[11px] font-mono uppercase tracking-wider text-[color:var(--color-fg-subtle)] mb-1">
+            {t('wikiTree.newNeuronModal.contentLabel')}
+          </label>
+          <textarea
+            rows={5}
+            value={content}
+            placeholder={t('wikiTree.newNeuronModal.contentPlaceholder')}
+            onInput={(e) => setContent((e.currentTarget as HTMLTextAreaElement).value)}
+            class="w-full rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg)]/60 px-3 py-2 text-sm font-mono focus:outline-none focus:border-[color:var(--color-accent)] transition resize-none"
+          />
+        </div>
+        {error ? (
+          <div class="text-sm text-[color:var(--color-danger)]">{error}</div>
+        ) : null}
+      </div>
+    </Modal>
   );
 }
 

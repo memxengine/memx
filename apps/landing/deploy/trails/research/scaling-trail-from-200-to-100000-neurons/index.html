@@ -1,0 +1,1394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Scaling Trail from 200 to 100,000 Neurons: An Engineering Note — trail</title>
+  <meta name="description" content="A compile-time knowledge engine has three workloads that fight for compute — ingest, lint, and the curation queue. Each one breaks at a different corpus size, for different reasons, and requires a different fix. This is the long-form companion to Work That Fits in a Night: the full accounting of where Trail's bottlenecks are, when they hit, and what a deployment looks like at 200, 8,000, 25,000, and 100,000 Neurons.">
+  <meta property="og:title" content="Scaling Trail from 200 to 100,000 Neurons: An Engineering Note">
+  <meta property="og:description" content="A compile-time knowledge engine has three workloads that fight for compute — ingest, lint, and the curation queue. Each one breaks at a different corpus size, for different reasons, and requires a different fix. This is the long-form companion to Work That Fits in a Night: the full accounting of where Trail's bottlenecks are, when they hit, and what a deployment looks like at 200, 8,000, 25,000, and 100,000 Neurons.">
+  <meta property="og:type" content="website">
+  <link rel="icon" type="image/svg+xml" href="/uploads/favicon.svg">
+  <link rel="apple-touch-icon" href="/uploads/memx-logo.svg">
+  <meta name="theme-color" content="#FAF9F5">
+  <script>
+    /* Apply theme before first paint to avoid flash. Mirrors admin's
+     * theme store (localStorage key 'trail.theme'), default light. */
+    (function(){try{var t=localStorage.getItem('trail.theme');document.documentElement.setAttribute('data-theme', t==='dark'?'dark':'light');}catch(e){document.documentElement.setAttribute('data-theme','light');}})();
+  </script>
+  <style>
+/* Tokens mirror apps/admin/src/index.css in the trail repo so landing + admin
+ * share one palette. Light = Bauhaus warm off-white; dark = warm inversion.
+ * Graph vars are rgb triplets (consumed as rgba() by the canvas script). */
+:root,
+html[data-theme="light"] {
+  --bg: #FAF9F5;
+  --bg-card: #FFFFFF;
+  --fg: #1a1715;
+  --accent: #e8a87c;
+  --accent-tint: rgba(232, 168, 124, 0.06);
+  --fg-10: rgba(26, 23, 21, 0.10);
+  --fg-20: rgba(26, 23, 21, 0.20);
+  --fg-40: rgba(26, 23, 21, 0.40);
+  --fg-60: rgba(26, 23, 21, 0.60);
+  --fg-70: rgba(26, 23, 21, 0.70);
+  --fg-90: rgba(26, 23, 21, 0.90);
+  --bg-50: rgba(250, 249, 245, 0.50);
+  --bg-80: rgba(250, 249, 245, 0.80);
+  --graph-node: #1a1715;
+  --graph-accent: #e8a87c;
+  --graph-line: 26, 23, 21;
+  --graph-accent-line: 232, 168, 124;
+  --font-sans: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", "Fira Code", "Courier New", monospace;
+}
+
+html[data-theme="dark"] {
+  --bg: #17140F;
+  --bg-card: #1F1B16;
+  --fg: #F5F1EA;
+  --accent: #e8a87c;
+  --accent-tint: rgba(232, 168, 124, 0.08);
+  --fg-10: rgba(245, 241, 234, 0.10);
+  --fg-20: rgba(245, 241, 234, 0.20);
+  --fg-40: rgba(245, 241, 234, 0.40);
+  --fg-60: rgba(245, 241, 234, 0.60);
+  --fg-70: rgba(245, 241, 234, 0.70);
+  --fg-90: rgba(245, 241, 234, 0.90);
+  --bg-50: rgba(23, 20, 15, 0.50);
+  --bg-80: rgba(23, 20, 15, 0.80);
+  --graph-node: #f5f1ea;
+  --graph-accent: #e8a87c;
+  --graph-line: 245, 241, 234;
+  --graph-accent-line: 232, 168, 124;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html {
+  scroll-behavior: smooth;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background: var(--bg);
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+html, body { overflow-x: hidden; max-width: 100vw; }
+body {
+  font-family: var(--font-sans);
+  background: transparent; /* canvas (fixed, z-index: -1) renders between html and body */
+  color: var(--fg);
+  line-height: 1.5;
+  min-height: 100vh;
+}
+::selection { background: rgba(232, 168, 124, 0.3); color: var(--fg); }
+
+a { color: inherit; text-decoration: none; }
+img { max-width: 100%; display: block; height: auto; }
+button { font: inherit; cursor: pointer; border: none; background: none; color: inherit; }
+svg { max-width: 100%; height: auto; }
+
+/* Navbar */
+.nav {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 50;
+  padding: 0.75rem 1rem;
+  display: flex; justify-content: space-between; align-items: center;
+  background: var(--bg-80);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--fg-10);
+}
+@media (min-width: 768px) { .nav { padding: 1rem 1.5rem; } }
+.nav-brand { display: flex; align-items: center; gap: 0.625rem; min-width: 0; color: var(--fg); }
+.nav-brand img, .nav-brand svg { width: 32px; height: 32px; flex-shrink: 0; }
+@media (min-width: 768px) { .nav-brand { gap: 0.875rem; } .nav-brand img, .nav-brand svg { width: 40px; height: 40px; } }
+.nav-brand .brand-text {
+  font-family: var(--font-mono);
+  font-size: 1.125rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@media (min-width: 768px) { .nav-brand .brand-text { font-size: 1.375rem; } }
+.nav-links { display: none; gap: 2rem; font-size: 0.875rem; font-weight: 500; color: var(--fg-70); }
+.nav-links a { transition: color 0.15s; }
+.nav-links a:hover { color: var(--fg); }
+@media (min-width: 768px) { .nav-links { display: flex; } }
+
+.nav-actions { display: flex; gap: 0.5rem; align-items: center; }
+@media (min-width: 768px) { .nav-actions { gap: 1rem; } }
+.nav-signin {
+  font-size: 0.875rem; font-weight: 500; color: var(--fg);
+  transition: color 0.15s;
+  display: none;
+}
+@media (min-width: 768px) { .nav-signin { display: inline; } }
+.nav-signin:hover { color: var(--accent); }
+.nav-cta {
+  padding: 0.45rem 0.85rem;
+  background: var(--fg); color: var(--bg);
+  font-size: 0.8rem; font-weight: 500;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+@media (min-width: 768px) { .nav-cta { padding: 0.5rem 1rem; font-size: 0.875rem; } }
+.nav-cta:hover { background: var(--fg-90); border-color: var(--accent); }
+
+/* Theme toggle — sun in dark, moon in light */
+.theme-toggle {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 36px; height: 36px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid var(--fg-10);
+  border-radius: 6px;
+  color: var(--fg-70);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.theme-toggle:hover { background: var(--bg-50); color: var(--fg); border-color: var(--fg-20); }
+.theme-toggle:active { transform: scale(0.96); }
+.theme-toggle svg { width: 18px; height: 18px; }
+.theme-toggle .icon-sun { display: none; }
+.theme-toggle .icon-moon { display: block; }
+html[data-theme="dark"] .theme-toggle .icon-sun { display: block; }
+html[data-theme="dark"] .theme-toggle .icon-moon { display: none; }
+
+/* Mobile hamburger toggle */
+.nav-toggle {
+  display: inline-flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  width: 40px; height: 40px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid var(--fg-10);
+  border-radius: 6px;
+  cursor: pointer;
+  gap: 4px;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.15s;
+}
+.nav-toggle:hover { background: var(--bg-50); }
+.nav-toggle:active { transform: scale(0.96); }
+.nav-toggle span {
+  display: block;
+  width: 18px;
+  height: 2px;
+  background: var(--fg);
+  border-radius: 2px;
+  transition: transform 0.2s, opacity 0.2s;
+}
+@media (min-width: 768px) { .nav-toggle { display: none; } }
+body[data-menu-open="true"] .nav-toggle span:nth-child(1) { transform: translateY(6px) rotate(45deg); }
+body[data-menu-open="true"] .nav-toggle span:nth-child(2) { opacity: 0; }
+body[data-menu-open="true"] .nav-toggle span:nth-child(3) { transform: translateY(-6px) rotate(-45deg); }
+
+/* Mobile menu overlay */
+.nav-mobile {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: var(--bg);
+  z-index: 49;
+  padding: 5rem 1.5rem 2rem;
+  display: flex; flex-direction: column; gap: 1.5rem;
+  transform: translateX(100%);
+  transition: transform 0.25s ease-out;
+  overflow-y: auto;
+}
+body[data-menu-open="true"] .nav-mobile { transform: translateX(0); }
+@media (min-width: 768px) { .nav-mobile { display: none; } }
+.nav-mobile a {
+  font-size: 1.125rem; font-weight: 500; color: var(--fg);
+  padding: 0.625rem 0;
+  border-bottom: 1px solid var(--fg-10);
+}
+.nav-mobile a:last-child { border-bottom: none; }
+body[data-menu-open="true"] { overflow: hidden; }
+
+/* Hero */
+.hero {
+  position: relative;
+  min-height: 100vh;
+  display: flex; flex-direction: column; justify-content: center; align-items: center;
+  padding-top: 5rem; overflow: hidden;
+}
+#trail-graph {
+  position: fixed; inset: 0;
+  pointer-events: none; opacity: 0.4; z-index: -1;
+}
+.hero-inner {
+  position: relative; z-index: 10;
+  max-width: 56rem; margin: 0 auto;
+  padding: 0 2rem;
+  text-align: center;
+  width: 100%;
+}
+@media (min-width: 640px) { .hero-inner { padding: 0 2.5rem; } }
+.eyebrow {
+  display: inline-flex; align-items: center; gap: 0.5rem;
+  padding: 0.25rem 0.75rem; margin-bottom: 2rem;
+  border: 1px solid var(--fg-20); border-radius: 9999px;
+  font-size: 0.75rem; font-family: var(--font-mono);
+  background: var(--bg-50); backdrop-filter: blur(4px);
+}
+.eyebrow .dot {
+  width: 0.5rem; height: 0.5rem; border-radius: 9999px;
+  background: var(--accent);
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+.hero h1 {
+  font-size: clamp(2.5rem, 7vw, 4.5rem);
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  line-height: 1.1;
+  margin-bottom: 1.5rem;
+}
+.hero h1 .accent {
+  background: linear-gradient(to right, var(--fg), rgba(232, 168, 124, 0.8));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.hero p.lead {
+  font-size: 1.125rem;
+  color: var(--fg-70);
+  margin: 0 auto 2.5rem; max-width: 40rem;
+  line-height: 1.6;
+}
+@media (min-width: 768px) { .hero p.lead { font-size: 1.25rem; } }
+
+.cta-group {
+  display: flex; flex-direction: column; gap: 1rem;
+  justify-content: center; align-items: center;
+}
+@media (min-width: 640px) { .cta-group { flex-direction: row; } }
+
+.btn {
+  display: inline-flex; align-items: center; gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  border-radius: 6px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+.btn-primary {
+  background: var(--fg); color: var(--bg);
+}
+.btn-primary:hover {
+  background: var(--fg-90);
+  box-shadow: 0 10px 25px -5px rgba(232, 168, 124, 0.2);
+}
+.btn-secondary {
+  background: transparent; border: 1px solid var(--fg-20);
+  color: var(--fg);
+  font-family: var(--font-mono); font-size: 0.875rem;
+}
+.btn-secondary:hover { border-color: var(--fg); }
+
+.scroll-indicator {
+  position: absolute; bottom: 2rem; left: 50%;
+  transform: translateX(-50%);
+  width: 32px; height: 32px;
+  display: flex; align-items: center; justify-content: center;
+  border: 1px solid var(--fg-20);
+  border-radius: 9999px;
+  color: var(--fg-60);
+  opacity: 0.7;
+  animation: scroll-hint 2.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  transition: opacity 0.2s, border-color 0.2s;
+}
+.scroll-indicator:hover { opacity: 1; border-color: var(--fg); color: var(--fg); }
+.scroll-indicator svg { width: 14px; height: 14px; }
+@keyframes scroll-hint {
+  0%, 100% { transform: translate(-50%, 0); }
+  50%      { transform: translate(-50%, 6px); }
+}
+
+/* Features */
+.features {
+  padding: 4rem 2rem;
+  border-top: 1px solid var(--fg-10);
+}
+@media (min-width: 768px) { .features { padding: 6rem 1.5rem; } }
+.features-inner { max-width: 72rem; margin: 0 auto; }
+.features-header { margin-bottom: 4rem; }
+.features-header h2 {
+  font-size: clamp(1.75rem, 3.5vw, 2rem);
+  font-weight: 700; letter-spacing: -0.02em; margin-bottom: 1rem;
+}
+.features-header p {
+  color: var(--fg-60); max-width: 36rem;
+}
+.features-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.25rem;
+}
+@media (min-width: 768px) { .features-grid { grid-template-columns: repeat(3, 1fr); } }
+
+.feature-card {
+  position: relative; overflow: hidden;
+  padding: 1.5rem;
+  border: 1px solid var(--fg-10);
+  background: color-mix(in srgb, var(--bg) 78%, transparent);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  transition: background 0.2s;
+}
+.feature-card:hover { background: color-mix(in srgb, var(--bg-card) 90%, transparent); }
+.feature-card::before {
+  content: "";
+  position: absolute; top: 0; left: 0;
+  width: 100%; height: 2px;
+  background: var(--accent);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.3s;
+}
+.feature-card:hover::before { transform: scaleX(1); }
+.feature-card .icon { margin-bottom: 1rem; color: var(--fg); }
+.feature-card h3 {
+  font-family: var(--font-mono);
+  font-size: 1.125rem; font-weight: 600;
+  letter-spacing: -0.02em; margin-bottom: 0.5rem;
+  color: var(--fg);
+}
+.feature-card p {
+  color: var(--fg-70);
+  font-size: 0.875rem; line-height: 1.6;
+}
+
+/* Article (long-form pages) */
+.container { max-width: 48rem; margin: 0 auto; padding: 0 2rem; }
+@media (min-width: 640px) { .container { padding: 0 2.5rem; } }
+/* Use padding-block (top/bottom only) so .container's horizontal padding survives. */
+.article { padding-top: 6rem; padding-bottom: 3rem; }
+@media (min-width: 768px) { .article { padding-top: 7rem; padding-bottom: 4rem; } }
+.article-header { margin-bottom: 3rem; border-bottom: 1px solid var(--fg-10); padding-bottom: 2rem; }
+.article-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.75rem; letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 1rem;
+}
+.article-header h1 {
+  font-size: clamp(2rem, 5vw, 3rem);
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  line-height: 1.1;
+  margin-bottom: 1rem;
+}
+.article-lead {
+  font-size: 1.125rem;
+  color: var(--fg-70);
+  line-height: 1.6;
+  margin-bottom: 1.25rem;
+}
+.article-meta {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  color: var(--fg-60);
+}
+.article-tags { display: flex; flex-wrap: wrap; gap: 0.375rem; margin-top: 1rem; }
+.article-tags .tag {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  padding: 0.15rem 0.5rem;
+  border: 1px solid var(--fg-10);
+  border-radius: 9999px;
+  color: var(--fg-60);
+}
+.article-cover { margin: 2rem 0 0; }
+.article-cover img { width: 100%; border-radius: 4px; }
+
+.prose { font-size: 1.0625rem; line-height: 1.75; color: var(--fg); word-wrap: break-word; overflow-wrap: break-word; }
+.prose h1, .prose h2, .prose h3 { letter-spacing: -0.02em; }
+.prose h2 { font-size: 1.625rem; font-weight: 700; margin: 3rem 0 1rem; }
+.prose h3 { font-size: 1.25rem; font-weight: 600; margin: 2rem 0 0.75rem; }
+.prose p { margin-bottom: 1.25rem; }
+.prose strong { font-weight: 600; }
+.prose em { font-style: italic; }
+.prose a { color: var(--fg); border-bottom: 1px solid var(--accent); transition: color 0.15s; }
+.prose a:hover { color: var(--accent); }
+.prose blockquote {
+  border-left: 3px solid var(--accent);
+  padding: 0.5rem 0 0.5rem 1.25rem;
+  margin: 1.75rem 0;
+  color: var(--fg-70);
+  font-style: italic;
+}
+.prose blockquote p:last-child { margin-bottom: 0; }
+.prose ul, .prose ol { padding-left: 1.5rem; margin-bottom: 1.25rem; }
+.prose li { margin-bottom: 0.5rem; }
+.prose code {
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  background: var(--fg-10);
+  padding: 0.125rem 0.375rem;
+  border-radius: 3px;
+}
+.prose pre {
+  background: var(--fg); color: var(--bg);
+  padding: 1rem 1.25rem;
+  border-radius: 4px;
+  overflow-x: auto;
+  margin-bottom: 1.5rem;
+  font-size: 0.875rem;
+}
+.prose pre code { background: none; padding: 0; color: inherit; }
+.prose hr { border: none; border-top: 1px solid var(--fg-10); margin: 3rem 0; }
+.prose figure {
+  margin: 1rem 0 1.5rem;
+  text-align: center;
+  color: var(--fg); /* inline SVGs use currentColor so strokes/text swap with theme */
+}
+.prose figure svg { width: 100%; height: auto; display: block; }
+
+/* Fullscreen view for SVG figures — click to zoom, Escape to close */
+.prose .cms-svg { cursor: zoom-in; transition: opacity 0.15s; }
+.prose .cms-svg:hover { opacity: 0.85; }
+.svg-fullscreen {
+  position: fixed; inset: 0; z-index: 100;
+  background: color-mix(in srgb, var(--bg) 96%, transparent);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: none;
+  padding: 4rem 2rem 2rem;
+  cursor: zoom-out;
+  overflow-y: auto;
+}
+.svg-fullscreen[data-open="true"] {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 1.25rem;
+}
+.svg-fullscreen-content {
+  max-width: 96vw; max-height: 82vh;
+  display: flex; align-items: center; justify-content: center;
+}
+.svg-fullscreen-content svg {
+  width: auto; height: auto;
+  max-width: 96vw; max-height: 82vh;
+}
+.svg-fullscreen-caption {
+  font-family: var(--font-mono); font-size: 0.85rem;
+  color: var(--fg-70); max-width: 48rem; text-align: center; line-height: 1.5;
+  padding: 0 1rem;
+}
+.svg-fullscreen-close {
+  position: fixed; top: 1.25rem; right: 1.25rem;
+  width: 40px; height: 40px;
+  padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--bg-80);
+  border: 1px solid var(--fg-20);
+  border-radius: 50%;
+  color: var(--fg);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, transform 0.15s;
+}
+.svg-fullscreen-close svg { display: block; }
+.svg-fullscreen-close:hover { background: var(--fg-10); border-color: var(--accent); }
+.svg-fullscreen-close:active { transform: scale(0.95); }
+.prose figcaption {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  color: var(--fg-60);
+  margin-top: 0.75rem;
+  line-height: 1.5;
+}
+.prose img { max-width: 100%; border-radius: 4px; margin: 1.5rem auto; }
+
+/* Footer */
+.footer {
+  border-top: 1px solid var(--fg-10);
+  padding: 2.5rem 2rem;
+  background: var(--bg);
+}
+@media (min-width: 768px) { .footer { padding: 3rem 1.5rem; } }
+.footer-inner {
+  max-width: 72rem; margin: 0 auto;
+  display: flex; flex-direction: column;
+  gap: 1.5rem; align-items: center;
+  justify-content: space-between;
+}
+@media (min-width: 768px) { .footer-inner { flex-direction: row; } }
+.footer-brand { display: flex; align-items: center; gap: 0.625rem; color: var(--fg); }
+.footer-brand img, .footer-brand svg { width: 32px; height: 32px; }
+.footer-brand span {
+  font-family: var(--font-mono);
+  font-size: 1rem; font-weight: 600;
+}
+.footer-links { display: flex; gap: 1.5rem; font-family: var(--font-mono); font-size: 0.875rem; color: var(--fg-60); }
+.footer-links a { transition: color 0.15s; }
+.footer-links a:hover { color: var(--accent); }
+.footer-copy { font-family: var(--font-mono); font-size: 0.75rem; color: var(--fg-40); }
+.footer-copy a { color: var(--fg-60); border-bottom: 1px dotted var(--fg-20); transition: color 0.15s, border-color 0.15s; }
+.footer-copy a:hover { color: var(--accent); border-bottom-color: var(--accent); }
+
+/* Clickable article tags (reused by pages) */
+.article-tags .tag { transition: color 0.15s, border-color 0.15s; }
+.article-tags .tag:hover { color: var(--accent); border-color: var(--accent); }
+
+/* Trails index + category pages */
+.trails-section { margin: 3rem 0; }
+.trails-section-header {
+  display: flex; justify-content: space-between; align-items: baseline;
+  gap: 1rem; margin-bottom: 1.25rem;
+  border-bottom: 1px solid var(--fg-10); padding-bottom: 0.5rem;
+}
+.trails-section-header h2 {
+  font-size: 1.375rem; font-weight: 700; letter-spacing: -0.02em;
+}
+.trails-section-link {
+  font-family: var(--font-mono); font-size: 0.75rem;
+  color: var(--fg-60); letter-spacing: 0.06em;
+  transition: color 0.15s;
+}
+.trails-section-link:hover { color: var(--accent); }
+.post-empty { color: var(--fg-60); font-style: italic; margin: 2rem 0; }
+
+.post-grid {
+  display: grid; grid-template-columns: 1fr;
+  gap: 0.25rem;
+}
+@media (min-width: 640px) { .post-grid { grid-template-columns: repeat(2, 1fr); } }
+.post-card {
+  display: flex; flex-direction: column; gap: 0.5rem;
+  padding: 1.25rem;
+  border: 1px solid var(--fg-10);
+  background: color-mix(in srgb, var(--bg) 78%, transparent);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  transition: background 0.2s, border-color 0.2s;
+  position: relative; overflow: hidden;
+}
+.post-card::before {
+  content: "";
+  position: absolute; top: 0; left: 0;
+  width: 100%; height: 2px; background: var(--accent);
+  transform: scaleX(0); transform-origin: left;
+  transition: transform 0.3s;
+}
+.post-card:hover { background: var(--bg-card); border-color: var(--fg-20); }
+.post-card:hover::before { transform: scaleX(1); }
+.post-card-eyebrow {
+  font-family: var(--font-mono); font-size: 0.7rem;
+  letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--accent);
+}
+.post-card h3 {
+  font-size: 1.125rem; font-weight: 600;
+  letter-spacing: -0.02em; line-height: 1.3;
+}
+.post-card p {
+  color: var(--fg-70); font-size: 0.9rem; line-height: 1.55;
+  margin: 0;
+}
+.post-card-meta {
+  font-family: var(--font-mono); font-size: 0.7rem;
+  color: var(--fg-60); margin-top: auto; padding-top: 0.25rem;
+}
+
+/* Post footer (below prose): bottom tag pills + "more from category" */
+.post-footer {
+  margin: 3rem 0 0;
+  padding-top: 2rem;
+  border-top: 1px solid var(--fg-10);
+}
+.post-tags {
+  display: flex; flex-wrap: wrap; gap: 0.5rem;
+  margin-bottom: 1.5rem;
+}
+.post-tag {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  padding: 0.3rem 0.75rem;
+  border: 1px solid var(--fg-20);
+  border-radius: 9999px;
+  color: var(--fg-70);
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.post-tag:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-tint);
+}
+.post-more {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  letter-spacing: 0.06em;
+  color: var(--fg-60);
+  transition: color 0.15s;
+}
+.post-more:hover { color: var(--accent); }
+
+.post-related {
+  margin-bottom: 1.75rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid var(--fg-10);
+}
+.post-related-label {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--fg-60);
+  margin-bottom: 0.75rem;
+}
+.post-related ul { list-style: none; padding: 0; margin: 0; }
+.post-related li { margin: 0.4rem 0; }
+.post-related a {
+  font-size: 1rem;
+  color: var(--fg);
+  border-bottom: 1px solid var(--fg-10);
+  padding-bottom: 0.15rem;
+  transition: color 0.15s, border-color 0.15s;
+}
+.post-related a:hover { color: var(--accent); border-bottom-color: var(--accent); }
+.post-related-arrow {
+  color: var(--fg-60);
+  margin-left: 0.25rem;
+  transition: color 0.15s, transform 0.15s;
+  display: inline-block;
+}
+.post-related a:hover .post-related-arrow { color: var(--accent); transform: translateX(3px); }
+</style>
+
+  <!-- webhouse.app enrichment -->
+  <meta name="generator" content="webhouse.app" />
+  <link rel="canonical" href="https://trail.webhouse.app/trails/research/scaling-trail-from-200-to-100000-neurons/" />
+  <meta property="og:url" content="https://trail.webhouse.app/trails/research/scaling-trail-from-200-to-100000-neurons/" />
+  <meta property="og:site_name" content="trail" />
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="Scaling Trail from 200 to 100,000 Neurons: An Engineering Note" />
+  <meta name="twitter:description" content="A compile-time knowledge engine has three workloads that fight for compute — ingest, lint, and the curation queue. Each one breaks at a different corpus size, for different reasons, and requires a different fix. This is the long-form companion to Work That Fits in a Night: the full accounting of where Trail's bottlenecks are, when they hit, and what a deployment looks like at 200, 8,000, 25,000, and 100,000 Neurons." />
+  <link rel="manifest" href="/manifest.json" />
+</head>
+<body>
+  <canvas id="trail-graph" aria-hidden="true"></canvas>
+  <nav class="nav">
+    <a href="/" class="nav-brand">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="40" height="40" role="img" aria-label="trail">
+  <circle cx="16" cy="16" r="14" fill="none" stroke="currentColor" stroke-width="2"/>
+  <circle cx="16" cy="16" r="9" fill="none" stroke="#e8a87c" stroke-width="0.9" opacity="0.55"/>
+  <circle cx="16" cy="16" r="3.5" fill="#e8a87c"/>
+</svg>
+      <span class="brand-text">trail</span>
+    </a>
+    <div class="nav-links">
+      <a href="/#features">Architecture</a>
+      <a href="/#docs">Documentation</a>
+      <a href="/trails/">Trails</a>
+      <a href="/the-1945-concept/">The 1945 Concept</a>
+    </div>
+    <div class="nav-actions">
+      <button type="button" class="theme-toggle" aria-label="Toggle theme">
+        <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+      </button>
+      <a href="#" class="nav-signin">Sign In</a>
+      <a href="#" class="nav-cta">Initialize trail</a>
+      <button type="button" class="nav-toggle" aria-label="Open menu" aria-expanded="false" aria-controls="mobile-menu">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+  </nav>
+  <div id="mobile-menu" class="nav-mobile" role="navigation" aria-label="Mobile menu" aria-hidden="true">
+    <a href="/#features">Architecture</a>
+    <a href="/#docs">Documentation</a>
+    <a href="/trails/">Trails</a>
+    <a href="/the-1945-concept/">The 1945 Concept</a>
+    <a href="#">Sign In</a>
+  </div>
+  <script>
+    (function () {
+      var btn = document.querySelector('.nav-toggle');
+      var menu = document.getElementById('mobile-menu');
+      var body = document.body;
+      if (!btn || !menu) return;
+      function setOpen(open) {
+        body.dataset.menuOpen = open ? 'true' : 'false';
+        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        btn.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
+        menu.setAttribute('aria-hidden', open ? 'false' : 'true');
+      }
+      btn.addEventListener('click', function () { setOpen(body.dataset.menuOpen !== 'true'); });
+      menu.addEventListener('click', function (e) {
+        if (e.target instanceof HTMLAnchorElement) setOpen(false);
+      });
+      document.addEventListener('keydown', function (e) { if (e.key === 'Escape') setOpen(false); });
+    })();
+
+    (function () {
+      var tbtn = document.querySelector('.theme-toggle');
+      if (!tbtn) return;
+      tbtn.addEventListener('click', function () {
+        var current = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+        var next = current === 'dark' ? 'light' : 'dark';
+        document.documentElement.setAttribute('data-theme', next);
+        try { localStorage.setItem('trail.theme', next); } catch (e) {}
+        var meta = document.querySelector('meta[name="theme-color"]');
+        if (meta) meta.setAttribute('content', next === 'dark' ? '#17140F' : '#FAF9F5');
+      });
+    })();
+
+    function initSvgFullscreen() {
+      var figures = document.querySelectorAll('.prose .cms-svg');
+      if (!figures.length) return;
+      var overlay = document.createElement('div');
+      overlay.className = 'svg-fullscreen';
+      overlay.setAttribute('data-open', 'false');
+      overlay.setAttribute('role', 'dialog');
+      overlay.setAttribute('aria-modal', 'true');
+      overlay.setAttribute('aria-label', 'Enlarged figure');
+      overlay.innerHTML = '<button type="button" class="svg-fullscreen-close" aria-label="Close"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button><div class="svg-fullscreen-content"></div><div class="svg-fullscreen-caption"></div>';
+      document.body.appendChild(overlay);
+      var contentEl = overlay.querySelector('.svg-fullscreen-content');
+      var captionEl = overlay.querySelector('.svg-fullscreen-caption');
+      var closeBtn = overlay.querySelector('.svg-fullscreen-close');
+      function close() {
+        overlay.setAttribute('data-open', 'false');
+        contentEl.innerHTML = '';
+        captionEl.textContent = '';
+        document.body.style.overflow = '';
+      }
+      function open(fig) {
+        var svg = fig.querySelector('svg');
+        var caption = fig.querySelector('figcaption');
+        if (!svg) return;
+        contentEl.innerHTML = svg.outerHTML;
+        var placed = contentEl.querySelector('svg');
+        var vb = placed.getAttribute('viewBox');
+        if (vb) {
+          var parts = vb.split(/s+|,/).map(Number);
+          var ratio = parts[2] / parts[3];
+          var vw = window.innerWidth;
+          var vh = window.innerHeight - 140; /* room for caption + close */
+          var maxW = vw * 0.96;
+          var maxH = vh * 0.90;
+          var w, h;
+          if (maxW / ratio <= maxH) { w = maxW; h = maxW / ratio; }
+          else { h = maxH; w = maxH * ratio; }
+          placed.style.width = w + 'px';
+          placed.style.height = h + 'px';
+        }
+        captionEl.textContent = caption ? caption.textContent : '';
+        overlay.setAttribute('data-open', 'true');
+        document.body.style.overflow = 'hidden';
+      }
+      figures.forEach(function (fig) {
+        fig.setAttribute('role', 'button');
+        fig.setAttribute('tabindex', '0');
+        fig.setAttribute('aria-label', 'View figure in fullscreen');
+        fig.addEventListener('click', function () { open(fig); });
+        fig.addEventListener('keydown', function (e) {
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(fig); }
+        });
+      });
+      closeBtn.addEventListener('click', function (e) { e.stopPropagation(); close(); });
+      overlay.addEventListener('click', function () { close(); });
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && overlay.getAttribute('data-open') === 'true') close();
+      });
+    }
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initSvgFullscreen);
+    } else {
+      initSvgFullscreen();
+    }
+  </script>
+  <article class="article container"><header class="article-header">
+      <div class="article-eyebrow">Research</div>
+      <h1>Scaling Trail from 200 to 100,000 Neurons: An Engineering Note</h1>
+      <p class="article-lead">A compile-time knowledge engine has three workloads that fight for compute — ingest, lint, and the curation queue. Each one breaks at a different corpus size, for different reasons, and requires a different fix. This is the long-form companion to Work That Fits in a Night: the full accounting of where Trail's bottlenecks are, when they hit, and what a deployment looks like at 200, 8,000, 25,000, and 100,000 Neurons.</p>
+      <div class="article-meta">Research · trail by broberg.ai · April 20, 2026</div>
+      
+    </header><div class="prose"><h2>Why this note exists</h2>
+<p>Trail is a compile-time knowledge engine. Every source it ingests is read by a language model and turned into a persistent graph of Neurons — short wiki pages that cross-reference each other and the raw material they came from. The engine does three kinds of background work to keep that graph honest: it <strong>ingests</strong> new sources into Neurons, it <strong>lints</strong> the existing corpus for contradictions, orphans, and staleness, and it <strong>queues</strong> candidate edits for a human curator to approve.</p>
+<p>All three workloads scale differently. Ingest is largely linear in the size of the incoming source. Lint is quadratic if you let it be — each new Neuron wants to be re-checked against every existing peer. The queue is bounded by the number of decisions a human can make per day, which does not change no matter how large the corpus gets.</p>
+<p>At 200 Neurons none of this matters. A full lint pass finishes in twenty minutes. Ingest runs per-source without thinking about it. The queue holds a handful of candidates. Every shortcut in the engine falls inside a comfortable budget.</p>
+<p>At 100,000 Neurons the same code, run the same way, doesn&#39;t finish. The scheduler overlaps with itself. The LLM token spend outruns the pricing model. The curator drowns.</p>
+<p>The gap between &quot;works&quot; and &quot;doesn&#39;t work&quot; is not a cliff. It&#39;s a sequence of bottlenecks that arrive in a predictable order, each one requiring a distinct architectural response. This note is the long-form companion to <a href="/trails/how-trail-works/work-that-fits-in-a-night/">Work That Fits in a Night</a> — which covers one of those bottlenecks in detail. Here we take the full accounting: what breaks, when, and how the engine is built to absorb it without a rewrite.</p>
+<h2>The three workloads</h2>
+<h3>Ingest</h3>
+<p>Ingest turns a source into Neurons. A PDF gets parsed, chunked, described page-by-page by a vision model if it has images, and then handed to a primary LLM that extracts entities, writes or updates Neuron pages, and emits backlinks. The work per source is proportional to the source — a ten-page article costs about one minute of wall-clock time on Sonnet; a two-hundred-page book costs about fifteen.</p>
+<p>What ingest does <em>not</em> scale with is corpus size. Processing page 47 of a new PDF does not require Trail to consult the other 99,953 Neurons in the base. It only consults the ones the LLM thinks are relevant, which in practice is five to twenty per compile step. That bound is set by Trail&#39;s prompt, not by the corpus.</p>
+<p>This means ingest is the cheap workload. Double the corpus, ingest cost stays flat per source. The bottleneck is always &quot;how many sources per hour can I afford in LLM spend,&quot; never &quot;how expensive is this particular source because the corpus is big.&quot;</p>
+<h3>Lint</h3>
+<p>Lint is the nightly pass that keeps the graph internally consistent. It runs three checks: contradictions (does this Neuron disagree with any of its near-peers?), orphans (does this Neuron still have a source that supports it?), and staleness (has this Neuron gone untouched longer than the KB&#39;s freshness window?).</p>
+<p>Orphan and stale detection are pure SQL. They cost milliseconds even on a corpus of a hundred thousand Neurons. There is nothing to ration.</p>
+<p>Contradiction detection is the expensive one. For each Neuron under inspection, Trail pulls the top-K nearest peers via FTS5, then asks a small language model whether any pair contradicts each other. K is five by default. Each LLM call costs one to three seconds on Haiku. A full pass at 8,000 Neurons runs about seventeen hours — longer than the night it has to finish in.</p>
+<p>That is the scan wall. It is covered in detail in <a href="/trails/how-trail-works/work-that-fits-in-a-night/">Work That Fits in a Night</a>; the short version is that Trail solves it by capping the per-pass budget and weighting the cap sixty-forty toward recent edits. Every Neuron gets re-scanned on average every two to three weeks; recent edits get re-scanned inside twenty-four hours; the scheduler finishes its pass in roughly an hour regardless of how big the KB is.</p>
+<h3>Queue</h3>
+<p>The curation queue is where LLM proposals wait for human approval. Every Neuron write, every contradiction finding, every chat answer flagged as worth saving goes through it. The queue is the one workload whose bottleneck is not compute — it is curator attention.</p>
+<p>A single human can make roughly fifty to two hundred approve/reject decisions per hour in a focused session. That ceiling does not change when the corpus grows. At 200 Neurons the queue sees a handful of candidates a day and the curator handles them over coffee. At 100,000 Neurons the raw LLM activity would generate thousands per day if it were emitted without triage — which would be useless, because the curator can only process a few hundred.</p>
+<p>The queue&#39;s scaling problem is therefore one of <em>surfacing</em>, not <em>throughput</em>: which candidates are worth the human&#39;s time, and which ones can be auto-merged, auto-deferred, or filtered entirely. The queue has to shrink as the corpus grows, in real terms per-curator-hour, without dropping the material that actually needs a human.</p>
+<p>Each of these three workloads breaks at a different scale. The rest of this note walks through four representative corpus sizes — 200, 8,000, 25,000, and 100,000 Neurons — and describes what each workload looks like at that scale, what infrastructure supports it, and what has to change at the next tier.</p>
+<p><figure class="cms-svg cms-svg--scale-tiers"><svg viewBox="0 0 1200 480" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Four representative corpus sizes — 200, 8k, 25k, 100k Neurons — plotted on a log axis with each tier's ingest, lint, queue, and infrastructure state rendered as a stacked indicator column.">
+  <text x="600" y="32" font-family="monospace" font-size="13" fill="currentColor" text-anchor="middle" opacity="0.55" letter-spacing="2">FOUR TIERS ON A LOG AXIS</text>
+
+  <!-- Baseline axis — runs full viewBox width (edge-to-edge) -->
+  <line x1="60" y1="380" x2="1140" y2="380" stroke="currentColor" stroke-width="1.4"/>
+
+  <!-- Log-axis tick marks under each tier column -->
+  <g stroke="currentColor" stroke-width="0.7" opacity="0.5">
+    <line x1="200" y1="380" x2="200" y2="390"/>
+    <line x1="520" y1="380" x2="520" y2="390"/>
+    <line x1="810" y1="380" x2="810" y2="390"/>
+    <line x1="1080" y1="380" x2="1080" y2="390"/>
+  </g>
+
+  <!-- Axis labels -->
+  <g font-family="monospace" font-size="12" fill="currentColor" text-anchor="middle" letter-spacing="0.5">
+    <text x="200" y="410">200</text>
+    <text x="520" y="410">8,000</text>
+    <text x="810" y="410">25,000</text>
+    <text x="1080" y="410">100,000</text>
+  </g>
+  <text x="600" y="448" font-family="monospace" font-size="12" fill="currentColor" text-anchor="middle" opacity="0.7" letter-spacing="1">NEURONS IN CORPUS</text>
+
+  <!-- ═══════════ TIER 1 — 200 ═══════════ -->
+  <g transform="translate(200, 360)">
+    <!-- Corpus circle (log-scaled radius) -->
+    <circle cx="0" cy="0" r="12" fill="none" stroke="currentColor" stroke-width="1.6"/>
+    <circle cx="0" cy="0" r="3" fill="#e8a87c"/>
+
+    <!-- Workload bars stacked above baseline -->
+    <rect x="-45" y="-40" width="90" height="5" fill="none" stroke="currentColor" stroke-width="1"/>
+    <text x="-52" y="-36" font-family="monospace" font-size="10" fill="currentColor" text-anchor="end" opacity="0.7">i</text>
+
+    <rect x="-45" y="-56" width="90" height="5" fill="none" stroke="currentColor" stroke-width="1"/>
+    <text x="-52" y="-52" font-family="monospace" font-size="10" fill="currentColor" text-anchor="end" opacity="0.7">l</text>
+
+    <rect x="-45" y="-72" width="90" height="5" fill="none" stroke="currentColor" stroke-width="1"/>
+    <text x="-52" y="-68" font-family="monospace" font-size="10" fill="currentColor" text-anchor="end" opacity="0.7">q</text>
+
+    <!-- Infra square -->
+    <rect x="-10" y="-110" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.4"/>
+
+    <!-- Tier label -->
+    <text x="0" y="-132" font-family="monospace" font-size="12" fill="currentColor" text-anchor="middle" letter-spacing="1">BASELINE</text>
+  </g>
+
+  <!-- ═══════════ TIER 2 — 8k ═══════════ -->
+  <g transform="translate(520, 360)">
+    <circle cx="0" cy="0" r="20" fill="none" stroke="currentColor" stroke-width="1.6"/>
+    <circle cx="0" cy="0" r="4" fill="#e8a87c"/>
+
+    <rect x="-52" y="-48" width="104" height="5" fill="none" stroke="currentColor" stroke-width="1"/>
+    <text x="-60" y="-44" font-family="monospace" font-size="10" fill="currentColor" text-anchor="end" opacity="0.7">i</text>
+
+    <!-- lint: sampler active (dashed + amber stripe) -->
+    <rect x="-52" y="-64" width="104" height="5" fill="none" stroke="#e8a87c" stroke-width="1.4" stroke-dasharray="4 2"/>
+    <line x1="-52" y1="-61" x2="52" y2="-61" stroke="#e8a87c" stroke-width="2" opacity="0.6"/>
+    <text x="-60" y="-60" font-family="monospace" font-size="10" fill="currentColor" text-anchor="end" opacity="0.7">l</text>
+
+    <!-- queue: filters matter (single amber tick) -->
+    <rect x="-52" y="-80" width="104" height="5" fill="none" stroke="currentColor" stroke-width="1"/>
+    <line x1="12" y1="-80" x2="12" y2="-74" stroke="#e8a87c" stroke-width="1.8"/>
+    <text x="-60" y="-76" font-family="monospace" font-size="10" fill="currentColor" text-anchor="end" opacity="0.7">q</text>
+
+    <!-- Infra: perf-2x -->
+    <rect x="-12" y="-120" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.4"/>
+    <circle cx="0" cy="-108" r="2" fill="currentColor"/>
+
+    <text x="0" y="-142" font-family="monospace" font-size="12" fill="currentColor" text-anchor="middle" letter-spacing="1">SAMPLER</text>
+  </g>
+
+  <!-- ═══════════ TIER 3 — 25k ═══════════ -->
+  <g transform="translate(810, 360)">
+    <circle cx="0" cy="0" r="28" fill="none" stroke="currentColor" stroke-width="1.6"/>
+    <circle cx="0" cy="0" r="5" fill="#e8a87c"/>
+
+    <rect x="-58" y="-56" width="116" height="5" fill="none" stroke="currentColor" stroke-width="1"/>
+    <text x="-66" y="-52" font-family="monospace" font-size="10" fill="currentColor" text-anchor="end" opacity="0.7">i</text>
+
+    <!-- lint: sampler + parallel (double amber line) -->
+    <rect x="-58" y="-72" width="116" height="5" fill="none" stroke="#e8a87c" stroke-width="1.4" stroke-dasharray="4 2"/>
+    <line x1="-58" y1="-69" x2="58" y2="-69" stroke="#e8a87c" stroke-width="2" opacity="0.6"/>
+    <line x1="-58" y1="-67" x2="58" y2="-67" stroke="#e8a87c" stroke-width="1.2" opacity="0.45"/>
+    <text x="-66" y="-68" font-family="monospace" font-size="10" fill="currentColor" text-anchor="end" opacity="0.7">l</text>
+
+    <!-- queue: roles required (three amber ticks) -->
+    <rect x="-58" y="-88" width="116" height="5" fill="none" stroke="currentColor" stroke-width="1"/>
+    <line x1="-30" y1="-88" x2="-30" y2="-82" stroke="#e8a87c" stroke-width="1.8"/>
+    <line x1="0" y1="-88" x2="0" y2="-82" stroke="#e8a87c" stroke-width="1.8"/>
+    <line x1="30" y1="-88" x2="30" y2="-82" stroke="#e8a87c" stroke-width="1.8"/>
+    <text x="-66" y="-84" font-family="monospace" font-size="10" fill="currentColor" text-anchor="end" opacity="0.7">q</text>
+
+    <!-- Infra: perf-4x with quadrants -->
+    <rect x="-15" y="-132" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.4"/>
+    <line x1="0" y1="-132" x2="0" y2="-102" stroke="currentColor" stroke-width="0.7" opacity="0.5"/>
+    <line x1="-15" y1="-117" x2="15" y2="-117" stroke="currentColor" stroke-width="0.7" opacity="0.5"/>
+
+    <text x="0" y="-152" font-family="monospace" font-size="12" fill="currentColor" text-anchor="middle" letter-spacing="1">ROLES</text>
+  </g>
+
+  <!-- ═══════════ TIER 4 — 100k ═══════════ -->
+  <g transform="translate(1080, 360)">
+    <circle cx="0" cy="0" r="38" fill="none" stroke="currentColor" stroke-width="1.6"/>
+    <circle cx="0" cy="0" r="7" fill="#e8a87c"/>
+    <!-- Inner rings hinting at sub-clusters -->
+    <circle cx="0" cy="0" r="22" fill="none" stroke="currentColor" stroke-width="0.6" opacity="0.3"/>
+    <circle cx="0" cy="0" r="12" fill="none" stroke="currentColor" stroke-width="0.6" opacity="0.4"/>
+
+    <!-- ingest: context-select tuned (single amber mark) -->
+    <rect x="-64" y="-64" width="128" height="5" fill="none" stroke="currentColor" stroke-width="1"/>
+    <line x1="0" y1="-64" x2="0" y2="-58" stroke="#e8a87c" stroke-width="1.8"/>
+    <text x="-72" y="-60" font-family="monospace" font-size="10" fill="currentColor" text-anchor="end" opacity="0.7">i</text>
+
+    <!-- lint: sampler + multi-lane (three amber lines) -->
+    <rect x="-64" y="-80" width="128" height="5" fill="none" stroke="#e8a87c" stroke-width="1.4" stroke-dasharray="4 2"/>
+    <line x1="-64" y1="-77" x2="64" y2="-77" stroke="#e8a87c" stroke-width="2" opacity="0.6"/>
+    <line x1="-64" y1="-75" x2="64" y2="-75" stroke="#e8a87c" stroke-width="1.2" opacity="0.45"/>
+    <line x1="-64" y1="-73" x2="64" y2="-73" stroke="#e8a87c" stroke-width="1.2" opacity="0.3"/>
+    <text x="-72" y="-76" font-family="monospace" font-size="10" fill="currentColor" text-anchor="end" opacity="0.7">l</text>
+
+    <!-- queue: auto-routing + grouping (five amber ticks) -->
+    <rect x="-64" y="-96" width="128" height="5" fill="none" stroke="currentColor" stroke-width="1"/>
+    <line x1="-44" y1="-96" x2="-44" y2="-90" stroke="#e8a87c" stroke-width="1.8"/>
+    <line x1="-22" y1="-96" x2="-22" y2="-90" stroke="#e8a87c" stroke-width="1.8"/>
+    <line x1="0" y1="-96" x2="0" y2="-90" stroke="#e8a87c" stroke-width="1.8"/>
+    <line x1="22" y1="-96" x2="22" y2="-90" stroke="#e8a87c" stroke-width="1.8"/>
+    <line x1="44" y1="-96" x2="44" y2="-90" stroke="#e8a87c" stroke-width="1.8"/>
+    <text x="-72" y="-92" font-family="monospace" font-size="10" fill="currentColor" text-anchor="end" opacity="0.7">q</text>
+
+    <!-- Infra: perf-8x + read-replica (primary + satellite) -->
+    <rect x="-18" y="-140" width="36" height="28" fill="none" stroke="currentColor" stroke-width="1.4"/>
+    <line x1="-6" y1="-140" x2="-6" y2="-112" stroke="currentColor" stroke-width="0.7" opacity="0.5"/>
+    <line x1="6" y1="-140" x2="6" y2="-112" stroke="currentColor" stroke-width="0.7" opacity="0.5"/>
+    <rect x="24" y="-130" width="14" height="12" fill="none" stroke="currentColor" stroke-width="1" opacity="0.7"/>
+    <line x1="18" y1="-124" x2="24" y2="-124" stroke="currentColor" stroke-width="0.7" stroke-dasharray="2 2" opacity="0.6"/>
+
+    <text x="10" y="-160" font-family="monospace" font-size="12" fill="currentColor" text-anchor="middle" letter-spacing="1">FEDERATED</text>
+  </g>
+
+  <!-- ═══════════ LEGEND — top-left, sits above the tier columns ═══════════ -->
+  <g transform="translate(60, 80)" font-family="monospace" font-size="11" fill="currentColor" opacity="0.75">
+    <text x="0" y="0" letter-spacing="1.5" opacity="0.55">LEGEND</text>
+    <g transform="translate(0, 20)">
+      <text x="0" y="4">i — ingest · l — lint · q — queue</text>
+    </g>
+    <g transform="translate(0, 38)">
+      <rect x="0" y="-4" width="18" height="5" fill="none" stroke="currentColor" stroke-width="1"/>
+      <text x="26" y="4">default path</text>
+    </g>
+    <g transform="translate(0, 56)">
+      <rect x="0" y="-4" width="18" height="5" fill="none" stroke="#e8a87c" stroke-width="1.4" stroke-dasharray="4 2"/>
+      <line x1="0" y1="-1" x2="18" y2="-1" stroke="#e8a87c" stroke-width="1.4" opacity="0.6"/>
+      <text x="26" y="4">sampler / bounded pass</text>
+    </g>
+    <g transform="translate(0, 74)">
+      <line x1="4" y1="-2" x2="4" y2="4" stroke="#e8a87c" stroke-width="1.8"/>
+      <line x1="10" y1="-2" x2="10" y2="4" stroke="#e8a87c" stroke-width="1.8"/>
+      <line x1="16" y1="-2" x2="16" y2="4" stroke="#e8a87c" stroke-width="1.8"/>
+      <text x="26" y="4">amber ticks — new behaviour added at this tier</text>
+    </g>
+  </g>
+</svg>
+<figcaption>Four representative corpus sizes on a log axis. Each tier stacks its workload state — ingest, lint, queue — above the corpus circle, with amber marks where a workload's behaviour has changed from the previous tier. Infrastructure sits at the top as a growing schematic Machine.</figcaption></figure></p>
+<h2>200 Neurons — the single-tenant zero-friction baseline</h2>
+<p>This is Sanne Andersen&#39;s clinic, right after first-week onboarding. A couple of hundred protocol PDFs, patient-case notes, and treatment summaries have been ingested. The whole KB weighs about 12 MB on disk including the FTS5 index.</p>
+<p><strong>Ingest.</strong> Each new source drops into the pipeline and compiles within two to four minutes. There is no queue of pending ingests — one source goes through, then the next. LLM cost per source is negligible against a flat Pro-tier subscription: Haiku for extraction, Sonnet for the larger compile steps, costs measured in single cents.</p>
+<p><strong>Lint.</strong> The contradiction sampler&#39;s cap is set to 500, but the corpus only has 200 Neurons — so the cap is never hit, and the nightly pass just scans everything. The full pass takes about twenty minutes. Orphan and stale detection run in under a second.</p>
+<p><strong>Queue.</strong> The curator sees three to eight candidates a morning, mostly from ingest. The contradiction detector occasionally flags something real — a new protocol PDF disagreeing with a pre-existing one. The curator resolves the entire queue in fifteen minutes over the first coffee of the day.</p>
+<p><strong>Infrastructure.</strong> A single Fly.io shared-cpu Machine (256 MB RAM, 1 GB volume) running the Trail server with an embedded libSQL file. No caching layer, no queue broker, no object store — the filesystem holds everything. Monthly cost to operate: roughly $5 of compute plus whatever the LLM spend comes to, which for a clinic at this size is under $30 a month.</p>
+<p>This scale is the default Trail deployment. It is what the Hobby plan targets. The engine doesn&#39;t need to be tuned to fit here — every default is already correct.</p>
+<h2>8,000 Neurons — where the first wall lives</h2>
+<p>This is the midpoint of a serious working KB. FysioDK Aalborg, a couple of years into daily use, runs here. A mid-sized engineering team&#39;s internal RFC archive plus incident log plus runbooks lands here. Trail&#39;s own self-hosted KB of its design docs and code-review conversations sits here.</p>
+<p><strong>Ingest.</strong> Same as 200 Neurons, because ingest does not scale with corpus size. A source is a source; the bill per source is the same.</p>
+<p><strong>Lint.</strong> This is where the scan wall would hit in a naive implementation. A full contradiction pass over 8,000 Neurons would cost sixty thousand LLM calls at 1.5 seconds each — seventeen hours, more than the night the scheduler has. Left alone, passes would overlap, then stack, then the lint service would quietly stop functioning.</p>
+<p>This is where the 60/40 sampler takes over. The scheduler caps each nightly pass at 500 Neurons, spends 300 of them on the most-recently-updated pages and 200 on a uniform random sample of the rest. The pass finishes in about seventy-five minutes on Haiku. Every Neuron gets scanned on average every sixteen nights; recent edits get re-scanned within the same day.</p>
+<p>The practical effect: the curator never sees a reduction in contradiction-finding quality as the corpus grows from 200 to 8,000. They see the same one or two findings a morning, drawn from the same nightly-pass machinery, with the same latency against recent edits. The corpus has grown by 40x but the curator&#39;s queue looks identical.</p>
+<p><strong>Queue.</strong> Around 8,000 Neurons, the queue starts to require triage on the candidate side, not just on the curator side. Trail ships a <code>source</code> filter and a <code>connector</code> filter that let the curator grab, say, &quot;only Slack-originated candidates from this week&quot; or &quot;only the ingest outputs from the batch I just fed the engine.&quot; Those filters don&#39;t matter at 200 Neurons. At 8,000 they are how the curator stays oriented.</p>
+<p>Auto-approval becomes relevant here too. Candidates above a tuned confidence threshold (the S6 onboarding step shows a default of 0.85) can be auto-merged into the wiki without human review. At the 8k scale, roughly sixty to seventy percent of routine ingest candidates clear this bar. The curator only sees the uncertain ones, which is where their attention is most valuable.</p>
+<p><strong>Infrastructure.</strong> Still a single Fly.io Machine, but the tier has moved to performance-2x (2 shared CPU, 2 GB RAM, 5 GB volume). The libSQL file is around 450 MB including indices. Nightly LLM spend for lint plus any reactive emissions lands in the $40–80 range for a single-tenant deployment at this size. Ingest spend sits on top, varying by how actively the tenant is feeding in sources.</p>
+<p>This is the largest corpus size where a single-node, single-database deployment is still the obviously-right answer. Everything past this point starts forcing architectural decisions.</p>
+<h2>25,000 Neurons — the second wall, and why it isn&#39;t about lint</h2>
+<p>A large research lab&#39;s literature archive lands here. A documentation-as-code org with several years of daily ingest hits this range. A personal knowledge base that has swallowed a decade of notes reaches it too.</p>
+<p><strong>Ingest.</strong> Still flat per source. The ingest pipeline doesn&#39;t care.</p>
+<p><strong>Lint.</strong> The 60/40 sampler continues to hold. At 25k Neurons the nightly cap is bumped up slightly (<code>TRAIL_CONTRADICTION_SAMPLE_SIZE=1200</code> is a reasonable value for parallel-Haiku lanes) but the architecture is unchanged. The full-tail pass now takes about three weeks of real time, which is still the right scale — a Neuron untouched for three weeks is a Neuron nobody is modifying.</p>
+<p><strong>Queue.</strong> This is where the second wall lives, and it is the one people consistently underestimate.</p>
+<p>At 25,000 Neurons, raw candidate volume — ingest outputs plus lint findings plus chat-save suggestions — is high enough that even with auto-approval and filters, the curator&#39;s work per day has crossed the threshold where a single person can&#39;t keep up solo. The compounding pressure is this: a contradiction finding at 25k Neurons often references two other Neurons, which the curator needs to read to judge the finding. So a five-minute decision becomes a twenty-minute decision. A dozen findings a day becomes four hours of real work.</p>
+<p>Trail&#39;s response at this scale is not to generate fewer candidates — that would mean the engine is silently letting things drift. It is to introduce <strong>roles</strong>: an admin who onboards the corpus and sets policy, curators who approve material in their domain, and readers who use the wiki without write access. The curation work gets distributed. A lab with five researchers can assign contradiction findings by topic, so each curator sees only the twenty or thirty a day that fall in their area.</p>
+<p>The RBAC layer (F28, S5 in onboarding) is designed for this. It is not a compliance feature; it is a scaling feature. Without it, a 25k-Neuron corpus is bottlenecked on one human.</p>
+<p><strong>Infrastructure.</strong> Still feasible on a single node, but the Fly.io Machine is now performance-4x (4 dedicated CPUs, 4 GB RAM, 20 GB volume). The libSQL file is around 2 GB. FTS5 query performance on the contradiction-candidate lookup starts to show in p95 latency if indexes aren&#39;t well-tuned — the engine ships with explicit indexes on <code>kbId + updatedAt</code> and <code>kbId + kind</code> precisely because those are the hot paths at this scale.</p>
+<p>The single-node architecture is still correct. What&#39;s starting to matter is not the machine size; it&#39;s the operational cost of one machine being the only machine. Backups become non-optional. The nightly libSQL export gets pushed to R2 with a 30-day retention. The alerting story (is the scheduler finishing its passes? is the queue draining? is disk approaching the volume limit?) becomes a first-class concern rather than something you check manually every few days.</p>
+<h2>100,000 Neurons — the tier that rewrites the engine</h2>
+<p>This is a speculative scale. Trail has not shipped a tenant this large yet. The following is the engineering analysis of what would need to change if one arrived, based on where the bottlenecks lie and what the code currently assumes.</p>
+<p><strong>Ingest.</strong> Still roughly flat per source, but the prompt-context strategy starts to matter. At 100k Neurons, the &quot;find the relevant peers before writing this new page&quot; step — which uses FTS5 — returns more results than fit comfortably in a prompt. The engine has to decide which ten to send to the LLM, which is itself an optimization problem. In practice this is handled by scoring candidates on recency plus FTS5 rank plus graph distance; the default weighting works at this scale but may need tuning per tenant.</p>
+<p><strong>Lint.</strong> The sampler architecture continues to hold, but the sample size has to go up. The 60/40 split across 100k Neurons at 500-per-pass means the long tail gets scanned once every six to eight months. That is too slow — an old Neuron that disagrees with a new one should surface in weeks, not seasons. The practical configuration at this scale is <code>TRAIL_CONTRADICTION_SAMPLE_SIZE=3000</code> run across two or three parallel Haiku lanes, which brings the tail-coverage interval back down to about three weeks.</p>
+<p>This is where the LLM token budget starts to dominate everything else. At 3,000 scanned Neurons per night times K=5 peers times roughly 250 tokens per contradiction check, a single tenant is spending around 3.7 million tokens per night on lint alone. At Haiku&#39;s pricing this is in the $30–40-per-night range per tenant, which is real money but still the right order of magnitude against a Business-tier subscription. The cost remains linear in sample size, not in corpus size — which is the whole point of the sampler.</p>
+<p><strong>Queue.</strong> The roles model developed at 25k Neurons has to be taken further. A 100k-Neuron deployment almost certainly has subject-matter silos — a legal KB of this size has a contracts group, a litigation group, and a compliance group, each with its own curator. Candidates need to be auto-routed to the correct reviewer based on the affected Neurons&#39; tags or topic clusters. The curator-assignment logic is not in the engine today; a deployment at this scale would need it as a custom extension, probably as a pre-queue filter that writes <code>assignedTo</code> on the candidate record.</p>
+<p>The other thing that emerges at this scale is <strong>summarization within the queue</strong>. Instead of showing the curator every contradiction finding raw, Trail can group findings by topic and present them as &quot;here are the twelve findings about hiring policy from this week, most of which turn on the same underlying disagreement about equity vesting.&quot; This is a UI feature more than an engine feature, but it requires the engine to surface the right grouping signal — which at 100k Neurons means tracking finding-clusters across the nightly passes.</p>
+<p><strong>Infrastructure.</strong> Single-node is still viable — a performance-8x Fly.io Machine with a 50 GB volume can host this — but the operational story is no longer &quot;a database file on a machine.&quot; Backup cadence needs to be sub-daily. The libSQL file is around 8 GB, which is fine for reads but long for a single backup cycle; incremental backups via libSQL&#39;s native replication become the right answer. An embedded read-replica on a second Machine is a cheap insurance policy against the primary going down during business hours.</p>
+<p>At this scale, the argument for migrating to a split-compute architecture (separate ingest workers, separate lint workers, a shared database) is tempting but probably wrong. The ingest pipeline is embarrassingly parallel already — Fly.io&#39;s per-region auto-scaling can spin up additional ingest workers on demand, and they can write to the shared libSQL over the Turso-compatible network protocol without a full application rewrite. The lint pass is already bounded by the sampler cap, so throwing workers at it doesn&#39;t help. The database is the only truly stateful component, and at 8 GB it&#39;s still inside the comfort zone of a single embedded node.</p>
+<p>The architecture that shows up around 100k is therefore: one primary Fly.io Machine running the server and the embedded libSQL, one read-replica in a different region for failover, a pool of ingest workers in the primary region that compile sources into the primary DB, and the usual Trail scheduler (unchanged from 8k) running the sampler on the primary.</p>
+<h2>Decision matrix — what to worry about, when</h2>
+<p><figure class="cms-svg cms-svg--decision-matrix"><svg viewBox="0 0 1200 540" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Decision matrix: four corpus-size tiers (200, 8k, 25k, 100k Neurons) across four workload columns (ingest, lint, queue, infra). Amber cells mark the tier where each workload's behaviour changes; charcoal cells mean the previous tier's settings still apply.">
+  <text x="600" y="32" font-family="monospace" font-size="13" fill="currentColor" text-anchor="middle" opacity="0.55" letter-spacing="2">WHAT TO WORRY ABOUT, WHEN</text>
+
+  <!-- ═══════════ GRID — edge-to-edge, no internal padding ═══════════ -->
+  <!-- Cols: TIER 140 | INGEST 230 | LINT 280 | QUEUE 270 | INFRA 280 = 1200 -->
+  <!-- Row heights: header 50 (y=70→120), then 4 tier rows 100 tall each
+       (centres at y=170, 270, 370, 470). Outer frame ends at y=520. -->
+
+  <!-- Outer frame -->
+  <rect x="0" y="70" width="1200" height="450" fill="none" stroke="currentColor" stroke-width="1.4"/>
+
+  <!-- Vertical column separators -->
+  <line x1="140" y1="70" x2="140" y2="520" stroke="currentColor" stroke-width="1.2"/>
+  <line x1="370" y1="70" x2="370" y2="520" stroke="currentColor" stroke-width="0.7" opacity="0.5"/>
+  <line x1="650" y1="70" x2="650" y2="520" stroke="currentColor" stroke-width="0.7" opacity="0.5"/>
+  <line x1="920" y1="70" x2="920" y2="520" stroke="currentColor" stroke-width="0.7" opacity="0.5"/>
+
+  <!-- Horizontal row separators -->
+  <line x1="0" y1="120" x2="1200" y2="120" stroke="currentColor" stroke-width="1.2"/>
+  <line x1="0" y1="220" x2="1200" y2="220" stroke="currentColor" stroke-width="0.7" opacity="0.5"/>
+  <line x1="0" y1="320" x2="1200" y2="320" stroke="currentColor" stroke-width="0.7" opacity="0.5"/>
+  <line x1="0" y1="420" x2="1200" y2="420" stroke="currentColor" stroke-width="0.7" opacity="0.5"/>
+  <line x1="0" y1="520" x2="1200" y2="520" stroke="currentColor" stroke-width="1.4"/>
+
+  <!-- ═══════════ COLUMN HEADERS ═══════════ -->
+  <g font-family="monospace" font-size="12" fill="currentColor" text-anchor="middle" letter-spacing="2" opacity="0.85">
+    <text x="70" y="101">TIER</text>
+    <text x="255" y="101">INGEST</text>
+    <text x="510" y="101">LINT</text>
+    <text x="785" y="101">QUEUE</text>
+    <text x="1060" y="101">INFRA</text>
+  </g>
+
+  <!-- ═══════════ ROW: 200 Neurons ═══════════ -->
+  <g transform="translate(0, 170)">
+    <!-- Tier cell -->
+    <text x="70" y="-4" font-family="monospace" font-size="20" fill="currentColor" text-anchor="middle">200</text>
+    <text x="70" y="18" font-family="monospace" font-size="11" fill="currentColor" text-anchor="middle" opacity="0.55">Neurons</text>
+
+    <!-- INGEST: default -->
+    <g transform="translate(255, 0)">
+      <rect x="-50" y="-22" width="100" height="40" fill="none" stroke="currentColor" stroke-width="0.9" opacity="0.4"/>
+      <text x="0" y="6" font-family="monospace" font-size="12" fill="currentColor" text-anchor="middle" opacity="0.72">default</text>
+    </g>
+    <!-- LINT: default -->
+    <g transform="translate(510, 0)">
+      <rect x="-50" y="-22" width="100" height="40" fill="none" stroke="currentColor" stroke-width="0.9" opacity="0.4"/>
+      <text x="0" y="6" font-family="monospace" font-size="12" fill="currentColor" text-anchor="middle" opacity="0.72">default</text>
+    </g>
+    <!-- QUEUE: default -->
+    <g transform="translate(785, 0)">
+      <rect x="-50" y="-22" width="100" height="40" fill="none" stroke="currentColor" stroke-width="0.9" opacity="0.4"/>
+      <text x="0" y="6" font-family="monospace" font-size="12" fill="currentColor" text-anchor="middle" opacity="0.72">default</text>
+    </g>
+    <!-- INFRA: shared-cpu — AMBER (first entry in column) -->
+    <g transform="translate(1060, 0)">
+      <rect x="-100" y="-30" width="200" height="56" fill="none" stroke="#e8a87c" stroke-width="1.6"/>
+      <line x1="-100" y1="-30" x2="-100" y2="26" stroke="#e8a87c" stroke-width="4"/>
+      <text x="0" y="-4" font-family="monospace" font-size="13" fill="currentColor" text-anchor="middle">shared-cpu</text>
+      <text x="0" y="14" font-family="monospace" font-size="11" fill="currentColor" text-anchor="middle" opacity="0.6">single Machine</text>
+    </g>
+  </g>
+
+  <!-- ═══════════ ROW: 8,000 Neurons ═══════════ -->
+  <g transform="translate(0, 270)">
+    <text x="70" y="-4" font-family="monospace" font-size="20" fill="currentColor" text-anchor="middle">8,000</text>
+    <text x="70" y="18" font-family="monospace" font-size="11" fill="currentColor" text-anchor="middle" opacity="0.55">Neurons</text>
+
+    <!-- INGEST: default -->
+    <g transform="translate(255, 0)">
+      <rect x="-50" y="-22" width="100" height="40" fill="none" stroke="currentColor" stroke-width="0.9" opacity="0.4"/>
+      <text x="0" y="6" font-family="monospace" font-size="12" fill="currentColor" text-anchor="middle" opacity="0.72">default</text>
+    </g>
+    <!-- LINT: sampler enabled — AMBER -->
+    <g transform="translate(510, 0)">
+      <rect x="-120" y="-30" width="240" height="56" fill="none" stroke="#e8a87c" stroke-width="1.6"/>
+      <line x1="-120" y1="-30" x2="-120" y2="26" stroke="#e8a87c" stroke-width="4"/>
+      <text x="0" y="-4" font-family="monospace" font-size="13" fill="currentColor" text-anchor="middle">sampler enabled</text>
+      <text x="0" y="14" font-family="monospace" font-size="11" fill="currentColor" text-anchor="middle" opacity="0.6">cap = 500 / night</text>
+    </g>
+    <!-- QUEUE: filters matter — AMBER -->
+    <g transform="translate(785, 0)">
+      <rect x="-115" y="-30" width="230" height="56" fill="none" stroke="#e8a87c" stroke-width="1.6"/>
+      <line x1="-115" y1="-30" x2="-115" y2="26" stroke="#e8a87c" stroke-width="4"/>
+      <text x="0" y="-4" font-family="monospace" font-size="13" fill="currentColor" text-anchor="middle">filters matter</text>
+      <text x="0" y="14" font-family="monospace" font-size="11" fill="currentColor" text-anchor="middle" opacity="0.6">+ auto-approval</text>
+    </g>
+    <!-- INFRA: perf-2x — AMBER -->
+    <g transform="translate(1060, 0)">
+      <rect x="-100" y="-30" width="200" height="56" fill="none" stroke="#e8a87c" stroke-width="1.6"/>
+      <line x1="-100" y1="-30" x2="-100" y2="26" stroke="#e8a87c" stroke-width="4"/>
+      <text x="0" y="-4" font-family="monospace" font-size="13" fill="currentColor" text-anchor="middle">perf-2x</text>
+      <text x="0" y="14" font-family="monospace" font-size="11" fill="currentColor" text-anchor="middle" opacity="0.6">+ backups</text>
+    </g>
+  </g>
+
+  <!-- ═══════════ ROW: 25,000 Neurons ═══════════ -->
+  <g transform="translate(0, 370)">
+    <text x="70" y="-4" font-family="monospace" font-size="20" fill="currentColor" text-anchor="middle">25,000</text>
+    <text x="70" y="18" font-family="monospace" font-size="11" fill="currentColor" text-anchor="middle" opacity="0.55">Neurons</text>
+
+    <!-- INGEST: default -->
+    <g transform="translate(255, 0)">
+      <rect x="-50" y="-22" width="100" height="40" fill="none" stroke="currentColor" stroke-width="0.9" opacity="0.4"/>
+      <text x="0" y="6" font-family="monospace" font-size="12" fill="currentColor" text-anchor="middle" opacity="0.72">default</text>
+    </g>
+    <!-- LINT: + parallel Haiku — AMBER -->
+    <g transform="translate(510, 0)">
+      <rect x="-120" y="-30" width="240" height="56" fill="none" stroke="#e8a87c" stroke-width="1.6"/>
+      <line x1="-120" y1="-30" x2="-120" y2="26" stroke="#e8a87c" stroke-width="4"/>
+      <text x="0" y="-4" font-family="monospace" font-size="13" fill="currentColor" text-anchor="middle">+ parallel Haiku</text>
+      <text x="0" y="14" font-family="monospace" font-size="11" fill="currentColor" text-anchor="middle" opacity="0.6">cap = 1,200</text>
+    </g>
+    <!-- QUEUE: roles required — AMBER -->
+    <g transform="translate(785, 0)">
+      <rect x="-115" y="-30" width="230" height="56" fill="none" stroke="#e8a87c" stroke-width="1.6"/>
+      <line x1="-115" y1="-30" x2="-115" y2="26" stroke="#e8a87c" stroke-width="4"/>
+      <text x="0" y="-4" font-family="monospace" font-size="13" fill="currentColor" text-anchor="middle">roles required</text>
+      <text x="0" y="14" font-family="monospace" font-size="11" fill="currentColor" text-anchor="middle" opacity="0.6">RBAC · per topic</text>
+    </g>
+    <!-- INFRA: perf-4x — AMBER -->
+    <g transform="translate(1060, 0)">
+      <rect x="-100" y="-30" width="200" height="56" fill="none" stroke="#e8a87c" stroke-width="1.6"/>
+      <line x1="-100" y1="-30" x2="-100" y2="26" stroke="#e8a87c" stroke-width="4"/>
+      <text x="0" y="-4" font-family="monospace" font-size="13" fill="currentColor" text-anchor="middle">perf-4x</text>
+      <text x="0" y="14" font-family="monospace" font-size="11" fill="currentColor" text-anchor="middle" opacity="0.6">+ monitoring</text>
+    </g>
+  </g>
+
+  <!-- ═══════════ ROW: 100,000 Neurons ═══════════ -->
+  <g transform="translate(0, 470)">
+    <text x="70" y="-4" font-family="monospace" font-size="20" fill="currentColor" text-anchor="middle">100,000</text>
+    <text x="70" y="18" font-family="monospace" font-size="11" fill="currentColor" text-anchor="middle" opacity="0.55">Neurons</text>
+
+    <!-- INGEST: context-select tuned — AMBER (first amber in ingest col) -->
+    <g transform="translate(255, 0)">
+      <rect x="-100" y="-30" width="200" height="56" fill="none" stroke="#e8a87c" stroke-width="1.6"/>
+      <line x1="-100" y1="-30" x2="-100" y2="26" stroke="#e8a87c" stroke-width="4"/>
+      <text x="0" y="-4" font-family="monospace" font-size="13" fill="currentColor" text-anchor="middle">context-select</text>
+      <text x="0" y="14" font-family="monospace" font-size="11" fill="currentColor" text-anchor="middle" opacity="0.6">tuned</text>
+    </g>
+    <!-- LINT: cap = 3k · multi-lane — AMBER -->
+    <g transform="translate(510, 0)">
+      <rect x="-125" y="-30" width="250" height="56" fill="none" stroke="#e8a87c" stroke-width="1.6"/>
+      <line x1="-125" y1="-30" x2="-125" y2="26" stroke="#e8a87c" stroke-width="4"/>
+      <text x="0" y="-4" font-family="monospace" font-size="13" fill="currentColor" text-anchor="middle">cap = 3k · multi-lane</text>
+      <text x="0" y="14" font-family="monospace" font-size="11" fill="currentColor" text-anchor="middle" opacity="0.6">~3-week tail coverage</text>
+    </g>
+    <!-- QUEUE: auto-routing — AMBER -->
+    <g transform="translate(785, 0)">
+      <rect x="-115" y="-30" width="230" height="56" fill="none" stroke="#e8a87c" stroke-width="1.6"/>
+      <line x1="-115" y1="-30" x2="-115" y2="26" stroke="#e8a87c" stroke-width="4"/>
+      <text x="0" y="-4" font-family="monospace" font-size="13" fill="currentColor" text-anchor="middle">auto-routing</text>
+      <text x="0" y="14" font-family="monospace" font-size="11" fill="currentColor" text-anchor="middle" opacity="0.6">+ grouping</text>
+    </g>
+    <!-- INFRA: perf-8x + read-replica — AMBER -->
+    <g transform="translate(1060, 0)">
+      <rect x="-115" y="-30" width="230" height="56" fill="none" stroke="#e8a87c" stroke-width="1.6"/>
+      <line x1="-115" y1="-30" x2="-115" y2="26" stroke="#e8a87c" stroke-width="4"/>
+      <text x="0" y="-4" font-family="monospace" font-size="13" fill="currentColor" text-anchor="middle">perf-8x</text>
+      <text x="0" y="14" font-family="monospace" font-size="11" fill="currentColor" text-anchor="middle" opacity="0.6">+ read-replica</text>
+    </g>
+  </g>
+</svg>
+<figcaption>The same tiers as a decision matrix. Amber cells mark the tier where each workload's strategy changes; charcoal cells mean the previous tier's setting still applies. Ingest is the only column that never changes until the very last tier.</figcaption></figure></p>
+<p>The headline: ingest never becomes the bottleneck. Lint becomes the bottleneck around 8k and is handled by the sampler forever after. The queue becomes the bottleneck in a way that is <em>not</em> about engine compute — it is about the human attention budget, which requires organizational structure rather than faster code. Infrastructure follows a predictable ladder, and migration between tiers is a vertical scale-up, not a rewrite.</p>
+<h2>What breaks honestly</h2>
+<p>There are things this analysis does not address because Trail has not hit them yet.</p>
+<p><strong>Multi-KB joins.</strong> The numbers above assume a single KB per tenant. A deployment with dozens of KBs per tenant — a university running a separate KB per department, say — has not been profiled. The scheduler runs per-KB, which means twenty KBs of 5,000 Neurons each cost twenty times the single-KB lint budget. This is linear and bounded, but it changes the pricing conversation.</p>
+<p><strong>Federation.</strong> Chat queries that should span KBs (&quot;what do we know about frozen shoulder across the clinic KB and the research-paper KB?&quot;) require FTS5 lookups against multiple databases plus a cross-KB synthesis prompt. The engine has the primitives for this (the chat layer already handles multi-KB selection) but the token cost at large combined-corpus sizes has not been measured against real workloads.</p>
+<p><strong>Vector search at scale.</strong> Trail uses libSQL&#39;s native vector extension for certain spreading-activation queries, but the current indices are designed for single-KB corpora under 50k Neurons. At 100k+ inside a single KB, the vector index performance story needs validation. FTS5 remains the primary retrieval path and is well-understood at this size.</p>
+<p><strong>Curator-cluster dynamics.</strong> The roles + auto-routing + grouping UI described for 100k Neurons is engineering the engine can support, but the workflow design — how three curators collaborate on overlapping findings without stepping on each other — has not been exercised at this scale. This is the class of problem that surfaces only with a real tenant in the seat.</p>
+<p>None of these are blockers. They are the edges where the analysis stops being grounded in observed behaviour and starts being projected from the architecture.</p>
+<h2>The through-line</h2>
+<p>Trail&#39;s scaling strategy is the same at every tier: decide what work has to be done, decide what part of that work can be bounded, bound it, and let the rest grow freely. Ingest is unbounded because it&#39;s cheap per unit. Lint is bounded by the sampler. Queue is bounded by auto-approval plus curator distribution. Infrastructure is bounded by the next Fly.io Machine size in the ladder.</p>
+<p>The engine does not scale by becoming cleverer as the corpus grows. It scales by refusing to become more expensive than it was at the last tier, and letting the sampler — or the role structure, or the auto-router — absorb the difference between what would cost and what actually costs.</p>
+<p>That choice has a consequence worth naming: at every scale, a small amount of work is being skipped. Not skipped silently — the sampler&#39;s bias guarantees recent edits get scanned inside a day and everything else gets scanned inside a month. But it is skipped, in the sense that the engine is not doing the O(N²) pairwise check that would nominally be &quot;correct.&quot; The bet is that the pattern the sampler preserves — recency-biased with a long-tail reserve — is good enough because it mirrors how biological memory consolidates.</p>
+<p>Sleep is bounded. Memory is bounded. The wiki, compiled continuously, is also bounded. That is not a limitation. That is what makes it keep working.</p>
+<hr>
+<h3>See also</h3>
+<ul>
+<li><a href="/trails/how-trail-works/work-that-fits-in-a-night/">Work That Fits in a Night</a> — the detailed story of the contradiction sampler&#39;s 60/40 split, including why uniform sampling was rejected and how the biology-literature grounding maps onto the cron.</li>
+<li><a href="/trails/how-trail-works/how-a-brain-actually-remembers/">How a Brain Actually Remembers</a> — the underlying claim that compile-time knowledge has to be consolidated periodically, not just retrieved.</li>
+<li><a href="/trails/how-trail-works/compile-time-knowledge-vs-rag/">Compile-Time Knowledge vs. RAG</a> — why this whole scaling problem doesn&#39;t exist for retrieval-at-query systems, and why it&#39;s worth having anyway.</li>
+</ul>
+</div><div class="post-footer"><div class="post-tags"><a class="post-tag" href="/tags/scalability/">#scalability</a><a class="post-tag" href="/tags/architecture/">#architecture</a><a class="post-tag" href="/tags/lint/">#lint</a><a class="post-tag" href="/tags/ingest/">#ingest</a><a class="post-tag" href="/tags/queue/">#queue</a><a class="post-tag" href="/tags/infrastructure/">#infrastructure</a><a class="post-tag" href="/tags/sampling/">#sampling</a><a class="post-tag" href="/tags/engineering-note/">#engineering-note</a><a class="post-tag" href="/tags/llm-wiki/">#llm-wiki</a><a class="post-tag" href="/tags/karpathy/">#karpathy</a></div><a class="post-more" href="/trails/research/">← MORE FROM RESEARCH</a></div></article>
+  <footer class="footer">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" role="img" aria-label="trail">
+  <circle cx="16" cy="16" r="14" fill="none" stroke="currentColor" stroke-width="2"/>
+  <circle cx="16" cy="16" r="9" fill="none" stroke="#e8a87c" stroke-width="0.9" opacity="0.55"/>
+  <circle cx="16" cy="16" r="3.5" fill="#e8a87c"/>
+</svg>
+        <span>trail</span>
+      </div>
+      <div class="footer-links">
+        <a href="#">Twitter</a>
+        <a href="https://github.com/broberg-ai/trail">GitHub</a>
+        <a href="#">Status</a>
+      </div>
+      <div class="footer-copy">© 2026 Trail by broberg.ai. As we may think. Site built by <a href="https://webhouse.app" target="_blank" rel="noopener">@webhouse/cms</a></div>
+    </div>
+  </footer>
+  <script>
+(function(){
+  const canvas = document.getElementById('trail-graph');
+  if (!canvas) return;
+  /* Respect reduced-motion — draw one static frame and stop. */
+  const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const ctx = canvas.getContext('2d');
+  let animationFrameId = 0;
+  let running = false;
+  let particles = [];
+  const mouse = { x: null, y: null };
+  const DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+  /* Cache colors at mount; re-read only on theme change. Reading CSS vars
+   * with getComputedStyle on every frame forces style recalc and was
+   * pegging CPU/GPU on long-running pages. */
+  const colors = { node: '#1a1715', accent: '#e8a87c', line: '26, 23, 21', accentLine: '232, 168, 124' };
+  function refreshColors(){
+    const cs = getComputedStyle(document.documentElement);
+    const read = function(n, f){ return (cs.getPropertyValue(n).trim() || f); };
+    colors.node = read('--graph-node', colors.node);
+    colors.accent = read('--graph-accent', colors.accent);
+    colors.line = read('--graph-line', colors.line);
+    colors.accentLine = read('--graph-accent-line', colors.accentLine);
+  }
+  refreshColors();
+
+  /* Re-cache when theme toggles (data-theme attribute changes on <html>). */
+  if ('MutationObserver' in window) {
+    new MutationObserver(refreshColors).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+  }
+
+  function resize(){
+    canvas.width = window.innerWidth * DPR;
+    canvas.height = window.innerHeight * DPR;
+    canvas.style.width = window.innerWidth + 'px';
+    canvas.style.height = window.innerHeight + 'px';
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    initParticles();
+  }
+
+  function Particle(){
+    this.x = Math.random() * window.innerWidth;
+    this.y = Math.random() * window.innerHeight;
+    this.vx = (Math.random() - 0.5) * 0.3;
+    this.vy = (Math.random() - 0.5) * 0.3;
+    this.baseRadius = Math.random() > 0.95 ? 3 : 1.5;
+    this.isAccent = Math.random() > 0.98;
+  }
+  Particle.prototype.update = function(){
+    this.x += this.vx;
+    this.y += this.vy;
+    /* Bound by intent, not by position — a particle that has drifted
+     * past an edge should only flip if it's still moving outward. */
+    if ((this.x < 0 && this.vx < 0) || (this.x > window.innerWidth && this.vx > 0)) this.vx = -this.vx;
+    if ((this.y < 0 && this.vy < 0) || (this.y > window.innerHeight && this.vy > 0)) this.vy = -this.vy;
+    if (mouse.x !== null && mouse.y !== null) {
+      const dx = mouse.x - this.x;
+      const dy = mouse.y - this.y;
+      const d = Math.sqrt(dx*dx + dy*dy);
+      if (d < 100) { this.x -= dx * 0.01; this.y -= dy * 0.01; }
+    }
+  };
+  Particle.prototype.draw = function(){
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.baseRadius, 0, Math.PI * 2);
+    ctx.fillStyle = this.isAccent ? colors.accent : colors.node;
+    ctx.fill();
+  };
+
+  function initParticles(){
+    particles = [];
+    /* Cap at 150 — O(n²) linking loop becomes the bottleneck past that.
+     * On 4K screens the old formula produced 400+ particles. */
+    const count = Math.min(150, Math.floor((window.innerWidth * window.innerHeight) / 15000));
+    for (let i = 0; i < count; i++) particles.push(new Particle());
+  }
+
+  const LINK_DIST = 160;
+  const LINK_DIST_SQ = LINK_DIST * LINK_DIST;
+  function drawLines(){
+    for (let i = 0; i < particles.length; i++){
+      const pi = particles[i];
+      for (let j = i + 1; j < particles.length; j++){
+        const pj = particles[j];
+        const dx = pi.x - pj.x;
+        const dy = pi.y - pj.y;
+        /* Squared-distance early-bail — skip sqrt for the ~95% of pairs
+         * that are too far apart to draw a line between. */
+        const d2 = dx*dx + dy*dy;
+        if (d2 >= LINK_DIST_SQ) continue;
+        const opacity = 1 - (Math.sqrt(d2) / LINK_DIST);
+        ctx.beginPath();
+        if (pi.isAccent || pj.isAccent) {
+          ctx.strokeStyle = 'rgba(' + colors.accentLine + ', ' + (opacity * 0.5) + ')';
+        } else {
+          ctx.strokeStyle = 'rgba(' + colors.line + ', ' + (opacity * 0.18) + ')';
+        }
+        ctx.lineWidth = 0.6;
+        ctx.moveTo(pi.x, pi.y);
+        ctx.lineTo(pj.x, pj.y);
+        ctx.stroke();
+      }
+    }
+  }
+
+  function renderOneFrame(){
+    ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+    for (const p of particles){ p.update(); p.draw(); }
+    drawLines();
+  }
+
+  function loop(){
+    if (!running) return;
+    renderOneFrame();
+    animationFrameId = requestAnimationFrame(loop);
+  }
+  function start(){
+    if (running || reduceMotion) return;
+    running = true;
+    loop();
+  }
+  function stop(){
+    running = false;
+    if (animationFrameId) cancelAnimationFrame(animationFrameId);
+    animationFrameId = 0;
+  }
+
+  window.addEventListener('resize', resize);
+  window.addEventListener('mousemove', function(e){ mouse.x = e.clientX; mouse.y = e.clientY; });
+  window.addEventListener('mouseout', function(){ mouse.x = null; mouse.y = null; });
+  /* Pause when the tab is hidden — rAF keeps firing in some browsers for
+   * several seconds before throttling, and an invisible tab shouldn't
+   * burn GPU. */
+  document.addEventListener('visibilitychange', function(){
+    if (document.hidden) stop();
+    else start();
+  });
+
+  resize();
+  if (reduceMotion) {
+    /* Draw one static starfield so the background isn't empty. */
+    renderOneFrame();
+  } else {
+    start();
+  }
+})();
+</script>
+
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"WebPage","name":"Scaling Trail from 200 to 100,000 Neurons: An Engineering Note","url":"https://trail.webhouse.app/trails/research/scaling-trail-from-200-to-100000-neurons/","description":"A compile-time knowledge engine has three workloads that fight for compute — ingest, lint, and the curation queue. Each one breaks at a different corpus size, for different reasons, and requires a different fix. This is the long-form companion to Work That Fits in a Night: the full accounting of where Trail's bottlenecks are, when they hit, and what a deployment looks like at 200, 8,000, 25,000, and 100,000 Neurons.","inLanguage":"en","isPartOf":{"@type":"WebSite","name":"trail","url":"https://trail.webhouse.app/"}}</script>
+</body>
+</html>

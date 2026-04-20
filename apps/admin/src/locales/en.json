@@ -2,6 +2,7 @@
   "nav": {
     "neurons": "Neurons",
     "graph": "Graph",
+    "work": "Work",
     "chat": "Chat",
     "search": "Search",
     "queue": "Queue",
@@ -195,7 +196,14 @@
     "title": "Sources",
     "summary": "{n} source",
     "summaryPlural": "{n} sources",
-    "empty": "No sources yet. Drop a file anywhere on this page to upload.",
+    "empty": {
+      "active": "No sources currently being processed.",
+      "extracted": "No sources in the extracted-but-empty state.",
+      "success": "No sources have produced Neurons yet.",
+      "failed": "No failed sources.",
+      "archived": "No archived sources.",
+      "all": "No sources yet. Drop a file anywhere on this page to upload."
+    },
     "showContent": "Show full content",
     "hideContent": "Hide content",
     "retry": "Retry",
@@ -225,10 +233,12 @@
     "restoreHint": "Bring this source back to the active list",
     "filter": {
       "active": "Active",
+      "extracted": "Extracted",
+      "success": "Success",
+      "failed": "Failed",
       "archived": "Archived",
       "all": "All"
     },
-    "emptyArchived": "No archived sources.",
     "processing": "Processing…",
     "failed": "Failed",
     "uploading": "Uploading {name}…",
@@ -254,7 +264,27 @@
     "lintDonePlural": "Lint emitted {n} new candidates",
     "lintClean": "Nothing to flag.",
     "lintFailed": "Lint failed",
-    "emptyFiltered": "No Neurons match the selected tags. Clear filters to see everything."
+    "emptyFiltered": "No Neurons match the selected tags. Clear filters to see everything.",
+    "newNeuron": "New",
+    "newNeuronHint": "Create a new Neuron manually — lands in queue for review",
+    "newNeuronModal": {
+      "title": "New Neuron",
+      "titleLabel": "Title",
+      "titlePlaceholder": "e.g. NADA protocol",
+      "pathLabel": "Path",
+      "contentLabel": "Content",
+      "contentPlaceholder": "Markdown body (optional — you can edit it after approval)",
+      "tagsLabel": "Tags",
+      "tagsPlaceholder": "comma-separated",
+      "create": "Send to queue",
+      "creating": "Sending…",
+      "paths": {
+        "concepts": "Concept",
+        "entities": "Entity",
+        "heuristics": "Heuristic",
+        "decisions": "Decision"
+      }
+    }
   },
   "chat": {
     "title": "Chat",
@@ -288,7 +318,9 @@
     "hubLabel": "structural",
     "emptyTitle": "No graph yet",
     "emptyBody": "Add more Neurons to see your Trail take shape. The graph needs at least two connected Neurons to render.",
-    "emptyCta": "Open queue"
+    "emptyCta": "Open queue",
+    "hotTitle": "Hot Neurons",
+    "edgeHoverRelation": "relation"
   },
   "kbs": {
     "title": "Trails",
@@ -377,7 +409,11 @@
     "pinned": "Pinned",
     "active": "{n} conf",
     "faded": "Faded · {n}",
-    "hint": "Heuristic Neurons carry a confidence score that decays over time unless they're edited or pinned. Below 0.3 they fade — chat excludes them so old rules-of-thumb don't contaminate new answers."
+    "hint": "Heuristic Neurons carry a confidence score that decays over time unless they're edited or pinned. Below 0.3 they fade — chat excludes them so old rules-of-thumb don't contaminate new answers.",
+    "pinAction": "Pin",
+    "unpinAction": "Unpin",
+    "pinSaving": "Saving…",
+    "pinError": "Save failed"
   },
   "settings": {
     "savedToast": "Saved.",
@@ -404,6 +440,36 @@
       "ambient": "Ambient audio",
       "ambientEnabled": "Play ambient loops while I work",
       "ambientVolume": "Volume"
+    }
+  },
+  "work": {
+    "title": "Work",
+    "subtitle": "Tasks, bugs, milestones and decisions living alongside the knowledge on this Trail — with context automatically inherited from related Neurons via [[wiki-links]].",
+    "new": "+ NEW",
+    "create": "Create",
+    "createTitle": "New work item",
+    "status": {
+      "open": "Open",
+      "in-progress": "In progress",
+      "blocked": "Blocked",
+      "done": "Done"
+    },
+    "kind": {
+      "task": "Task",
+      "bug": "Bug",
+      "milestone": "Milestone",
+      "decision": "Decision"
+    },
+    "filter": {
+      "kind": "Filter by kind"
+    },
+    "field": {
+      "title": "Title",
+      "kind": "Kind",
+      "assignee": "Assignee",
+      "dueAt": "Due",
+      "content": "Description",
+      "contentHint": "Markdown. Use [[neuron-slug]] to link to related knowledge — context is inherited automatically in chat + compile."
     }
   }
 }

@@ -50,6 +50,13 @@
       "when": 1777200000000,
       "tag": "0006_access_telemetry",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1777300000000,
+      "tag": "0007_work_layer",
+      "breakpoints": true
     }
   ]
 }
