@@ -80,11 +80,37 @@ export function parseFrontmatterSources(content: string): string[] {
 }
 
 function splitListItems(inner: string): string[] {
-  return inner
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .map(unquote);
+  // Naive split(',') breaks on filenames that contain commas — the
+  // Medium PDFs Christian uploads look like "... _ Apr, 2026 _
+  // Medium.pdf" and the naive split produced garbage fragments that
+  // never resolved to any real Source. Do a quote-aware walk instead:
+  // only split on commas that aren't inside a "..." or '...' pair.
+  const items: string[] = [];
+  let buf = '';
+  let quote: '"' | "'" | null = null;
+  for (let i = 0; i < inner.length; i++) {
+    const ch = inner[i]!;
+    if (quote) {
+      buf += ch;
+      if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      buf += ch;
+      continue;
+    }
+    if (ch === ',') {
+      const t = buf.trim();
+      if (t) items.push(t);
+      buf = '';
+      continue;
+    }
+    buf += ch;
+  }
+  const tail = buf.trim();
+  if (tail) items.push(tail);
+  return items.map(unquote);
 }
 
 function unquote(s: string): string {
