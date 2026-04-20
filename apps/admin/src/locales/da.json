@@ -1,6 +1,7 @@
 {
   "nav": {
     "neurons": "Neuroner",
+    "graph": "Graf",
     "chat": "Chat",
     "search": "Søg",
     "queue": "Kø",
@@ -249,12 +250,42 @@
     "saveTitlePrompt": "Titel til Neuronen",
     "citations": "Kilder"
   },
+  "graph": {
+    "searchPlaceholder": "Filtrér noder…",
+    "nodeCountLabel": "Neuroner",
+    "edgeCountLabel": "links",
+    "legendNeuron": "Neuron",
+    "legendOrphan": "Forældreløs",
+    "legendHub": "Struktur",
+    "legendToggleHint": "Klik for at skjule/vise",
+    "backlinkLabel": "backlinks",
+    "orphanLabel": "forældreløs",
+    "hubLabel": "struktur",
+    "emptyTitle": "Grafen er tom",
+    "emptyBody": "Tilføj flere Neuroner for at se din Trail tage form. Grafen skal bruge mindst to forbundne Neuroner for at tegne.",
+    "emptyCta": "Åbn køen"
+  },
   "kbs": {
     "title": "Trails",
     "empty": "Ingen Trails endnu. Opret én for at komme i gang.",
     "create": "Opret Trail",
     "pendingBadge": "{n} afventer",
     "totalNeurons": "Neuroner på denne trail-server: {n}",
+    "newTrail": {
+      "button": "Ny Trail",
+      "title": "Opret ny Trail",
+      "nameLabel": "Navn",
+      "namePlaceholder": "Fx \"Akupunktur-praksis\" eller \"iOS-noter\"",
+      "descriptionLabel": "Beskrivelse",
+      "descriptionPlaceholder": "Hvad skal denne Trail samle viden om?",
+      "languageLabel": "Sprog",
+      "language_da": "Dansk",
+      "language_en": "Engelsk",
+      "slugPreview": "URL:",
+      "slugHint": "(justeres automatisk hvis slug'et er taget)",
+      "submit": "Opret Trail",
+      "creating": "Opretter…"
+    },
     "lintPolicy": {
       "label": "Lint-politik",
       "trusting": "tillidsfuld",

@@ -1,15 +1,32 @@
 import { useCallback, useEffect, useState } from 'preact/hooks';
+import { useLocation } from 'preact-iso';
 import type { KnowledgeBase } from '@trail/shared';
 import { listKnowledgeBases, ApiError } from '../api';
 import { useEvents, onStreamOpen, onFocusRefresh, debounce } from '../lib/event-stream';
 import { invalidateKbs } from '../lib/kb-cache';
 import { t, useLocale, getLocale } from '../lib/i18n';
 import { CenteredLoader } from '../components/centered-loader';
+import { NewTrailModal } from '../components/new-trail-modal';
 
 export function KnowledgeBasesPanel() {
   useLocale();
+  const { route } = useLocation();
   const [kbs, setKbs] = useState<KnowledgeBase[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [modalOpen, setModalOpen] = useState(false);
+
+  const onCreated = useCallback(
+    (kb: { slug: string }) => {
+      // Bust the KB cache the nav reads from so the new Trail resolves
+      // as soon as the target route mounts. The kb_created event the
+      // server emits would do this too, but navigating immediately is
+      // faster than waiting for the SSE round-trip.
+      invalidateKbs();
+      setModalOpen(false);
+      route(`/kb/${kb.slug}/neurons`);
+    },
+    [route],
+  );
 
   const reload = useCallback(() => {
     listKnowledgeBases()
@@ -72,7 +89,20 @@ export function KnowledgeBasesPanel() {
     return (
       <div class="page-shell text-center">
         <h1 class="text-2xl font-semibold mb-2">{t('kbs.title')}</h1>
-        <p class="text-[color:var(--color-fg-muted)]">{t('kbs.empty')}</p>
+        <p class="text-[color:var(--color-fg-muted)] mb-6">{t('kbs.empty')}</p>
+        <button
+          type="button"
+          onClick={() => setModalOpen(true)}
+          class="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-[color:var(--color-fg)] text-[color:var(--color-bg)] text-sm font-medium hover:bg-[color:var(--color-fg)]/90 transition active:scale-[0.98]"
+        >
+          <span class="text-base leading-none">+</span>
+          <span>{t('kbs.newTrail.button')}</span>
+        </button>
+        <NewTrailModal
+          open={modalOpen}
+          onClose={() => setModalOpen(false)}
+          onCreated={onCreated}
+        />
       </div>
     );
   }
@@ -90,11 +120,21 @@ export function KnowledgeBasesPanel() {
 
   return (
     <div class="page-shell">
-      <header class="mb-8">
-        <h1 class="text-2xl font-semibold tracking-tight mb-1">{t('kbs.title')}</h1>
-        <p class="text-sm text-[color:var(--color-fg-muted)]">
-          {t('kbs.totalNeurons', { n: formattedTotal })}
-        </p>
+      <header class="mb-8 flex items-start justify-between gap-4">
+        <div>
+          <h1 class="text-2xl font-semibold tracking-tight mb-1">{t('kbs.title')}</h1>
+          <p class="text-sm text-[color:var(--color-fg-muted)]">
+            {t('kbs.totalNeurons', { n: formattedTotal })}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setModalOpen(true)}
+          class="inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-[color:var(--color-fg)] text-[color:var(--color-bg)] text-sm font-medium hover:bg-[color:var(--color-fg)]/90 transition active:scale-[0.98] shrink-0"
+        >
+          <span class="text-base leading-none">+</span>
+          <span>{t('kbs.newTrail.button')}</span>
+        </button>
       </header>
       <ul class="space-y-2">
         {kbs.map((kb) => {
@@ -140,6 +180,11 @@ export function KnowledgeBasesPanel() {
           );
         })}
       </ul>
+      <NewTrailModal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        onCreated={onCreated}
+      />
     </div>
   );
 }

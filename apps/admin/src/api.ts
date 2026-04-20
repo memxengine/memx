@@ -56,6 +56,23 @@ export function listKnowledgeBases(): Promise<KnowledgeBase[]> {
 }
 
 /**
+ * Create a new Trail. The server auto-generates a unique slug from `name`
+ * (uniqueSlug with `-2`, `-3`, … suffix on collision) and seeds the three
+ * hub Neurons (overview.md, log.md, glossary.md per F102). Returns the
+ * full KB row including the final slug so the caller can navigate.
+ */
+export function createKnowledgeBase(body: {
+  name: string;
+  description?: string | null;
+  language?: string;
+}): Promise<KnowledgeBase> {
+  return api('/api/v1/knowledge-bases', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+/**
  * Partial update of a Trail's settings. PATCH body is whatever subset of
  * fields are being changed — the engine validates via UpdateKBSchema.
  * Returns the full updated row.
@@ -220,6 +237,39 @@ export function listWikiPages(kbId: string, sort: WikiSortOrder = 'newest'): Pro
   return api(
     `/api/v1/knowledge-bases/${encodeURIComponent(kbId)}/documents?kind=wiki&sort=${sort}`,
   );
+}
+
+/** F99 — Neuron graph data for a KB. Nodes + edges + layout meta. */
+export interface GraphNode {
+  id: string;
+  label: string;
+  filename: string;
+  path: string;
+  x: number | null;
+  y: number | null;
+  size: number;
+  orphan: boolean;
+  hub: boolean;
+  tags: string[];
+  backlinks: number;
+  excerpt: string | null;
+}
+export interface GraphEdge {
+  id: string;
+  source: string;
+  target: string;
+}
+export interface GraphResponse {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+  meta: {
+    layoutComputedAt: string | null;
+    nodeCount: number;
+    edgeCount: number;
+  };
+}
+export function fetchGraph(kbId: string): Promise<GraphResponse> {
+  return api(`/api/v1/knowledge-bases/${encodeURIComponent(kbId)}/graph`);
 }
 
 /**

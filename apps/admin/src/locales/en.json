@@ -1,6 +1,7 @@
 {
   "nav": {
     "neurons": "Neurons",
+    "graph": "Graph",
     "chat": "Chat",
     "search": "Search",
     "queue": "Queue",
@@ -249,12 +250,42 @@
     "saveTitlePrompt": "Title for the Neuron",
     "citations": "Sources"
   },
+  "graph": {
+    "searchPlaceholder": "Filter nodes…",
+    "nodeCountLabel": "Neurons",
+    "edgeCountLabel": "links",
+    "legendNeuron": "Neuron",
+    "legendOrphan": "Orphan",
+    "legendHub": "Structural",
+    "legendToggleHint": "Click to toggle visibility",
+    "backlinkLabel": "backlinks",
+    "orphanLabel": "orphan",
+    "hubLabel": "structural",
+    "emptyTitle": "No graph yet",
+    "emptyBody": "Add more Neurons to see your Trail take shape. The graph needs at least two connected Neurons to render.",
+    "emptyCta": "Open queue"
+  },
   "kbs": {
     "title": "Trails",
     "empty": "No Trails yet. Create one to get started.",
     "create": "Create Trail",
     "pendingBadge": "{n} pending",
     "totalNeurons": "Neurons on this trail server: {n}",
+    "newTrail": {
+      "button": "New Trail",
+      "title": "Create a new Trail",
+      "nameLabel": "Name",
+      "namePlaceholder": "e.g. \"Acupuncture practice\" or \"iOS notes\"",
+      "descriptionLabel": "Description",
+      "descriptionPlaceholder": "What knowledge should this Trail collect?",
+      "languageLabel": "Language",
+      "language_da": "Danish",
+      "language_en": "English",
+      "slugPreview": "URL:",
+      "slugHint": "(auto-adjusted if this slug is taken)",
+      "submit": "Create Trail",
+      "creating": "Creating…"
+    },
     "lintPolicy": {
       "label": "Lint policy",
       "trusting": "trusting",
