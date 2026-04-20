@@ -4,6 +4,7 @@ import { ensureIngestUser } from './bootstrap/ingest-user.js';
 import { recoverZombieIngests } from './bootstrap/zombie-ingest.js';
 import { rewriteWikiToNeurons } from './bootstrap/rewrite-wiki-paths.js';
 import { cleanupExternalOrphans } from './bootstrap/F98-cleanup-external-orphans.js';
+import { seedMissingGlossaryNeurons } from './bootstrap/F102-seed-glossary-neurons.js';
 import { startContradictionLint } from './services/contradiction-lint.js';
 import { backfillReferences, startReferenceExtractor } from './services/reference-extractor.js';
 import { backfillBacklinks, startBacklinkExtractor } from './services/backlink-extractor.js';
@@ -28,6 +29,10 @@ await rewriteWikiToNeurons(trail);
 // the orphan detector used to falsely flag them. Idempotent — zero
 // rows to update after the first run is the steady state.
 await cleanupExternalOrphans(trail);
+// F102 — ensure every KB has /neurons/glossary.md. Idempotent; seeds
+// the Neuron for KBs created before F102 landed so the compile-pipeline
+// has something to str_replace into on subsequent ingests.
+await seedMissingGlossaryNeurons(trail);
 await backfillReferences(trail);
 await backfillBacklinks(trail);
 

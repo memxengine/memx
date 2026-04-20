@@ -6,6 +6,7 @@ import { requireAuth, getUser, getTenant, getTrail } from '../middleware/auth.js
 import { uniqueSlug, createCandidate, resolveKbId } from '@trail/core';
 import { broadcaster } from '../services/broadcast.js';
 import { listKbTags } from '../services/tag-aggregate.js';
+import { buildSeedGlossary } from '../services/glossary-seed.js';
 
 export const kbRoutes = new Hono();
 
@@ -102,16 +103,21 @@ kbRoutes.post('/knowledge-bases', async (c) => {
     })
     .run();
 
-  // Seed wiki/overview.md and wiki/log.md so the wiki isn't empty from the start.
-  // Flows through the Curation Queue so the invariant "every wiki write goes
-  // through approveCandidate" holds even for KB bootstrap. Auto-approves because
-  // actor.kind='system' and kind='ingest-summary' (see shouldAutoApprove).
+  // Seed wiki/overview.md, wiki/log.md and wiki/glossary.md (F102) so the
+  // wiki isn't empty from the start. Flows through the Curation Queue so
+  // the invariant "every wiki write goes through approveCandidate" holds
+  // even for KB bootstrap. Auto-approves because actor.kind='system' and
+  // kind='ingest-summary' (see shouldAutoApprove).
+  const lang = body.language ?? 'da';
   const overviewContent = `# ${body.name}\n\nThis is the overview page for your wiki. It will be updated automatically as sources are added and the LLM compiles knowledge.\n`;
   const logContent = `# Log\n\nChronological record of wiki activity.\n\n---\n`;
+  const glossaryContent = buildSeedGlossary(lang);
+  const glossaryTitle = lang === 'da' ? 'Ordliste' : 'Glossary';
 
   for (const page of [
     { filename: 'overview.md', title: body.name, content: overviewContent },
     { filename: 'log.md', title: 'Log', content: logContent },
+    { filename: 'glossary.md', title: glossaryTitle, content: glossaryContent },
   ]) {
     await createCandidate(
       trail,

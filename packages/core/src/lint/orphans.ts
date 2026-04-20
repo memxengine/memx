@@ -9,7 +9,13 @@ import { and, asc, eq, inArray, notInArray, sql } from 'drizzle-orm';
 import { isExternalConnector } from '@trail/shared';
 import type { LintFinding, LintOptions } from './types.js';
 
-const DEFAULT_HUB_PAGES = ['overview.md', 'log.md'];
+// Neurons exempt from the orphan detector because they're structural /
+// meta artifacts with no natural Source to cite.
+//   - overview.md, log.md — hub pages, every wiki has them
+//   - glossary.md (F102) — auto-maintained vocabulary. The compile-pipeline
+//     merges terms drawn from many Sources, but the Neuron itself isn't
+//     a single-source page — treating it as orphan would spam the queue.
+const DEFAULT_HUB_PAGES = ['overview.md', 'log.md', 'glossary.md'];
 
 function stripMd(filename: string): string {
   return filename.replace(/\.md$/i, '');

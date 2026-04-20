@@ -126,10 +126,17 @@ Your job is to ingest this source into the wiki. Follow these steps exactly:
 6. For each KEY ENTITY (person, organization, tool) found:
    - Same pattern under /neurons/entities/. Same \`sources\` frontmatter rule applies — every entity page MUST list ${sFilename} in its \`sources: [...]\`.
 
-7. Update the overview page:
+7. Maintain the glossary (F102):
+   - Call \`read\` with path="/neurons/glossary.md" to see the current vocabulary. This Neuron lists domain-specific fagtermer with short definitions (different from the app-terminology seed entries it already has).
+   - If this source INTRODUCES or clearly REFINES 1–3 domain-specific terms that belong in a glossary (not casual mentions — terms that have a defined meaning the reader would want to look up), add or update them:
+     * For a new term: \`write\` with command="str_replace", title="/neurons/glossary.md" — append a new \`## <Term>\\n\\n<1–3 sentence definition drawn from this source>\\n\` section. Place it alphabetically if possible.
+     * For an existing term whose definition this source sharpens or extends: \`write\` str_replace the existing definition block with a revised version. Preserve the heading.
+   - If the source introduces no glossary-worthy terms, SKIP this step. Glossary entries are for durable fagtermer, not one-off vocabulary.
+
+8. Update the overview page:
    \`write\` with command="str_replace", title="/neurons/overview.md" — reflect the new knowledge and link to the new pages.
 
-8. Log the ingest:
+9. Log the ingest:
    \`write\` with command="append", title="/neurons/log.md", content:
 
    ## [${today}] ingest | ${sLogHeading}
