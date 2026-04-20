@@ -6,6 +6,7 @@ import {
   DEFAULT_DB_PATH,
   knowledgeBases,
   documents,
+  documentAccess,
   queueCandidates,
   wikiEvents,
   tenants,
@@ -352,6 +353,30 @@ server.tool(
         content: [{ type: 'text' as const, text: `Document "${docPath}" not found in ${kb.name}.` }],
       };
     }
+
+    // F141 — record the MCP read. Wiki-only (sources aren't the signal
+    // we care about); actor_kind='llm' because an MCP read is always
+    // an agent-on-behalf-of-user. Skip when the MCP caller is the
+    // compiler itself (userId=service-ingest) — those reads cover every
+    // Neuron in the KB during ingest and would dominate the rollup.
+    // Fire-and-forget; telemetry errors never break the read.
+    if (doc.kind === 'wiki' && ctx.userId !== 'service-ingest') {
+      trail.db
+        .insert(documentAccess)
+        .values({
+          id: `acc_${crypto.randomUUID().slice(0, 12)}`,
+          tenantId: ctx.tenantId,
+          knowledgeBaseId: kb.id,
+          documentId: doc.id,
+          source: 'mcp',
+          actorKind: 'llm',
+        })
+        .run()
+        .catch((err: unknown) => {
+          console.warn('[mcp] access-track failed:', err instanceof Error ? err.message : err);
+        });
+    }
+
     return { content: [{ type: 'text' as const, text: doc.content ?? '_No content_' }] };
   },
 );

@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import {
   documents,
+  documentAccessRollup,
   wikiBacklinks,
 } from '@trail/db';
 import { and, eq, sql } from 'drizzle-orm';
@@ -191,6 +192,21 @@ graphRoutes.get('/knowledge-bases/:kbId/graph', async (c) => {
     ).map((r) => r.id),
   );
 
+  // F141 — usage_weight from the access-rollup aggregate. One SELECT,
+  // join-less map lookup in node building. Missing rows → weight 0
+  // (KBs that never ran the nightly rollup, or Neurons never read).
+  const usageRows = await trail.db
+    .select({
+      documentId: documentAccessRollup.documentId,
+      usageWeight: documentAccessRollup.usageWeight,
+    })
+    .from(documentAccessRollup)
+    .where(eq(documentAccessRollup.knowledgeBaseId, kbId))
+    .all();
+  const usageByDoc = new Map<string, number>(
+    usageRows.map((r) => [r.documentId, r.usageWeight]),
+  );
+
   const nodes = nodeRows.map((r) => {
     const rawSize = Math.sqrt(r.backlinkCount);
     const hub = HUB_FILENAMES.has(r.filename);
@@ -218,6 +234,11 @@ graphRoutes.get('/knowledge-bases/:kbId/graph', async (c) => {
       hub,
       tags: parseTags(r.tags),
       backlinks: r.backlinkCount,
+      // F141 — 0-1 normalised-per-KB usage weight. Consumers can
+      // scale node-radius (e.g. size * (0.5 + usageWeight)) or render
+      // a heat overlay. 0 for Neurons never read or KBs that haven't
+      // rolled up yet — callers should treat 0 as "unknown", not "cold".
+      usageWeight: usageByDoc.get(r.id) ?? 0,
       excerpt: excerptOf(r.content),
     };
   });

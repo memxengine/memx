@@ -45,6 +45,7 @@ import {
   makeContradictionChecker,
   scanDocForContradictions,
 } from './contradiction-lint.js';
+import { rebuildAccessRollup, pruneOldAccessRows } from './access-rollup.js';
 
 const SCHEDULE_HOURS = Number(process.env.TRAIL_LINT_SCHEDULE_HOURS ?? 24);
 const INITIAL_DELAY_MS =
@@ -123,6 +124,25 @@ async function runFullPass(trail: TrailDatabase): Promise<void> {
       if (!SKIP_CONTRADICTIONS) {
         contradictionsScanned += await runContradictions(trail, kb);
       }
+    }
+
+    // F141 — rebuild the access-rollup aggregate once per pass. Cheap
+    // SQL-only work (no LLM), runs after the expensive passes so the
+    // rollup reflects all reads captured up to this moment. Prune old
+    // raw rows afterwards so document_access doesn't grow unbounded.
+    try {
+      const rollup = await rebuildAccessRollup(trail);
+      if (rollup.documentsRolledUp > 0) {
+        console.log(
+          `[lint-scheduler] access rollup: ${rollup.documentsRolledUp} docs across ${rollup.kbsProcessed} KB(s), ${rollup.elapsedMs}ms`,
+        );
+      }
+      const pruned = await pruneOldAccessRows(trail);
+      if (pruned > 0) {
+        console.log(`[lint-scheduler] access rollup: pruned ${pruned} row(s) older than 180d`);
+      }
+    } catch (err) {
+      console.error('[lint-scheduler] access-rollup failed:', err instanceof Error ? err.message : err);
     }
 
     const elapsed = Math.round((Date.now() - t0) / 1000);

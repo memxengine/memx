@@ -11,6 +11,7 @@ import {
   isFaded,
   isPinned,
 } from '@trail/shared';
+import { recordAccess } from '../services/access-tracker.js';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -257,6 +258,17 @@ async function retrieveContext(
       totalChars += text.length;
       if (!seen.has(hit.documentId)) {
         seen.add(hit.documentId);
+        // F141 — record the chat-context hit. One row per unique Neuron
+        // that contributed to a chat answer; counted as actor_kind='user'
+        // because it's a user question that pulled this Neuron in. Lets
+        // "most-consulted by chat" surface in the F141 insights panel.
+        recordAccess(trail, {
+          tenantId,
+          knowledgeBaseId: kbId,
+          documentId: hit.documentId,
+          source: 'chat',
+          actorKind: 'user',
+        });
       }
     }
 
@@ -268,6 +280,13 @@ async function retrieveContext(
       if (!seen.has(hit.id)) {
         seen.add(hit.id);
         citations.push({ documentId: hit.id, path: hit.path, filename: hit.filename });
+        recordAccess(trail, {
+          tenantId,
+          knowledgeBaseId: kbId,
+          documentId: hit.id,
+          source: 'chat',
+          actorKind: 'user',
+        });
       }
     }
   }

@@ -20,6 +20,7 @@ import {
 } from './uploads.js';
 import { triggerIngest } from '../services/ingest.js';
 import { storage, sourcePath } from '../lib/storage.js';
+import { recordAccess } from '../services/access-tracker.js';
 
 /**
  * Order-clause builder for the documents list. Keeps the route handler
@@ -212,16 +213,38 @@ documentRoutes.get('/documents/:docId/provenance', async (c) => {
 documentRoutes.get('/documents/:docId/content', async (c) => {
   const trail = getTrail(c);
   const tenant = getTenant(c);
+  const user = getUser(c);
   const docId = c.req.param('docId');
 
   const doc = await trail.db
-    .select({ id: documents.id, content: documents.content, version: documents.version })
+    .select({
+      id: documents.id,
+      content: documents.content,
+      version: documents.version,
+      kind: documents.kind,
+      knowledgeBaseId: documents.knowledgeBaseId,
+    })
     .from(documents)
     .where(and(eq(documents.id, docId), eq(documents.tenantId, tenant.id)))
     .get();
 
   if (!doc) return c.json({ error: 'Not found' }, 404);
-  return c.json(doc);
+
+  // F141 — track reads on wiki Neurons. Sources are skipped (they're
+  // reference material; "which PDFs get read" is a different signal
+  // we don't need today). Ingest user ID + service-ingest never go
+  // through this endpoint so the actor here is always a human user.
+  if (doc.kind === 'wiki') {
+    recordAccess(trail, {
+      tenantId: tenant.id,
+      knowledgeBaseId: doc.knowledgeBaseId,
+      documentId: doc.id,
+      source: 'api',
+      actorKind: user.id === 'service-ingest' ? 'system' : 'user',
+    });
+  }
+
+  return c.json({ id: doc.id, content: doc.content, version: doc.version });
 });
 
 // NOTE (F17): this endpoint currently writes directly to documents where

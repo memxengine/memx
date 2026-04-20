@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { integer, sqliteTable, text, uniqueIndex, index } from 'drizzle-orm/sqlite-core';
+import { integer, real, sqliteTable, text, uniqueIndex, index } from 'drizzle-orm/sqlite-core';
 
 // ── Tenants (Phase 1 has one, Phase 2 has many) ───────────────────────────────
 
@@ -61,6 +61,10 @@ export const knowledgeBases = sqliteTable(
     lintPolicy: text('lint_policy', { enum: ['trusting', 'strict'] })
       .notNull()
       .default('trusting'),
+    // F141 — per-KB access-telemetry toggle. On by default; curator can
+    // flip off per Trail if they don't want individual reads recorded.
+    // Off → recordAccess is a no-op + rollup skips the KB.
+    trackAccess: integer('track_access', { mode: 'boolean' }).notNull().default(true),
     createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
     updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
   },
@@ -293,5 +297,56 @@ export const wikiBacklinks = sqliteTable(
     // Prevents re-extracting the same link over and over. The link text is
     // part of the key so a Neuron can link twice with different phrasings.
     uniqueIndex('idx_backlinks_unique').on(table.fromDocumentId, table.toDocumentId, table.linkText),
+  ],
+);
+
+// ── F141 — Neuron access telemetry + rollup ──────────────────────────────────
+
+/**
+ * Append-only log of every Neuron read. One row per request — cheap,
+ * indexed, and disposable (old rows can be purged at the rollup step).
+ * actor_kind='llm' reads (compiler, lint) are ignored by the rollup
+ * aggregation so automated passes don't inflate usage weights.
+ */
+export const documentAccess = sqliteTable(
+  'document_access',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+    knowledgeBaseId: text('knowledge_base_id').notNull().references(() => knowledgeBases.id, { onDelete: 'cascade' }),
+    documentId: text('document_id').notNull().references(() => documents.id, { onDelete: 'cascade' }),
+    // Which surface triggered the read: chat | api | mcp | admin-reader | graph-click
+    source: text('source').notNull(),
+    actorKind: text('actor_kind', { enum: ['user', 'llm', 'system'] }).notNull(),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (table) => [
+    index('idx_access_doc').on(table.documentId, table.createdAt),
+    index('idx_access_kb').on(table.knowledgeBaseId, table.createdAt),
+  ],
+);
+
+/**
+ * Rolled-up aggregate — one row per document, updated by the nightly
+ * rollup pass in the F32 lint-scheduler. Callers that need usage
+ * signal (graph node sizing, search tie-break, chat-context bias)
+ * read this table; they don't scan document_access directly.
+ */
+export const documentAccessRollup = sqliteTable(
+  'document_access_rollup',
+  {
+    documentId: text('document_id').primaryKey().references(() => documents.id, { onDelete: 'cascade' }),
+    knowledgeBaseId: text('knowledge_base_id').notNull().references(() => knowledgeBases.id, { onDelete: 'cascade' }),
+    reads7d: integer('reads_7d').notNull().default(0),
+    reads30d: integer('reads_30d').notNull().default(0),
+    reads90d: integer('reads_90d').notNull().default(0),
+    readsTotal: integer('reads_total').notNull().default(0),
+    lastReadAt: text('last_read_at'),
+    // 0-1 normalised per-KB — a KB's hottest Neuron hits 1.0.
+    usageWeight: real('usage_weight').notNull().default(0),
+    rolledUpAt: text('rolled_up_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (table) => [
+    index('idx_rollup_kb').on(table.knowledgeBaseId),
   ],
 );
