@@ -5,8 +5,45 @@ import { spawnClaude } from './claude.js';
 import { ensureMcpConfig } from '../lib/mcp-config.js';
 import { listKbTags } from './tag-aggregate.js';
 
+/**
+ * Collapse a raw spawnClaude error into a one-sentence reason the
+ * curator can act on. spawnClaude surfaces:
+ *   - "claude timed out after <s>s"              → keep verbatim
+ *   - "claude exited 1: { ... JSON blob ... }"   → parse stop_reason
+ *                                                   / subtype + render
+ *                                                   a human sentence
+ *   - anything else                              → first 200 chars
+ */
+function humaniseIngestError(raw: string): string {
+  if (raw.startsWith('claude timed out')) {
+    return `${raw}. Source may be too large for the current compile budget — bump TRAIL_INGEST_TIMEOUT_MS or split the file.`;
+  }
+  const jsonStart = raw.indexOf('{');
+  if (jsonStart > -1) {
+    try {
+      const parsed = JSON.parse(raw.slice(jsonStart));
+      if (parsed.subtype === 'error_max_turns') {
+        return `Compile hit the turn limit (${parsed.num_turns ?? '?'}). Source needs more budget — raise TRAIL_INGEST_MAX_TURNS or split into smaller files.`;
+      }
+      if (parsed.stop_reason) {
+        return `Claude stopped with ${parsed.stop_reason} after ${parsed.num_turns ?? '?'} turns. Retry — transient.`;
+      }
+    } catch {
+      // fall through to generic
+    }
+  }
+  return raw.slice(0, 200);
+}
+
 const INGEST_MODEL = process.env.INGEST_MODEL ?? '';
-const INGEST_TIMEOUT_MS = Number(process.env.INGEST_TIMEOUT_MS ?? 180_000);
+// Interim safety-net budgets while F137 (Chunked Ingest) is in flight.
+// Originals (180s / 25 turns) sized for 3-8 page test PDFs; these bumps
+// cover medium-scale 14-40 page sources without architectural change.
+// F137 will split large PDFs into page-chunks so per-call budgets can
+// shrink back to tight values — these ceilings are a transitional
+// "engine should never fail because of a parameter" contract.
+const INGEST_TIMEOUT_MS = Number(process.env.INGEST_TIMEOUT_MS ?? 1_800_000); // 30 min
+const INGEST_MAX_TURNS = Number(process.env.INGEST_MAX_TURNS ?? 200);
 
 // Per-KB serialisation — one ingest at a time per KB, rest queued.
 // (A KB is the correct granularity here: ingest rewrites shared wiki pages, so
@@ -166,7 +203,7 @@ IMPORTANT RULES:
     'mcp__trail__guide,mcp__trail__search,mcp__trail__read,mcp__trail__write',
     '--dangerously-skip-permissions',
     '--max-turns',
-    '25',
+    String(INGEST_MAX_TURNS),
     '--output-format',
     'json',
     ...(INGEST_MODEL ? ['--model', INGEST_MODEL] : []),
@@ -203,14 +240,17 @@ IMPORTANT RULES:
 
     console.log(`[ingest] Completed "${doc.filename}"`);
   } catch (err) {
-    const errorMsg = err instanceof Error ? err.message : String(err);
-    console.error(`[ingest] Failed for "${doc.filename}":`, errorMsg);
+    const rawMsg = err instanceof Error ? err.message : String(err);
+    const errorMsg = humaniseIngestError(rawMsg);
+    // Keep the raw stack/JSON in the server console for debugging but
+    // show the curator a short plain-language sentence.
+    console.error(`[ingest] Failed for "${doc.filename}":`, rawMsg);
 
     await trail.db
       .update(documents)
       .set({
         status: 'failed',
-        errorMessage: errorMsg.slice(0, 1000),
+        errorMessage: errorMsg,
         updatedAt: new Date().toISOString(),
       })
       .where(eq(documents.id, job.docId))
@@ -222,7 +262,7 @@ IMPORTANT RULES:
       kbId: job.kbId,
       docId: job.docId,
       filename: doc.filename,
-      error: errorMsg.slice(0, 200),
+      error: errorMsg,
     });
   } finally {
     activeIngests.delete(job.kbId);

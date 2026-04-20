@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { documents, type TrailDatabase } from '@trail/db';
 import { eq } from 'drizzle-orm';
 import { requireAuth, getUser, getTenant, getTrail } from '../middleware/auth.js';
-import { processPdf, processDocx } from '@trail/pipelines';
+import { processPdf, processDocx, processPptx, processXlsx } from '@trail/pipelines';
 import { storage, sourcePath } from '../lib/storage.js';
 import { chunkText, storeChunks } from '../services/chunker.js';
 import { triggerIngest } from '../services/ingest.js';
@@ -17,6 +17,8 @@ const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
 // 500-page PDF.
 const PDF_TIMEOUT_MS = Number(process.env.TRAIL_PDF_TIMEOUT_MS ?? 120_000);
 const DOCX_TIMEOUT_MS = Number(process.env.TRAIL_DOCX_TIMEOUT_MS ?? 60_000);
+const PPTX_TIMEOUT_MS = Number(process.env.TRAIL_PPTX_TIMEOUT_MS ?? 90_000);
+const XLSX_TIMEOUT_MS = Number(process.env.TRAIL_XLSX_TIMEOUT_MS ?? 60_000);
 
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -142,8 +144,43 @@ uploadRoutes.post('/knowledge-bases/:kbId/documents/upload', async (c) => {
     });
   }
 
-  // Other binary uploads (office non-docx, images, …) land with status='pending'
-  // until a pipeline picks them up.
+  // .pptx → officeparser walks the OOXML slide tree, one markdown
+  // section per slide. Images dropped for v1.
+  if (ext === 'pptx') {
+    processPptxAsync(trail, docId, tenant.id, kbId, user.id, file.name, buffer).catch(async (err) => {
+      console.error(`[pptx] pipeline failed for ${file.name}:`, err);
+      await trail.db
+        .update(documents)
+        .set({
+          status: 'failed',
+          errorMessage: String(err).slice(0, 1000),
+          updatedAt: new Date().toISOString(),
+        })
+        .where(eq(documents.id, docId))
+        .run();
+    });
+  }
+
+  // .xlsx → SheetJS reads every sheet, converts to markdown tables.
+  // Multi-sheet workbooks emit one `## Sheet: <name>` block per sheet.
+  if (ext === 'xlsx') {
+    processXlsxAsync(trail, docId, tenant.id, kbId, user.id, file.name, buffer).catch(async (err) => {
+      console.error(`[xlsx] pipeline failed for ${file.name}:`, err);
+      await trail.db
+        .update(documents)
+        .set({
+          status: 'failed',
+          errorMessage: String(err).slice(0, 1000),
+          updatedAt: new Date().toISOString(),
+        })
+        .where(eq(documents.id, docId))
+        .run();
+    });
+  }
+
+  // Remaining binary types (doc/ppt legacy Office, xls, images, …)
+  // still land with status='pending'. Legacy formats need separate
+  // libraries; images need a vision pass that's not wired yet.
 
   const doc = await trail.db
     .select()
@@ -245,6 +282,96 @@ export async function processDocxAsync(
     .set({
       content: result.markdown,
       title,
+      status: 'ready',
+      version: 1,
+      updatedAt: new Date().toISOString(),
+    })
+    .where(eq(documents.id, docId))
+    .run();
+
+  if (result.markdown.trim()) {
+    const chunks = chunkText(result.markdown);
+    await storeChunks(trail, docId, tenantId, kbId, chunks);
+  }
+
+  triggerIngest({ trail, docId, kbId, tenantId, userId });
+}
+
+export async function processPptxAsync(
+  trail: TrailDatabase,
+  docId: string,
+  tenantId: string,
+  kbId: string,
+  userId: string,
+  filename: string,
+  buffer: Buffer,
+): Promise<void> {
+  await trail.db
+    .update(documents)
+    .set({ status: 'processing', updatedAt: new Date().toISOString() })
+    .where(eq(documents.id, docId))
+    .run();
+
+  console.log(`[pptx] processing ${filename}...`);
+  const result = await withTimeout(
+    processPptx({ pptxBytes: buffer }),
+    PPTX_TIMEOUT_MS,
+    `pptx extract "${filename}"`,
+  );
+  console.log(`[pptx] ${filename}: ${result.slideCount} slide${result.slideCount === 1 ? '' : 's'} extracted`);
+
+  const title = result.title ?? filename.replace(/\.pptx$/i, '');
+  await trail.db
+    .update(documents)
+    .set({
+      content: result.markdown,
+      title,
+      pageCount: result.slideCount,
+      status: 'ready',
+      version: 1,
+      updatedAt: new Date().toISOString(),
+    })
+    .where(eq(documents.id, docId))
+    .run();
+
+  if (result.markdown.trim()) {
+    const chunks = chunkText(result.markdown);
+    await storeChunks(trail, docId, tenantId, kbId, chunks);
+  }
+
+  triggerIngest({ trail, docId, kbId, tenantId, userId });
+}
+
+export async function processXlsxAsync(
+  trail: TrailDatabase,
+  docId: string,
+  tenantId: string,
+  kbId: string,
+  userId: string,
+  filename: string,
+  buffer: Buffer,
+): Promise<void> {
+  await trail.db
+    .update(documents)
+    .set({ status: 'processing', updatedAt: new Date().toISOString() })
+    .where(eq(documents.id, docId))
+    .run();
+
+  console.log(`[xlsx] processing ${filename}...`);
+  const result = await withTimeout(
+    processXlsx({ xlsxBytes: buffer, filename }),
+    XLSX_TIMEOUT_MS,
+    `xlsx extract "${filename}"`,
+  );
+  console.log(`[xlsx] ${filename}: ${result.sheetCount} sheet${result.sheetCount === 1 ? '' : 's'} extracted`);
+
+  const title = result.title ?? filename.replace(/\.xlsx$/i, '');
+  await trail.db
+    .update(documents)
+    .set({
+      content: result.markdown,
+      title,
+      pageCount: result.sheetCount,
       status: 'ready',
       version: 1,
       updatedAt: new Date().toISOString(),

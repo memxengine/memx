@@ -12,7 +12,12 @@ import { eq, and, inArray, asc, desc, type SQL } from 'drizzle-orm';
 import { submitCuratorEdit, VersionConflictError, resolveKbId } from '@trail/core';
 import { requireAuth, getUser, getTenant, getTrail } from '../middleware/auth.js';
 import { chunkText, storeChunks } from '../services/chunker.js';
-import { processPdfAsync, processDocxAsync } from './uploads.js';
+import {
+  processPdfAsync,
+  processDocxAsync,
+  processPptxAsync,
+  processXlsxAsync,
+} from './uploads.js';
 import { triggerIngest } from '../services/ingest.js';
 import { storage, sourcePath } from '../lib/storage.js';
 
@@ -474,9 +479,13 @@ documentRoutes.post('/documents/:docId/reprocess', async (c) => {
     processPdfAsync(trail, doc.id, doc.tenantId, doc.knowledgeBaseId, user.id, doc.filename, buffer).catch(onFail);
   } else if (doc.fileType === 'docx') {
     processDocxAsync(trail, doc.id, doc.tenantId, doc.knowledgeBaseId, user.id, doc.filename, buffer).catch(onFail);
+  } else if (doc.fileType === 'pptx') {
+    processPptxAsync(trail, doc.id, doc.tenantId, doc.knowledgeBaseId, user.id, doc.filename, buffer).catch(onFail);
+  } else if (doc.fileType === 'xlsx') {
+    processXlsxAsync(trail, doc.id, doc.tenantId, doc.knowledgeBaseId, user.id, doc.filename, buffer).catch(onFail);
   } else {
     return c.json(
-      { error: `No reprocess pipeline for .${doc.fileType}. Supported: pdf, docx.` },
+      { error: `No reprocess pipeline for .${doc.fileType}. Supported: pdf, docx, pptx, xlsx.` },
       400,
     );
   }

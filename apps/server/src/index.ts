@@ -5,6 +5,7 @@ import { recoverZombieIngests } from './bootstrap/zombie-ingest.js';
 import { rewriteWikiToNeurons } from './bootstrap/rewrite-wiki-paths.js';
 import { cleanupExternalOrphans } from './bootstrap/F98-cleanup-external-orphans.js';
 import { seedMissingGlossaryNeurons } from './bootstrap/F102-seed-glossary-neurons.js';
+import { recoverPendingSources } from './bootstrap/recover-pending-sources.js';
 import { startContradictionLint } from './services/contradiction-lint.js';
 import { backfillReferences, startReferenceExtractor } from './services/reference-extractor.js';
 import { backfillBacklinks, startBacklinkExtractor } from './services/backlink-extractor.js';
@@ -33,6 +34,14 @@ await cleanupExternalOrphans(trail);
 // the Neuron for KBs created before F102 landed so the compile-pipeline
 // has something to str_replace into on subsequent ingests.
 await seedMissingGlossaryNeurons(trail);
+// Re-run extractor on any source stuck in `status='pending'` with a
+// supported file type (pdf/docx/pptx/xlsx). Covers two cases:
+// (1) uploads that predate the extractor for their type (e.g. a PPTX
+// uploaded before the PPTX pipeline shipped), (2) server-crashed-
+// mid-upload rows. Unsupported types stay pending — they need new
+// pipelines. Fire-and-forget: the processXAsync helpers own their
+// status transitions.
+await recoverPendingSources(trail);
 await backfillReferences(trail);
 await backfillBacklinks(trail);
 

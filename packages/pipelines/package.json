@@ -12,8 +12,11 @@
   "dependencies": {
     "@trail/shared": "workspace:*",
     "@trail/storage": "workspace:*",
+    "jszip": "^3.10.1",
     "mammoth": "^1.12.0",
-    "pdfjs-dist": "^4.7.76"
+    "officeparser": "^5.1.1",
+    "pdfjs-dist": "^4.7.76",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/bun": "^1.1.0",
