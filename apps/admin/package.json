@@ -12,9 +12,12 @@
   "dependencies": {
     "@preact/signals": "^2.9.0",
     "@trail/shared": "workspace:*",
+    "graphology": "^0.26.0",
+    "graphology-layout-forceatlas2": "^0.10.1",
     "marked": "^15.0.0",
     "preact": "^10.23.0",
-    "preact-iso": "^2.9.0"
+    "preact-iso": "^2.9.0",
+    "sigma": "^3.0.1"
   },
   "devDependencies": {
     "@preact/preset-vite": "^2.9.0",

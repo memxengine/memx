@@ -28,6 +28,7 @@ export {
   detectStale,
   detectContradictions,
 } from './lint/index.js';
+export { DEFAULT_HUB_PAGES } from './lint/orphans.js';
 export type {
   LintFinding,
   LintOptions,

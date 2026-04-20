@@ -9,6 +9,7 @@ import { SourcesPanel } from './panels/sources';
 import { SearchPanel } from './panels/search';
 import { ChatPanel } from './panels/chat';
 import { GlossaryPanel } from './panels/glossary';
+import { GraphPanel } from './panels/graph';
 import { PlayPanel } from './panels/play';
 import { SettingsTrailPanel } from './panels/settings-trail';
 import { SettingsAccountPanel } from './panels/settings-account';
@@ -28,6 +29,7 @@ function Main() {
           <Route path="/kb/:kbId/queue" component={QueuePanel} />
           <Route path="/kb/:kbId/neurons" component={WikiTreePanel} />
           <Route path="/kb/:kbId/neurons/:slug" component={WikiReaderPanel} />
+          <Route path="/kb/:kbId/graph" component={GraphPanel} />
           <Route path="/kb/:kbId/sources" component={SourcesPanel} />
           <Route path="/kb/:kbId/search" component={SearchPanel} />
           <Route path="/kb/:kbId/chat" component={ChatPanel} />
