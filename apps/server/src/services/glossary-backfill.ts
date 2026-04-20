@@ -104,6 +104,7 @@ export async function backfillGlossaryForKb(
   const batch = eligible.slice(0, MAX_NEURONS_PER_PROMPT);
   const lang = kb.language === 'da' ? 'da' : 'en';
   const prompt = buildPrompt(kb.name, batch, lang);
+  const knownSlugs = new Set(batch.map((n) => n.filename.replace(/\.md$/i, '')));
 
   let rawResponse: string;
   try {
@@ -116,7 +117,7 @@ export async function backfillGlossaryForKb(
     return 0;
   }
 
-  const entries = parseEntries(rawResponse);
+  const entries = parseEntries(rawResponse, knownSlugs);
   if (entries.length === 0) {
     console.log(`[F102 backfill] LLM produced no entries for KB "${kb.name}"`);
     return 0;
@@ -135,17 +136,23 @@ interface NeuronExcerpt {
 }
 
 function buildPrompt(kbName: string, neurons: NeuronExcerpt[], lang: 'en' | 'da'): string {
+  // Emit the filename (without .md) as the section id. The LLM uses
+  // this exact string when returning `sources` so the linker can
+  // produce valid [[neuron-link]] footers that resolve to the doc.
   const body = neurons
     .map((n) => {
+      const slug = n.filename.replace(/\.md$/i, '');
       const heading = n.title || n.filename;
       const snippet = stripFrontmatter(n.content ?? '').slice(0, MAX_NEURON_EXCERPT_CHARS);
-      return `### ${heading}\n\n${snippet}`;
+      return `### ${heading}\n\n_id: ${slug}_\n\n${snippet}`;
     })
     .join('\n\n---\n\n');
 
   const instruction =
     lang === 'da'
       ? `Du får indholdet af en vidensbase ved navn "${kbName}". Find op til 20 DOMÆNE-SPECIFIKKE fagtermer der optræder i materialet — termer med en defineret betydning som en læser ville slå op i en ordliste. Skriv hver som en markdown-sektion.
+
+For HVER term skal du også angive hvilke Neuroner (sektioner i materialet nedenfor) der omtaler eller definerer den. Brug Neuronens \`_id:\`-værdi (filnavn uden .md). Max 3 sources per term, kun dem der VIRKELIG introducerer eller beskriver termen.
 
 Udelad:
 - App-terminologi (Neuron, Kilde, Kurator, Trail, Lint, Curation Queue, etc.) — ikke relevant her
@@ -155,10 +162,12 @@ Udelad:
 
 Returner UDELUKKENDE gyldig JSON i formatet:
 
-{"entries": [{"term": "Fagterm", "definition": "1-3 sætninger der definerer termen baseret på hvordan den bruges i materialet."}]}
+{"entries": [{"term": "Fagterm", "definition": "1-3 sætninger der definerer termen baseret på hvordan den bruges i materialet.", "sources": ["neuron-id-1", "neuron-id-2"]}]}
 
 Ingen kommentarer, ingen markdown-fences, ingen andre nøgler.`
       : `You are given the content of a knowledge base called "${kbName}". Find up to 20 DOMAIN-SPECIFIC terms that appear in the material — terms with a defined meaning a reader would look up in a glossary. Write each as a markdown section.
+
+For EACH term also list which Neurons (sections in the material below) introduce or describe it. Use the Neuron's \`_id:\` value (filename without .md). Max 3 sources per term, only ones that actually introduce or describe the term.
 
 Exclude:
 - App-terminology (Neuron, Source, Curator, Trail, Lint, Curation Queue, etc.) — not relevant here
@@ -168,7 +177,7 @@ Exclude:
 
 Return ONLY valid JSON in this format:
 
-{"entries": [{"term": "Term", "definition": "1-3 sentences defining the term based on how it is used in the material."}]}
+{"entries": [{"term": "Term", "definition": "1-3 sentences defining the term based on how it is used in the material.", "sources": ["neuron-id-1", "neuron-id-2"]}]}
 
 No comments, no markdown fences, no other keys.`;
 
@@ -185,18 +194,35 @@ function stripFrontmatter(s: string): string {
 interface LlmEntry {
   term: string;
   definition: string;
+  sources: string[];
 }
 
-function parseEntries(raw: string): LlmEntry[] {
+function parseEntries(raw: string, knownSlugs: Set<string>): LlmEntry[] {
   const text = extractAssistantText(raw).trim();
   const json = text.replace(/^```(?:json)?\s*|\s*```$/g, '').trim();
   try {
-    const parsed = JSON.parse(json) as { entries?: LlmEntry[] };
+    const parsed = JSON.parse(json) as {
+      entries?: Array<{ term?: unknown; definition?: unknown; sources?: unknown }>;
+    };
     if (!parsed.entries || !Array.isArray(parsed.entries)) return [];
     return parsed.entries
-      .filter((e): e is LlmEntry => typeof e?.term === 'string' && typeof e?.definition === 'string')
-      .map((e) => ({ term: e.term.trim(), definition: e.definition.trim() }))
-      .filter((e) => e.term.length > 0 && e.definition.length > 0);
+      .map((e) => {
+        if (typeof e?.term !== 'string' || typeof e?.definition !== 'string') return null;
+        const term = e.term.trim();
+        const definition = e.definition.trim();
+        if (!term || !definition) return null;
+        // Filter the LLM's source list through knownSlugs so a
+        // hallucinated Neuron id never ends up in the footer.
+        const sources = Array.isArray(e.sources)
+          ? e.sources
+              .filter((s): s is string => typeof s === 'string')
+              .map((s) => s.trim().replace(/\.md$/i, ''))
+              .filter((s) => s.length > 0 && knownSlugs.has(s))
+              .slice(0, 3)
+          : [];
+        return { term, definition, sources };
+      })
+      .filter((e): e is LlmEntry => e !== null);
   } catch {
     return [];
   }
@@ -236,7 +262,15 @@ function buildGlossaryContent(entries: LlmEntry[], lang: 'en' | 'da'): string {
         ].join('\n');
 
   const sorted = [...entries].sort((a, b) => a.term.localeCompare(b.term));
-  const sections = sorted.map((e) => `## ${e.term}\n\n${e.definition}\n`).join('\n');
+  const seeAlsoLabel = lang === 'da' ? 'Se også' : 'See also';
+  const sections = sorted
+    .map((e) => {
+      const body = `## ${e.term}\n\n${e.definition}`;
+      if (e.sources.length === 0) return `${body}\n`;
+      const links = e.sources.map((slug) => `[[${slug}]]`).join(', ');
+      return `${body}\n\n_${seeAlsoLabel}: ${links}_\n`;
+    })
+    .join('\n');
   return `${header}\n${sections}`;
 }
 
