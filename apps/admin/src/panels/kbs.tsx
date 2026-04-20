@@ -93,10 +93,9 @@ export function KnowledgeBasesPanel() {
         <button
           type="button"
           onClick={() => setModalOpen(true)}
-          class="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-[color:var(--color-fg)] text-[color:var(--color-bg)] text-sm font-medium hover:bg-[color:var(--color-fg)]/90 transition active:scale-[0.98]"
+          class="shrink-0 px-3 py-1.5 text-[11px] font-mono uppercase tracking-wider rounded-md border border-[color:var(--color-border-strong)] hover:border-[color:var(--color-accent)] hover:text-[color:var(--color-accent)] transition"
         >
-          <span class="text-base leading-none">+</span>
-          <span>{t('kbs.newTrail.button')}</span>
+          + {t('kbs.newTrail.button')}
         </button>
         <NewTrailModal
           open={modalOpen}
@@ -130,10 +129,9 @@ export function KnowledgeBasesPanel() {
         <button
           type="button"
           onClick={() => setModalOpen(true)}
-          class="inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-[color:var(--color-fg)] text-[color:var(--color-bg)] text-sm font-medium hover:bg-[color:var(--color-fg)]/90 transition active:scale-[0.98] shrink-0"
+          class="shrink-0 px-3 py-1.5 text-[11px] font-mono uppercase tracking-wider rounded-md border border-[color:var(--color-border-strong)] hover:border-[color:var(--color-accent)] hover:text-[color:var(--color-accent)] transition"
         >
-          <span class="text-base leading-none">+</span>
-          <span>{t('kbs.newTrail.button')}</span>
+          + {t('kbs.newTrail.button')}
         </button>
       </header>
       <ul class="space-y-2">
