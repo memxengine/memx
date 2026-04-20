@@ -12,10 +12,11 @@
  *
  *   1. Run orphans + stale detectors (F32.1) via `runLint`. Cheap SQL; any
  *      new findings emit as queue candidates and reach admin via broadcaster.
- *   2. Re-scan every ready Neuron for contradictions against its top-K
- *      peers. Sequential — the checker's SerialRunner already rate-limits
- *      via its internal queue, but we call it serially per-doc to avoid
- *      holding a huge task list in memory.
+ *   2. Re-scan a sample of ready Neurons for contradictions against their
+ *      top-K peers (F32 sampling — see runContradictions). Sequential — the
+ *      checker's SerialRunner already rate-limits via its internal queue,
+ *      but we call it serially per-doc to avoid holding a huge task list
+ *      in memory.
  *
  * The full pass is idempotent: lintFingerprint dedupes re-emissions against
  * any pending/approved candidate with the same fingerprint.
@@ -29,9 +30,15 @@
  *     nightly 24h schedule carries the load as intended.)
  *   - TRAIL_LINT_SKIP_CONTRADICTIONS (default off; set to 1 to skip the
  *     LLM pass and run only orphans+stale — useful when API/CLI unavailable)
+ *   - TRAIL_CONTRADICTION_SAMPLE_SIZE (default 500; cap on Neurons scanned
+ *     per KB per 24h pass. At N≈8k a full pass exceeds 24h wall-clock —
+ *     sampling keeps the scheduler sustainable. 0 disables the cap.)
+ *   - TRAIL_CONTRADICTION_RECENT_FRACTION (default 0.6; share of the sample
+ *     drawn from most-recently-updated Neurons. Remainder is uniform random
+ *     over the rest of the KB so long-tail Neurons still get revisited.)
  */
 import { documents, knowledgeBases, type TrailDatabase } from '@trail/db';
-import { and, eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { runLint, type LintReport } from '@trail/core';
 import { broadcaster } from './broadcast.js';
 import {
@@ -43,6 +50,15 @@ const SCHEDULE_HOURS = Number(process.env.TRAIL_LINT_SCHEDULE_HOURS ?? 24);
 const INITIAL_DELAY_MS =
   Number(process.env.TRAIL_LINT_INITIAL_DELAY_SECONDS ?? 14_400) * 1000;
 const SKIP_CONTRADICTIONS = process.env.TRAIL_LINT_SKIP_CONTRADICTIONS === '1';
+const SAMPLE_SIZE = Number(process.env.TRAIL_CONTRADICTION_SAMPLE_SIZE ?? 500);
+const RECENT_FRACTION = clamp01(
+  Number(process.env.TRAIL_CONTRADICTION_RECENT_FRACTION ?? 0.6),
+);
+
+function clamp01(n: number): number {
+  if (!Number.isFinite(n)) return 0.6;
+  return Math.max(0, Math.min(1, n));
+}
 
 type ScannedKB = {
   id: string;
@@ -181,12 +197,14 @@ async function runOrphansStale(trail: TrailDatabase, kb: ScannedKB): Promise<Lin
 }
 
 async function runContradictions(trail: TrailDatabase, kb: ScannedKB): Promise<number> {
-  // List every ready, non-archived Neuron in the KB. We scan them
-  // sequentially — each scan spawns a claude -p subprocess that takes
-  // 1-3s per top-K pair, so parallelising would swamp the CLI token
-  // budget and the LLM host.
+  // At N≈8k a full sequential pass exceeds 24h wall-clock (each doc =
+  // top-K × 1-3s Haiku call × K=5 → ~7.5s per doc → ~16h at 8k). Past that
+  // the scheduler can't keep up and backs up indefinitely. SAMPLE_SIZE
+  // caps the per-pass workload; the sample is biased toward recent edits
+  // (highest contradiction yield) with a random tail so long-idle Neurons
+  // still get revisited occasionally.
   const neurons = await trail.db
-    .select({ id: documents.id })
+    .select({ id: documents.id, updatedAt: documents.updatedAt })
     .from(documents)
     .where(
       and(
@@ -197,17 +215,63 @@ async function runContradictions(trail: TrailDatabase, kb: ScannedKB): Promise<n
         eq(documents.status, 'ready'),
       ),
     )
+    .orderBy(desc(documents.updatedAt))
     .all();
 
   if (neurons.length === 0) return 0;
 
+  const sample = sampleNeurons(neurons.map((n) => n.id), SAMPLE_SIZE, RECENT_FRACTION);
+  if (sample.length < neurons.length) {
+    console.log(
+      `[lint-scheduler] KB "${kb.name}" — sampling ${sample.length}/${neurons.length} Neurons (recent=${RECENT_FRACTION})`,
+    );
+  }
+
   const checker = makeContradictionChecker();
-  for (const n of neurons) {
+  for (const id of sample) {
     try {
-      await scanDocForContradictions(trail, n.id, checker);
+      await scanDocForContradictions(trail, id, checker);
     } catch (err) {
-      console.error(`[lint-scheduler] contradiction scan failed for ${n.id}:`, err);
+      console.error(`[lint-scheduler] contradiction scan failed for ${id}:`, err);
     }
   }
-  return neurons.length;
+  return sample.length;
+}
+
+/**
+ * Pick up to `cap` Neurons from the ordered-by-updatedAt-desc list.
+ * Strategy:
+ *   1. Take the top `cap * recentFraction` most-recently-updated.
+ *   2. Fill the rest with a uniform random sample from the remainder.
+ *
+ * This mirrors the SCALING-ANALYSIS §5 recommendation: recent edits have
+ * the highest contradiction yield (they were just merged against a growing
+ * corpus), while the random tail guarantees every Neuron is eventually
+ * re-scanned even if it hasn't been touched in years. cap=0 disables.
+ *
+ * Exported for testability.
+ */
+export function sampleNeurons(
+  ids: string[],
+  cap: number,
+  recentFraction: number,
+): string[] {
+  if (cap <= 0 || ids.length <= cap) return ids;
+  const recentCount = Math.min(ids.length, Math.floor(cap * recentFraction));
+  const randomCount = cap - recentCount;
+  const recent = ids.slice(0, recentCount);
+  const tail = ids.slice(recentCount);
+  if (randomCount <= 0 || tail.length === 0) return recent;
+  // Fisher-Yates partial shuffle — only pick the first `randomCount`.
+  const pool = tail.slice();
+  const picked: string[] = [];
+  const take = Math.min(randomCount, pool.length);
+  for (let i = 0; i < take; i++) {
+    const j = i + Math.floor(Math.random() * (pool.length - i));
+    const tmp = pool[i]!;
+    pool[i] = pool[j]!;
+    pool[j] = tmp;
+    picked.push(pool[i]!);
+  }
+  return [...recent, ...picked];
 }
