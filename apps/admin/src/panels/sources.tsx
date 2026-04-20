@@ -47,6 +47,9 @@ export function SourcesPanel() {
   const [docs, setDocs] = useState<Document[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState<null | 'retry' | 'reingest' | 'archive'>(null);
+  const [bulkToast, setBulkToast] = useState<string | null>(null);
   // Custom modal for archive confirmation — no native window.confirm.
   const [archiveTarget, setArchiveTarget] = useState<Document | null>(null);
   const [archiveBusy, setArchiveBusy] = useState(false);
@@ -194,6 +197,65 @@ export function SourcesPanel() {
     });
   }, []);
 
+  // Bulk-selection helpers. Select-all scopes to the currently-visible
+  // doc list; changing filter tab clears the selection so we never
+  // act on rows the curator can't see.
+  const toggleSelected = useCallback((id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+  const selectAll = useCallback(() => {
+    if (!docs) return;
+    setSelected(new Set(docs.map((d) => d.id)));
+  }, [docs]);
+  const clearSelected = useCallback(() => setSelected(new Set()), []);
+  // Reset selection when the filter tab changes (active/archived/all) —
+  // a curator clicking Archive with rows selected on the Active tab
+  // shouldn't accidentally act on archived rows they can't see.
+  useEffect(() => {
+    setSelected(new Set());
+  }, [filter]);
+
+  // Bulk actions just loop through existing single-doc endpoints. Not
+  // the most efficient (one HTTP request per doc) but keeps server-
+  // side logic untouched and guarantees identical semantics to the
+  // per-row buttons. Promise.all for parallelism; await all before
+  // refreshing the list.
+  const runBulk = useCallback(
+    async (kind: 'retry' | 'reingest' | 'archive'): Promise<void> => {
+      if (selected.size === 0 || !docs) return;
+      setBulkBusy(kind);
+      const ids = Array.from(selected);
+      const fn =
+        kind === 'retry'
+          ? retryDocument
+          : kind === 'reingest'
+          ? reingestDocument
+          : archiveDocument;
+      const results = await Promise.allSettled(ids.map((id) => fn(id)));
+      const ok = results.filter((r) => r.status === 'fulfilled').length;
+      const failed = results.length - ok;
+      setBulkToast(
+        failed === 0
+          ? t('sources.bulkDoneToast', { kind: t(`sources.bulk.${kind}` as never), ok })
+          : t('sources.bulkPartialToast', {
+              kind: t(`sources.bulk.${kind}` as never),
+              ok,
+              failed,
+            }),
+      );
+      setSelected(new Set());
+      setBulkBusy(null);
+      reload();
+      setTimeout(() => setBulkToast(null), 4000);
+    },
+    [docs, reload, selected],
+  );
+
   return (
     <div class="page-shell">
       <header class="mb-6">
@@ -245,6 +307,73 @@ export function SourcesPanel() {
         </div>
       ) : null}
 
+      {docs && docs.length > 0 ? (
+        <div class="flex items-center justify-between gap-4 mb-3 text-xs font-mono text-[color:var(--color-fg-muted)]">
+          <label class="inline-flex items-center gap-2 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              class="cursor-pointer accent-[color:var(--color-accent)]"
+              checked={selected.size > 0 && selected.size === docs.length}
+              // indeterminate = partial selection — the DOM attr has to
+              // be set imperatively on the element; ref-callback does it.
+              ref={(el) => {
+                if (el) el.indeterminate = selected.size > 0 && selected.size < docs.length;
+              }}
+              onChange={() => (selected.size === docs.length ? clearSelected() : selectAll())}
+            />
+            <span>
+              {selected.size > 0
+                ? t('common.selected', { n: selected.size })
+                : t('common.selectAll', { n: docs.length })}
+            </span>
+          </label>
+          {selected.size > 0 ? (
+            <div class="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => runBulk('retry')}
+                disabled={bulkBusy !== null}
+                class="text-[11px] font-mono text-[color:var(--color-accent)] hover:text-[color:var(--color-fg)] disabled:opacity-50 transition"
+                title={t('sources.retryHint')}
+              >
+                {bulkBusy === 'retry' ? '…' : t('sources.bulkRetry', { n: selected.size })}
+              </button>
+              <button
+                type="button"
+                onClick={() => runBulk('reingest')}
+                disabled={bulkBusy !== null}
+                class="text-[11px] font-mono text-[color:var(--color-accent)] hover:text-[color:var(--color-fg)] disabled:opacity-50 transition"
+                title={t('sources.reingestHint')}
+              >
+                {bulkBusy === 'reingest' ? '…' : t('sources.bulkReingest', { n: selected.size })}
+              </button>
+              <button
+                type="button"
+                onClick={() => runBulk('archive')}
+                disabled={bulkBusy !== null}
+                class="text-[11px] font-mono text-[color:var(--color-danger)] hover:opacity-80 disabled:opacity-50 transition"
+              >
+                {bulkBusy === 'archive' ? '…' : t('sources.bulkArchive', { n: selected.size })}
+              </button>
+              <button
+                type="button"
+                onClick={clearSelected}
+                disabled={bulkBusy !== null}
+                class="text-[11px] font-mono text-[color:var(--color-fg-subtle)] hover:text-[color:var(--color-fg)] transition"
+              >
+                {t('common.clear')}
+              </button>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      {bulkToast ? (
+        <div class="mb-3 px-3 py-2 rounded-md border border-[color:var(--color-success)]/30 bg-[color:var(--color-success)]/5 text-[color:var(--color-success)] text-xs font-mono">
+          {bulkToast}
+        </div>
+      ) : null}
+
       <ul class="space-y-2">
         {docs?.map((doc) => (
           <SourceRow
@@ -256,6 +385,8 @@ export function SourcesPanel() {
             onRestore={onRestore}
             onRetry={onRetry}
             onReingest={onReingest}
+            isSelected={selected.has(doc.id)}
+            onToggleSelected={toggleSelected}
           />
         ))}
       </ul>
@@ -331,6 +462,8 @@ interface RowProps {
   onRestore: (d: Document) => void;
   onRetry: (d: Document) => void;
   onReingest: (d: Document) => void;
+  isSelected: boolean;
+  onToggleSelected: (id: string) => void;
 }
 
 function SourceRow({
@@ -341,6 +474,8 @@ function SourceRow({
   onRestore,
   onRetry,
   onReingest,
+  isSelected,
+  onToggleSelected,
 }: RowProps) {
   const canExpand = doc.status === 'ready' || doc.status === 'failed' || doc.archived;
   const isArchived = doc.archived;
@@ -356,7 +491,15 @@ function SourceRow({
       }
     >
       <div class="px-4 py-3 flex items-baseline justify-between gap-4">
-        <div class="min-w-0">
+        <div class="min-w-0 flex items-baseline gap-3">
+          <input
+            type="checkbox"
+            class="mt-[3px] shrink-0 cursor-pointer accent-[color:var(--color-accent)]"
+            checked={isSelected}
+            onChange={() => onToggleSelected(doc.id)}
+            aria-label={t('common.selectRow', { name: doc.filename })}
+          />
+          <div class="min-w-0 flex-1">
           <div class="flex items-center gap-2 mb-0.5">
             <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono uppercase tracking-wider bg-[color:var(--color-bg)] border border-[color:var(--color-border)] text-[color:var(--color-fg-muted)]">
               {doc.fileType || 'doc'}
@@ -391,6 +534,7 @@ function SourceRow({
           {doc.status === 'processing' || doc.status === 'pending' ? (
             <ProcessingIndicator startedAt={doc.updatedAt} />
           ) : null}
+          </div>
         </div>
         {/* Row actions. Logic by state:
             - Archived rows → Restore only (one-click undo, no modal).
