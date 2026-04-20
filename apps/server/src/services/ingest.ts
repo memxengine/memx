@@ -127,7 +127,7 @@ Your job is to ingest this source into the wiki. Follow these steps exactly:
    - Same pattern under /neurons/entities/. Same \`sources\` frontmatter rule applies — every entity page MUST list ${sFilename} in its \`sources: [...]\`.
 
 7. Maintain the glossary (F102):
-   - Call \`read\` with path="/neurons/glossary.md" to see the current vocabulary. This Neuron lists domain-specific fagtermer with short definitions (different from the app-terminology seed entries it already has).
+   - Call \`read\` with path="/neurons/glossary.md" to see the current vocabulary. This Neuron collects DOMAIN-SPECIFIC fagtermer drawn from Sources — starts empty, grows as Sources are ingested.
    - If this source INTRODUCES or clearly REFINES 1–3 domain-specific terms that belong in a glossary (not casual mentions — terms that have a defined meaning the reader would want to look up), add or update them:
      * For a new term: \`write\` with command="str_replace", title="/neurons/glossary.md" — append a new \`## <Term>\\n\\n<1–3 sentence definition drawn from this source>\\n\` section. Place it alphabetically if possible.
      * For an existing term whose definition this source sharpens or extends: \`write\` str_replace the existing definition block with a revised version. Preserve the heading.

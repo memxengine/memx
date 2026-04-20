@@ -34,6 +34,7 @@ import { createCandidate } from '@trail/core';
 import {
   buildSeedGlossary,
   POLLUTED_SEED_MARKERS,
+  POLLUTED_MARKER_THRESHOLD,
 } from '../services/glossary-seed.js';
 
 const GLOSSARY_FILENAME = 'glossary.md';
@@ -88,7 +89,8 @@ export async function seedMissingGlossaryNeurons(trail: TrailDatabase): Promise<
     }
 
     const content = existing.content ?? '';
-    const isPolluted = POLLUTED_SEED_MARKERS.some((m) => content.includes(m));
+    const markerHits = POLLUTED_SEED_MARKERS.filter((m) => content.includes(m)).length;
+    const isPolluted = markerHits >= POLLUTED_MARKER_THRESHOLD;
     if (isPolluted) {
       const replacement = buildSeedGlossary(kb.language);
       await rewriteGlossary(trail, kb, existing.id, existing.version, replacement);

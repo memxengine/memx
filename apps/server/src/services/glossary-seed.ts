@@ -21,12 +21,34 @@
  * packages/core/src/lint/orphans.ts DEFAULT_HUB_PAGES).
  */
 
-/** Signature the bootstrap uses to detect the old polluted seed and
- *  replace it with the empty template. `## Fingeraftryk` is the DA
- *  label for "Fingerprint" (trail-app terminology) — it has no reason
- *  to appear in any domain glossary the pipeline would build. Matching
- *  presence of either language's signature is enough. */
-export const POLLUTED_SEED_MARKERS = ['## Fingeraftryk', '## Fingerprint'];
+/** Signatures the bootstrap uses to detect the old polluted seed and
+ *  replace it with the empty template. Trail-APP terminology entries
+ *  the first F102 ship mis-seeded from data/glossary.json. Both
+ *  languages' labels listed so cleanup works regardless of kb.language.
+ *
+ *  Threshold: ≥2 of these must appear in the content to count as
+ *  polluted. Single-match would false-positive a crypto-glossary that
+ *  legitimately defines "## Fingeraftryk" (fingerprint) as a domain
+ *  term — but no domain glossary would emit Neuron+Kurator+Queue all
+ *  together. The 2-marker threshold draws a clean line. */
+export const POLLUTED_SEED_MARKERS = [
+  // Danish
+  '## Neuron',
+  '## Kilde',
+  '## Kurator',
+  '## Kurations-kø',
+  '## Kandidat',
+  '## Handling',
+  '## Fingeraftryk',
+  // English
+  '## Source',
+  '## Curator',
+  '## Curation Queue',
+  '## Candidate',
+  '## Action',
+  '## Fingerprint',
+];
+export const POLLUTED_MARKER_THRESHOLD = 2;
 
 /**
  * Build the empty-template markdown body for a newly-created KB's
