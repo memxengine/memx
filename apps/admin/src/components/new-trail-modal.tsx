@@ -134,29 +134,36 @@ export function NewTrailModal({
         </label>
 
         <div>
-          <span class="block text-[11px] font-mono uppercase tracking-wider text-[color:var(--color-fg-subtle)] mb-2">
-            {t('kbs.newTrail.languageLabel')}
-          </span>
-          <div class="flex gap-2">
-            {(['da', 'en'] as const).map((lang) => {
-              const active = language === lang;
+          <label class="block mb-2">
+            <span class="text-sm font-medium">{t('settings.trail.languageLabel')}</span>
+          </label>
+          <div
+            class="inline-flex items-center rounded-md border border-[color:var(--color-border)] overflow-hidden"
+            role="group"
+          >
+            {(['da', 'en'] as const).map((code) => {
+              const active = language === code;
               return (
                 <button
-                  key={lang}
+                  key={code}
                   type="button"
-                  onClick={() => setLanguage(lang)}
+                  onClick={() => setLanguage(code)}
                   class={
-                    'px-3 py-1.5 text-sm rounded-md border font-medium transition active:scale-[0.98] ' +
+                    'px-3 py-1.5 text-xs font-mono uppercase tracking-wide transition ' +
                     (active
-                      ? 'border-[color:var(--color-accent)] bg-[color:var(--color-accent)]/15 text-[color:var(--color-fg)]'
-                      : 'border-[color:var(--color-border)] text-[color:var(--color-fg-muted)] hover:border-[color:var(--color-border-strong)] hover:text-[color:var(--color-fg)]')
+                      ? 'bg-[color:var(--color-accent)] text-[color:var(--color-accent-fg)]'
+                      : 'text-[color:var(--color-fg-muted)] hover:text-[color:var(--color-fg)] hover:bg-[color:var(--color-bg-card)]')
                   }
+                  aria-pressed={active}
                 >
-                  {t(`kbs.newTrail.language_${lang}`)}
+                  {code}
                 </button>
               );
             })}
           </div>
+          <p class="mt-1.5 text-[11px] text-[color:var(--color-fg-subtle)] max-w-md">
+            {t('settings.trail.languageHint')}
+          </p>
         </div>
 
         {error ? (
