@@ -199,7 +199,7 @@
     "retry": "Retry",
     "retryHint": "Re-run the full pipeline (extract + ingest) against the uploaded bytes",
     "reingest": "Re-ingest",
-    "reingestHint": "Skip file-format extract; re-run only trail's LLM Neuron compiler against existing content",
+    "reingestHint": "Extraction was successful — click to re-run trail's LLM Neuron compiler against the extracted content",
     "reingestTitle": "Re-run ingest on this source?",
     "reingestBody": "This re-runs trail's LLM Neuron compiler against the existing extracted content. Expect it to take 1-2 minutes and use LLM tokens. Existing Neurons from this source will be replaced by the new compile.",
     "archive": "Archive",
