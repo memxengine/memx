@@ -26,6 +26,7 @@ import { ConfidencePill } from '../components/confidence-pill';
 import {
   CONNECTORS,
   LIVE_CONNECTORS,
+  ROADMAP_CONNECTORS,
   type ConnectorId,
 } from '@trail/shared';
 import { useEvents, onStreamOpen, onFocusRefresh, debounce } from '../lib/event-stream';
@@ -659,25 +660,36 @@ export function QueuePanel() {
           ) : null}
         </div>
         {connectorFilterOpen || selectedConnectors.size > 0 ? (
-          availableConnectors.size > 0 ? (
-            <div class="flex flex-wrap gap-2">
-              {LIVE_CONNECTORS.filter(
-                (id) => availableConnectors.has(id) || selectedConnectors.has(id),
-              ).map((id) => (
+          <div class="flex flex-wrap gap-2">
+            {/* Full LIVE vocabulary stays visible for discoverability —
+                connectors with zero candidates in the current queue are
+                disabled so a click doesn't empty the list. ROADMAP chips
+                render as "coming soon" as before. */}
+            {LIVE_CONNECTORS.map((id) => {
+              const present = availableConnectors.has(id);
+              const active = selectedConnectors.has(id);
+              return (
                 <ConnectorBadge
                   key={id}
                   variant="chip"
                   connector={id}
-                  active={selectedConnectors.has(id)}
+                  active={active}
+                  disabled={!present && !active}
                   onClick={() => toggleConnector(id)}
                 />
-              ))}
-            </div>
-          ) : (
-            <div class="text-[10px] font-mono text-[color:var(--color-fg-subtle)] italic">
-              {t('queue.connectorFilterEmpty')}
-            </div>
-          )
+              );
+            })}
+            {ROADMAP_CONNECTORS.map((id) => (
+              <ConnectorBadge
+                key={id}
+                variant="chip"
+                connector={id}
+                active={false}
+                disabled
+                onClick={() => {}}
+              />
+            ))}
+          </div>
         ) : null}
 
         {availableTags.length > 0 ? (
