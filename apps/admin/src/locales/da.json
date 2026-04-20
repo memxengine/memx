@@ -317,7 +317,8 @@
   },
   "tagFilter": {
     "label": "Tags:",
-    "clear": "ryd"
+    "clear": "ryd",
+    "empty": "Ingen af kandidaterne har tags endnu."
   },
   "settings": {
     "savedToast": "Gemt.",

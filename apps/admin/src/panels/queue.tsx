@@ -692,33 +692,33 @@ export function QueuePanel() {
           </div>
         ) : null}
 
-        {availableTags.length > 0 ? (
-          <div class="mt-3">
-            <div class="flex items-center gap-2 mb-2">
-              <button
-                onClick={() => setTagFilterOpen((v) => !v)}
-                class="inline-flex items-center gap-1 text-[10px] font-mono uppercase tracking-wider text-[color:var(--color-fg-subtle)] hover:text-[color:var(--color-fg)] transition cursor-pointer"
-                aria-expanded={tagFilterOpen || selectedTags.size > 0}
-              >
-                <span>{tagFilterOpen || selectedTags.size > 0 ? '▼' : '▶'}</span>
-                <span>{t('tagFilter.label')}</span>
-                {selectedTags.size > 0 ? (
-                  <span class="normal-case text-[color:var(--color-accent)]">· {selectedTags.size}</span>
-                ) : null}
-              </button>
+        <div class="mt-3">
+          <div class="flex items-center gap-2 mb-2">
+            <button
+              onClick={() => setTagFilterOpen((v) => !v)}
+              class="inline-flex items-center gap-1 text-[10px] font-mono uppercase tracking-wider text-[color:var(--color-fg-subtle)] hover:text-[color:var(--color-fg)] transition cursor-pointer"
+              aria-expanded={tagFilterOpen || selectedTags.size > 0}
+            >
+              <span>{tagFilterOpen || selectedTags.size > 0 ? '▼' : '▶'}</span>
+              <span>{t('tagFilter.label')}</span>
               {selectedTags.size > 0 ? (
-                <button
-                  onClick={() => {
-                    setSelectedTags(new Set());
-                    setSelected(new Set());
-                  }}
-                  class="text-[10px] font-mono text-[color:var(--color-fg-subtle)] hover:text-[color:var(--color-fg)] transition"
-                >
-                  {t('tagFilter.clear')}
-                </button>
+                <span class="normal-case text-[color:var(--color-accent)]">· {selectedTags.size}</span>
               ) : null}
-            </div>
-            {tagFilterOpen || selectedTags.size > 0 ? (
+            </button>
+            {selectedTags.size > 0 ? (
+              <button
+                onClick={() => {
+                  setSelectedTags(new Set());
+                  setSelected(new Set());
+                }}
+                class="text-[10px] font-mono text-[color:var(--color-fg-subtle)] hover:text-[color:var(--color-fg)] transition"
+              >
+                {t('tagFilter.clear')}
+              </button>
+            ) : null}
+          </div>
+          {tagFilterOpen || selectedTags.size > 0 ? (
+            availableTags.length > 0 ? (
               <div class="flex flex-wrap gap-2">
                 {availableTags.map(({ display, count }) => {
                   const active = selectedTags.has(display.toLowerCase());
@@ -740,9 +740,13 @@ export function QueuePanel() {
                   );
                 })}
               </div>
-            ) : null}
-          </div>
-        ) : null}
+            ) : (
+              <div class="text-[10px] font-mono text-[color:var(--color-fg-subtle)] italic">
+                {t('tagFilter.empty')}
+              </div>
+            )
+          ) : null}
+        </div>
 
         <div class="mt-3">
           <div class="flex items-center gap-2 mb-2">

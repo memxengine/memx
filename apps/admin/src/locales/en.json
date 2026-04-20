@@ -317,7 +317,8 @@
   },
   "tagFilter": {
     "label": "Tags:",
-    "clear": "clear"
+    "clear": "clear",
+    "empty": "None of the candidates carry tags yet."
   },
   "settings": {
     "savedToast": "Saved.",
