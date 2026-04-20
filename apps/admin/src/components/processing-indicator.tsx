@@ -33,8 +33,18 @@ export function ProcessingIndicator({ startedAt }: { startedAt: string | null })
   return (
     <div class="mt-2 flex items-center gap-2 text-[11px] font-mono text-[color:var(--color-accent)]">
       <Dot />
+      {/* Timer sits BEFORE the rotating message so its position never
+          shifts as the dynamic label changes length. Fixed-width
+          tabular-nums keeps `9s` → `10s` transition from nudging the
+          following text by one pixel. A curator tracking "how long
+          has this been running" can fix their eye on this spot. */}
+      <span
+        class="text-[color:var(--color-fg-subtle)]"
+        style="font-variant-numeric: tabular-nums;"
+      >
+        {formatElapsed(elapsed)}
+      </span>
       <span class="italic text-[color:var(--color-fg-muted)]">{loadingMessages[idx]}…</span>
-      <span class="ml-auto text-[color:var(--color-fg-subtle)]">{formatElapsed(elapsed)}</span>
     </div>
   );
 }
