@@ -11,6 +11,20 @@ import { listKnowledgeBases } from '../api';
 let inflight: Promise<KnowledgeBase[]> | null = null;
 let cache: KnowledgeBase[] | null = null;
 
+/**
+ * Route params from /kb/:kbId/... can carry either a UUID or a slug
+ * (F135 slug-based routing). Every panel that resolves a KB from the
+ * URL param should match on BOTH so settings, nav, etc. don't freeze
+ * on the "no match" path when visited via slug.
+ */
+export function matchKb(
+  list: KnowledgeBase[],
+  kbIdOrSlug: string,
+): KnowledgeBase | null {
+  if (!kbIdOrSlug) return null;
+  return list.find((k) => k.id === kbIdOrSlug || k.slug === kbIdOrSlug) ?? null;
+}
+
 export function ensureKbs(): Promise<KnowledgeBase[]> {
   if (cache) return Promise.resolve(cache);
   if (!inflight) {
@@ -35,7 +49,7 @@ export function invalidateKbs(): void {
 
 export function useKb(kbId: string): KnowledgeBase | null {
   const [kb, setKb] = useState<KnowledgeBase | null>(
-    kbId ? cache?.find((k) => k.id === kbId) ?? null : null,
+    kbId && cache ? matchKb(cache, kbId) : null,
   );
   useEffect(() => {
     // Clear state when navigating away from any KB — otherwise the last
@@ -48,7 +62,7 @@ export function useKb(kbId: string): KnowledgeBase | null {
     let cancelled = false;
     ensureKbs().then((list) => {
       if (cancelled) return;
-      setKb(list.find((k) => k.id === kbId) ?? null);
+      setKb(matchKb(list, kbId));
     });
     return () => {
       cancelled = true;

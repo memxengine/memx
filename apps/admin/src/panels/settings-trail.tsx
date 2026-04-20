@@ -2,6 +2,7 @@ import { useEffect, useState } from 'preact/hooks';
 import { useRoute } from 'preact-iso';
 import type { KnowledgeBase } from '@trail/shared';
 import { listKnowledgeBases, updateKnowledgeBase, ApiError } from '../api';
+import { matchKb } from '../lib/kb-cache';
 import { t, useLocale } from '../lib/i18n';
 import { CenteredLoader } from '../components/centered-loader';
 
@@ -33,7 +34,9 @@ export function SettingsTrailPanel() {
   useEffect(() => {
     listKnowledgeBases()
       .then((list) => {
-        const match = list.find((k) => k.id === kbId) ?? null;
+        // kbId from the route may be a UUID or a slug (F135). Match both
+        // so slug-routed URLs don't freeze the panel on a null kb.
+        const match = matchKb(list, kbId);
         setKb(match);
         if (match) {
           setName(match.name);
