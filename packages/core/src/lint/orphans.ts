@@ -15,11 +15,14 @@ import type { LintFinding, LintOptions } from './types.js';
 //   - glossary.md (F102) — auto-maintained vocabulary. The compile-pipeline
 //     merges terms drawn from many Sources, but the Neuron itself isn't
 //     a single-source page — treating it as orphan would spam the queue.
+//   - _schema.md (F140) — per-path compile-prompt rules (tone, required
+//     sections, canonical tags). Instructional metadata, not content that
+//     cites sources.
 //
 // Exported so other surfaces (F99 graph, anywhere else that needs the
 // same hub-vs-normal distinction) can read from the same list instead
 // of hardcoding their own copy.
-export const DEFAULT_HUB_PAGES = ['overview.md', 'log.md', 'glossary.md'];
+export const DEFAULT_HUB_PAGES = ['overview.md', 'log.md', 'glossary.md', '_schema.md'];
 
 function stripMd(filename: string): string {
   return filename.replace(/\.md$/i, '');

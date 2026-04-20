@@ -143,7 +143,25 @@
         "en": "The process of reading a new Source, extracting its text, chunking it for search, and compiling one or more Neurons from it. Ingest produces ingest-summary candidates that auto-approve if confidence is high enough.",
         "da": "Processen med at læse en ny Kilde, udtrække dens tekst, opdele den til søgning og kompilere en eller flere Neuroner fra den. Ingest producerer ingest-resumé-kandidater der auto-godkendes hvis sikkerheden er høj nok."
       },
-      "relatedTerms": ["source", "neuron", "auto-approve"]
+      "relatedTerms": ["source", "neuron", "auto-approve", "retry", "re-ingest"]
+    },
+    {
+      "id": "retry",
+      "label": { "en": "Retry", "da": "Prøv igen" },
+      "definition": {
+        "en": "Re-run the ENTIRE pipeline for a Source — re-extract the file (PDF text, DOCX HTML, PPTX slides, XLSX cells), re-chunk, and re-ingest. Use this when extraction itself failed (corrupt PDF, silent pdfjs hang, vision-API hiccup) or when you've replaced the underlying file bytes. More expensive than re-ingest because extraction is re-done; prefer re-ingest when the extracted content is fine and only the LLM compile needs another pass.",
+        "da": "Kør HELE pipelinen igen for en Kilde — genudtræk filen (PDF-tekst, DOCX-HTML, PPTX-slides, XLSX-celler), genopdel, og re-ingest. Brug dette når selve udtrækningen fejlede (korrupt PDF, tavs pdfjs-hang, vision-API-hikke) eller når du har udskiftet de underliggende fil-bytes. Dyrere end re-ingest fordi udtrækning køres igen; foretræk re-ingest når det udtrukne indhold er fint og kun LLM-kompileringen skal have endnu et forsøg."
+      },
+      "relatedTerms": ["re-ingest", "ingest", "source"]
+    },
+    {
+      "id": "re-ingest",
+      "label": { "en": "Re-ingest", "da": "Kør ingest" },
+      "definition": {
+        "en": "Re-run ONLY the LLM compile step against a Source's already-extracted content. Skips file-format extraction (no PDF re-parse, no vision re-run) and goes straight to spawning the Claude compile subprocess. Cheap and fast — useful when ingest hit a budget ceiling (timeout, max-turns), when you've raised TRAIL_INGEST_MAX_TURNS, or when you've updated the compile prompt and want existing Sources to benefit. If extraction itself failed, use Retry instead.",
+        "da": "Kør KUN LLM-kompilerings-trinnet igen mod en Kildes allerede-udtrukne indhold. Springer over filformat-udtrækning (ingen PDF-genparsing, ingen vision-genkørsel) og går direkte til at starte Claude-kompilerings-subprocessen. Billigt og hurtigt — nyttigt når ingest ramte et budgetloft (timeout, max-turns), når du har hævet TRAIL_INGEST_MAX_TURNS, eller når du har opdateret kompilerings-prompten og vil have eksisterende Kilder til at drage fordel af det. Hvis selve udtrækningen fejlede, brug Prøv igen i stedet."
+      },
+      "relatedTerms": ["retry", "ingest", "source"]
     },
     {
       "id": "reference",

@@ -41,6 +41,14 @@ export type {
   NewNeuron,
 } from './lint/index.js';
 
+// F140 — hierarchical schema inheritance (compile-prompt per wiki-path).
+export {
+  resolveSchemaChain,
+  renderSchemaForPrompt,
+  parseSchemaNeuron,
+} from './schema-inheritance.js';
+export type { SchemaProfile, SchemaNeuronRow } from './schema-inheritance.js';
+
 // Utilities
 export { slugify, uniqueSlug } from './slug.js';
 export { resolveKbId, looksLikeUuid } from './kb/resolve.js';

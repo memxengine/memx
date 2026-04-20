@@ -1,5 +1,11 @@
 import { documents, knowledgeBases, DATA_DIR, type TrailDatabase } from '@trail/db';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
+import {
+  parseSchemaNeuron,
+  renderSchemaForPrompt,
+  resolveSchemaChain,
+  type SchemaNeuronRow,
+} from '@trail/core';
 import { broadcaster } from './broadcast.js';
 import { spawnClaude } from './claude.js';
 import { ensureMcpConfig } from '../lib/mcp-config.js';
@@ -137,7 +143,27 @@ async function runIngest(job: IngestJob): Promise<void> {
     ? `\n\nEXISTING TAG VOCABULARY IN THIS KB (prefer reusing over inventing new ones — exact spelling required):\n${existingTags.map((t) => `  - ${t}`).join('\n')}\n\nOnly propose a new tag when nothing in the list fits the concept.`
     : '\n\n(This KB has no tags yet — you are establishing the vocabulary. Keep tags short, lowercase, and specific.)';
 
-  const prompt = `You are the wiki compiler for knowledge base ${sKbName} (slug: ${sKbSlug}).${tagBlock}
+  // F140 — hierarchical schema inheritance. Load every `_schema.md`
+  // under this KB, merge those whose scope covers the source's
+  // destination path, render as a prompt-ready block. Empty when no
+  // _schema.md exists anywhere in the tree. Scoped-to-target so a
+  // source dropped into /neurons/concepts/akupunktur/ picks up the
+  // akupunktur-domain schema (if any) on top of the KB-level one.
+  let schemaBlock = '';
+  try {
+    const schemaRows = await loadSchemaNeurons(trail, job.tenantId, job.kbId);
+    if (schemaRows.length > 0) {
+      const profile = resolveSchemaChain(doc.path, schemaRows);
+      schemaBlock = renderSchemaForPrompt(profile);
+    }
+  } catch (err) {
+    console.warn(
+      '[ingest] schema inheritance failed; compile will run without path-schema:',
+      err instanceof Error ? err.message : err,
+    );
+  }
+
+  const prompt = `You are the wiki compiler for knowledge base ${sKbName} (slug: ${sKbSlug}).${tagBlock}${schemaBlock}
 
 A new source has been added: ${sFilename} at path ${sSourcePath}.
 
@@ -281,4 +307,39 @@ IMPORTANT RULES:
       runIngest(next);
     }
   }
+}
+
+/**
+ * F140 — fetch every `_schema.md` Neuron in a KB and parse its
+ * frontmatter. Called once per ingest. Small cardinality (one per
+ * directory that wants local rules) so a single SELECT is plenty.
+ */
+async function loadSchemaNeurons(
+  trail: TrailDatabase,
+  tenantId: string,
+  kbId: string,
+): Promise<SchemaNeuronRow[]> {
+  const rows = await trail.db
+    .select({
+      path: documents.path,
+      content: documents.content,
+    })
+    .from(documents)
+    .where(
+      and(
+        eq(documents.tenantId, tenantId),
+        eq(documents.knowledgeBaseId, kbId),
+        eq(documents.kind, 'wiki'),
+        eq(documents.archived, false),
+        eq(documents.filename, '_schema.md'),
+      ),
+    )
+    .all();
+
+  const out: SchemaNeuronRow[] = [];
+  for (const r of rows) {
+    const parsed = parseSchemaNeuron(r.path, r.content ?? '');
+    if (parsed) out.push(parsed);
+  }
+  return out;
 }

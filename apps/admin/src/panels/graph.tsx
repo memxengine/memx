@@ -259,9 +259,18 @@ export function GraphPanel() {
             : n.orphan
               ? colours.orphan
               : colours.accent;
+          // F141 — scale UP from baseline using usage weight. We pick
+          // `1 + w*0.8` (range [1.0, 1.8]) not trail-optimizer's
+          // suggested `0.5 + w*1.5` because w=0 means "unknown" not
+          // "cold" (rollup hasn't fired for new KBs), and shrinking
+          // unknown nodes would mislead curators into thinking the
+          // engine labelled them low-value when we just have no data
+          // yet. Hot nodes (w=1) render 80% bigger than baseline —
+          // visible at a glance without drowning the graph layout.
+          const scaledSize = n.size * (1 + (n.usageWeight ?? 0) * 0.8);
           graph.addNode(n.id, {
             label: n.label,
-            size: n.size,
+            size: scaledSize,
             color,
             // Seed positions randomly; FA2 settles them (edge-less hubs
             // will be overridden to bbox-top after FA2 below).

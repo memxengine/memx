@@ -94,7 +94,12 @@ export async function backfillGlossaryForKb(
 
   const eligible = neurons
     .filter((n) => n.filename !== GLOSSARY_FILENAME)
-    .filter((n) => n.filename !== 'overview.md' && n.filename !== 'log.md');
+    .filter((n) => n.filename !== 'overview.md' && n.filename !== 'log.md')
+    // F140 — _schema.md files carry compile-prompt rules, not domain
+    // content. Feeding them into the glossary-backfill LLM would make
+    // it try to extract "tone" or "scope" as glossary terms, which is
+    // noise. Skip them.
+    .filter((n) => n.filename !== '_schema.md');
 
   if (eligible.length === 0) {
     console.log(`[F102 backfill] KB "${kb.name}" has no content Neurons — leaving glossary empty`);

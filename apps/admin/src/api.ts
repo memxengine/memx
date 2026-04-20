@@ -253,6 +253,10 @@ export interface GraphNode {
   tags: string[];
   backlinks: number;
   excerpt: string | null;
+  /** F141 — access-rollup-derived usage weight, 0-1 normalised per-KB.
+   *  0 means unknown (Neuron never read OR rollup hasn't fired yet) —
+   *  treat as baseline, not "cold". */
+  usageWeight: number;
 }
 /** F137 — the closed set of edge types the LLM can emit via `[[target|type]]`
  *  syntax. Mirrors `VALID_EDGE_TYPES` on the server-side extractor. */

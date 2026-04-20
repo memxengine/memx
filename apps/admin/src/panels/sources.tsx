@@ -502,18 +502,25 @@ function ExpandedSource({ doc }: { doc: Document }) {
 }
 
 function StatusBadge({ status }: { status: Document['status'] }) {
-  if (status === 'ready') return null;
+  // `ready` used to suppress to null — the absence of a badge read as
+  // "nothing happening". Rendering a soft-success pill next to the
+  // file-type chip gives curators a positive acknowledgement that
+  // extract + ingest completed. Green tone matches the SUCCESS palette
+  // elsewhere (e.g. `✓ saved to queue` confirmation in chat.tsx).
   const tone =
     status === 'failed'
       ? 'bg-[color:var(--color-danger)]/10 text-[color:var(--color-danger)]'
       : status === 'processing'
       ? 'bg-[color:var(--color-accent)]/15 text-[color:var(--color-accent)]'
+      : status === 'ready'
+      ? 'bg-[color:var(--color-success)]/15 text-[color:var(--color-success)]'
       : 'bg-[color:var(--color-bg)] border border-[color:var(--color-border)] text-[color:var(--color-fg-muted)]';
+  const label = status === 'ready' ? 'success' : status;
   return (
     <span
       class={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono uppercase tracking-wider ${tone}`}
     >
-      {status}
+      {label}
     </span>
   );
 }
