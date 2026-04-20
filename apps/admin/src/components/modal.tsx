@@ -2,6 +2,17 @@ import type { ComponentChildren } from 'preact';
 import { useEffect, useRef } from 'preact/hooks';
 
 /**
+ * Ref-stash for the onClose handler so the effect below can capture
+ * its identity without subscribing to it. Without this the effect
+ * re-runs on every parent render that passes a fresh inline
+ * onClose={() => ...} lambda — and a re-run re-fires the auto-focus
+ * setTimeout, which yanks the cursor back to the first input mid-
+ * keystroke. Symptom: "typing in Description jumps to Name, pasted
+ * text gets interleaved". Root cause fixed here so every consumer
+ * of Modal gets predictable focus behaviour even with inline handlers.
+ */
+
+/**
  * Minimal Bauhaus-aligned modal — backdrop blur + warm card + amber accents
  * to match the landing. Keyboard: ESC closes, first focusable element auto-
  * focuses on open. Click outside = cancel. Intentionally thin: consumers
@@ -24,13 +35,17 @@ export function Modal({
   maxWidth?: 'sm' | 'md' | 'lg';
 }) {
   const panelRef = useRef<HTMLDivElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  // Keep the ref in sync without listing onClose as an effect dep —
+  // see block comment above the file for why.
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
-        onClose();
+        onCloseRef.current();
       }
     };
     document.addEventListener('keydown', onKey);
@@ -50,7 +65,7 @@ export function Modal({
       clearTimeout(handle);
       document.body.style.overflow = prevOverflow;
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
 
