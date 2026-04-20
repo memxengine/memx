@@ -129,12 +129,16 @@ graphRoutes.get('/knowledge-bases/:kbId/graph', async (c) => {
     )
     .all();
 
-  // Edges: wiki_backlinks. De-dup at query time — a Neuron linking
-  // twice under different phrasings still produces one edge.
-  const edgeRows = await trail.db
-    .selectDistinct({
+  // Edges: wiki_backlinks. F137 — carry edge_type along so the admin
+  // renders typed relations (contradicts, supersedes, is-a ...)
+  // distinctly. When a Neuron links to the same target via two phrasings
+  // with different edge-types, keep the first one seen — matches how
+  // the extractor dedupes on (from, to, linkText) internally.
+  const edgeRowsRaw = await trail.db
+    .select({
       source: wikiBacklinks.fromDocumentId,
       target: wikiBacklinks.toDocumentId,
+      edgeType: wikiBacklinks.edgeType,
     })
     .from(wikiBacklinks)
     .where(
@@ -144,6 +148,23 @@ graphRoutes.get('/knowledge-bases/:kbId/graph', async (c) => {
       ),
     )
     .all();
+
+  // App-side dedup on (source, target) — selectDistinct on drizzle
+  // with multiple columns was brittle, and we need to pick the most
+  // informative edge_type when a pair has multiple entries. Priority:
+  // anything non-'cites' wins over 'cites' (typed is a strict upgrade
+  // over default), otherwise first-seen wins.
+  const edgeMap = new Map<string, { source: string; target: string; edgeType: string }>();
+  for (const row of edgeRowsRaw) {
+    const key = `${row.source}→${row.target}`;
+    const existing = edgeMap.get(key);
+    if (!existing) {
+      edgeMap.set(key, row);
+    } else if (existing.edgeType === 'cites' && row.edgeType !== 'cites') {
+      edgeMap.set(key, row);
+    }
+  }
+  const edgeRows = Array.from(edgeMap.values());
 
   // Orphan signal: Neuron has zero outgoing document_references (no
   // source citations). Matches F98's orphan-lint heuristic so the
@@ -206,7 +227,12 @@ graphRoutes.get('/knowledge-bases/:kbId/graph', async (c) => {
   const nodeIds = new Set(nodes.map((n) => n.id));
   const edges = edgeRows
     .filter((e) => nodeIds.has(e.source) && nodeIds.has(e.target))
-    .map((e, i) => ({ id: `e${i}`, source: e.source, target: e.target }));
+    .map((e, i) => ({
+      id: `e${i}`,
+      source: e.source,
+      target: e.target,
+      edgeType: e.edgeType,
+    }));
 
   return c.json({
     nodes,

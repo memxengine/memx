@@ -18,7 +18,13 @@ import { useLocation, useRoute } from 'preact-iso';
 import Sigma from 'sigma';
 import Graph from 'graphology';
 import forceAtlas2 from 'graphology-layout-forceatlas2';
-import { fetchGraph, ApiError, type GraphNode, type GraphEdge } from '../api';
+import {
+  fetchGraph,
+  ApiError,
+  type GraphNode,
+  type GraphEdge,
+  type GraphEdgeType,
+} from '../api';
 import { t, useLocale } from '../lib/i18n';
 import { CenteredLoader } from '../components/centered-loader';
 
@@ -70,6 +76,48 @@ function categoryOf(node: GraphNode): NodeCategory {
   return 'neuron';
 }
 
+/**
+ * F137 — palette for typed edges. Edges inherit `cites` (the default)
+ * when `edgeType` is null or unknown, so the palette key set is also
+ * the set of visual distinctions we make:
+ *
+ *   cites        → quiet neutral grey (matches pre-F137 look)
+ *   is-a         → violet (taxonomic, leans hub-family)
+ *   part-of      → teal (compositional)
+ *   contradicts  → red (attention)
+ *   supersedes   → orange (replacement)
+ *   example-of   → green (instantiation)
+ *   caused-by    → amber (provenance)
+ *
+ * Alpha is baked in (~35-60%) so edges remain visually secondary to
+ * nodes at any reasonable zoom. Sigma's default thin stroke + the
+ * type-specific colour carry the semantic.
+ */
+const EDGE_TYPE_PALETTE: Record<GraphEdgeType, string> = {
+  'cites': 'rgba(140,140,150,0.35)',
+  'is-a': 'rgba(167,139,250,0.55)',       // violet
+  'part-of': 'rgba(20,184,166,0.55)',     // teal
+  'contradicts': 'rgba(239,68,68,0.65)',  // red
+  'supersedes': 'rgba(251,146,60,0.6)',   // orange
+  'example-of': 'rgba(74,222,128,0.55)',  // green
+  'caused-by': 'rgba(245,158,11,0.55)',   // amber
+};
+
+const EDGE_TYPE_KEYS: GraphEdgeType[] = [
+  'cites',
+  'is-a',
+  'part-of',
+  'contradicts',
+  'supersedes',
+  'example-of',
+  'caused-by',
+];
+
+function edgeTypeOf(e: GraphEdge): GraphEdgeType {
+  if (!e.edgeType) return 'cites';
+  return (EDGE_TYPE_PALETTE[e.edgeType as GraphEdgeType] ? e.edgeType : 'cites') as GraphEdgeType;
+}
+
 export function GraphPanel() {
   const routeInfo = useRoute();
   const { route } = useLocation();
@@ -91,13 +139,22 @@ export function GraphPanel() {
   const [activeCats, setActiveCats] = useState<Set<NodeCategory>>(
     () => new Set<NodeCategory>(['neuron', 'orphan', 'hub']),
   );
+  // F137 — edge-type filter. Same toggle semantics as node categories.
+  // Default = all seven types visible; clicking the last one re-enables
+  // everything so the graph never goes edge-less.
+  const [activeEdgeTypes, setActiveEdgeTypes] = useState<Set<GraphEdgeType>>(
+    () => new Set<GraphEdgeType>(EDGE_TYPE_KEYS),
+  );
   const nodeLookup = useRef<Map<string, GraphNode>>(new Map());
+  const edgeTypeLookup = useRef<Map<string, GraphEdgeType>>(new Map());
   // Mirror the active-cats + search state into refs so the Sigma
   // nodeReducer closure reads the latest values on every refresh.
   // Without this, the reducer captures the initial state at Sigma-
   // construction time and chip clicks have no effect.
   const activeCatsRef = useRef(activeCats);
   activeCatsRef.current = activeCats;
+  const activeEdgeTypesRef = useRef(activeEdgeTypes);
+  activeEdgeTypesRef.current = activeEdgeTypes;
   const searchRef = useRef('');
 
   const searchLower = search.trim().toLowerCase();
@@ -113,6 +170,19 @@ export function GraphPanel() {
         }
       } else {
         next.add(cat);
+      }
+      return next;
+    });
+  }
+
+  function toggleEdgeType(type: GraphEdgeType): void {
+    setActiveEdgeTypes((prev) => {
+      const next = new Set(prev);
+      if (next.has(type)) {
+        next.delete(type);
+        if (next.size === 0) return new Set<GraphEdgeType>(EDGE_TYPE_KEYS);
+      } else {
+        next.add(type);
       }
       return next;
     });
@@ -199,13 +269,22 @@ export function GraphPanel() {
             y: n.y ?? Math.random(),
           });
         }
+        edgeTypeLookup.current.clear();
         for (const e of data.edges) {
           // Sigma refuses duplicate undirected edges between the same
           // endpoints; filter defensively to match the DB-side de-dup.
           if (graph.hasEdge(e.source, e.target)) continue;
-          // Hairline width — at 138 edges a width-1 line-cloud drowns
-          // everything else. 0.5 keeps the graph topology readable.
-          graph.addEdge(e.source, e.target, { color: colours.edge, size: 0.5 });
+          const type = edgeTypeOf(e);
+          // F137 — colour per edge-type from the palette. Hairline width
+          // (0.5) still applies — the colour carries the semantic, not
+          // the stroke weight. A subsequent interactive pass could
+          // dashify 'contradicts' / 'supersedes' via a custom edge
+          // program if distinction needs more lift.
+          const edgeKey = graph.addEdge(e.source, e.target, {
+            color: EDGE_TYPE_PALETTE[type],
+            size: 0.5,
+          });
+          edgeTypeLookup.current.set(edgeKey, type);
         }
 
         // Only run FA2 when we have edges — a disconnected cluster of
@@ -294,9 +373,15 @@ export function GraphPanel() {
           },
           edgeReducer: (edgeId, attrs) => {
             // Hide an edge whenever either of its endpoints is
-            // hidden by the node-reducer above. `graph` is the local
-            // graphology instance from the surrounding closure — it's
-            // fully built before Sigma starts calling these reducers.
+            // node-filtered, OR when the edge's type is chip-filtered
+            // out (F137). `graph` is the local graphology instance
+            // from the surrounding closure — it's fully built before
+            // Sigma starts calling these reducers.
+            const edgeType = edgeTypeLookup.current.get(edgeId) ?? 'cites';
+            const activeTypes = activeEdgeTypesRef.current;
+            if (!activeTypes.has(edgeType)) {
+              return { ...attrs, hidden: true };
+            }
             const [src, tgt] = graph.extremities(edgeId);
             const cats = activeCatsRef.current;
             const q = searchRef.current;
@@ -386,7 +471,7 @@ export function GraphPanel() {
   // redraw.
   useEffect(() => {
     sigmaRef.current?.refresh();
-  }, [searchLower, activeCats]);
+  }, [searchLower, activeCats, activeEdgeTypes]);
 
   // IMPORTANT: the container div MUST render on every path (even while
   // loading or in error/empty states) so `containerRef.current` is
@@ -474,6 +559,35 @@ export function GraphPanel() {
                     style={{ background: color, opacity: active ? 1 : 0.3 }}
                   />
                   {label}
+                </button>
+              );
+            })}
+          </div>
+          {/* F137 — edge-type legend + filter. Separate row so the
+              seven-type vocabulary doesn't crowd the node-category
+              chips. Clicking toggles visibility for that type (via
+              edgeReducer). */}
+          <div class="mt-2 pt-2 border-t border-[color:var(--color-border)] flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[10px] font-mono">
+            {EDGE_TYPE_KEYS.map((type) => {
+              const active = activeEdgeTypes.has(type);
+              return (
+                <button
+                  key={type}
+                  type="button"
+                  onClick={() => toggleEdgeType(type)}
+                  class={
+                    'inline-flex items-center gap-1 transition ' +
+                    (active
+                      ? 'text-[color:var(--color-fg-muted)] hover:text-[color:var(--color-fg)]'
+                      : 'text-[color:var(--color-fg-subtle)] line-through opacity-50 hover:opacity-80')
+                  }
+                  title={t('graph.edgeTypeToggleHint')}
+                >
+                  <span
+                    class="inline-block w-3 h-[2px] rounded-full transition"
+                    style={{ background: EDGE_TYPE_PALETTE[type], opacity: active ? 1 : 0.3 }}
+                  />
+                  {t(`graph.edgeType.${type}` as never)}
                 </button>
               );
             })}

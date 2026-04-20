@@ -258,6 +258,16 @@
     "legendOrphan": "Orphan",
     "legendHub": "Structural",
     "legendToggleHint": "Click to toggle visibility",
+    "edgeTypeToggleHint": "Click to toggle this relation type",
+    "edgeType": {
+      "cites": "cites",
+      "is-a": "is-a",
+      "part-of": "part-of",
+      "contradicts": "contradicts",
+      "supersedes": "supersedes",
+      "example-of": "example-of",
+      "caused-by": "caused-by"
+    },
     "backlinkLabel": "backlinks",
     "orphanLabel": "orphan",
     "hubLabel": "structural",

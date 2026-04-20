@@ -254,10 +254,24 @@ export interface GraphNode {
   backlinks: number;
   excerpt: string | null;
 }
+/** F137 — the closed set of edge types the LLM can emit via `[[target|type]]`
+ *  syntax. Mirrors `VALID_EDGE_TYPES` on the server-side extractor. */
+export type GraphEdgeType =
+  | 'cites'
+  | 'is-a'
+  | 'part-of'
+  | 'contradicts'
+  | 'supersedes'
+  | 'example-of'
+  | 'caused-by';
+
 export interface GraphEdge {
   id: string;
   source: string;
   target: string;
+  /** F137 — typed relation. Pre-F137 rows migrated to `'cites'` default,
+   *  but third-party callers shouldn't crash if the field is missing. */
+  edgeType?: GraphEdgeType | null;
 }
 export interface GraphResponse {
   nodes: GraphNode[];

@@ -258,6 +258,16 @@
     "legendOrphan": "Forældreløs",
     "legendHub": "Struktur",
     "legendToggleHint": "Klik for at skjule/vise",
+    "edgeTypeToggleHint": "Klik for at skjule denne relationstype",
+    "edgeType": {
+      "cites": "citerer",
+      "is-a": "er-en",
+      "part-of": "del-af",
+      "contradicts": "modsiger",
+      "supersedes": "afløser",
+      "example-of": "eksempel-på",
+      "caused-by": "forårsaget-af"
+    },
     "backlinkLabel": "backlinks",
     "orphanLabel": "forældreløs",
     "hubLabel": "struktur",
