@@ -1,6 +1,6 @@
 # Trail — Feature Index
 
-**Last updated:** 2026-04-18
+**Last updated:** 2026-04-21
 
 ---
 
@@ -202,10 +202,21 @@ Batch drawn from evoailabs Medium survey of LLM Wiki ecosystem (Waykee Cortex, S
 | # | Feature | Status | Phase | Plan |
 |---|---------|--------|-------|------|
 | F137 | [Typed Neuron Relationships](features/F137-typed-neuron-relationships.md) | Shipped | 2 | [plan](features/F137-typed-neuron-relationships.md) |
-| F138 | [Work Layer: Tasks, Bugs, Milestones](features/F138-work-layer-tasks-milestones.md) | Shipped (MVP — llms.txt section deferred to F130) | 2 | [plan](features/F138-work-layer-tasks-milestones.md) |
+| F138 | [Work Layer: Tasks, Bugs, Milestones](features/F138-work-layer-tasks-milestones.md) | Shipped | 2 | [plan](features/F138-work-layer-tasks-milestones.md) |
 | F139 | [Heuristic Neurons with Temporal Decay](features/F139-heuristic-neurons-with-decay.md) | Shipped | 2 | [plan](features/F139-heuristic-neurons-with-decay.md) |
 | F140 | [Hierarchical Context Inheritance](features/F140-hierarchical-context-inheritance.md) | Shipped | 2 | [plan](features/F140-hierarchical-context-inheritance.md) |
 | F141 | [Neuron Access Telemetry + Usage Weighting](features/F141-neuron-access-telemetry.md) | Shipped | 2 | [plan](features/F141-neuron-access-telemetry.md) |
+
+### F142-F145 — Durability + cross-session handles (2026-04-21 batch)
+
+Queue + chat state now outlive process crashes, and Neurons carry a stable per-KB id so other sessions (buddy, cc, Discord) can reference them by handle instead of UUID.
+
+| # | Feature | Status | Phase | Plan |
+|---|---------|--------|-------|------|
+| F142 | [New Neuron modal (curator-initiated create) + chunked-ingest plan](features/F142-chunked-ingest.md) | Shipped (modal) / Plan (chunked ingest) | 2 | [plan](features/F142-chunked-ingest.md) |
+| F143 | [Persistent ingest queue](features/F143-persistent-ingest-queue.md) | Shipped | 2 | [plan](features/F143-persistent-ingest-queue.md) |
+| F144 | [Chat history persistence](features/F144-chat-history.md) | Shipped | 2 | [plan](features/F144-chat-history.md) |
+| F145 | Per-KB seq IDs (`<kbPrefix>_<seq:8>` canonical handle) | Shipped | 2 | — |
 
 ---
 

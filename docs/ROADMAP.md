@@ -1,6 +1,6 @@
 # Trail — Roadmap
 
-**Last updated:** 2026-04-18
+**Last updated:** 2026-04-21
 **Source of truth for feature numbering:** [FEATURES.md](./FEATURES.md)
 
 ---
@@ -17,9 +17,11 @@ Trail ships in three phases. Each phase is independently deployable; Phase 2 and
 
 ---
 
-## Phase 1 — MVP · Done (20 features)
+## Phase 1 — MVP · Done (49 features)
 
-Everything needed to run an end-to-end ingest → wiki → chat flow for a single-tenant customer.
+Everything needed to run an end-to-end ingest → wiki → chat flow for a single-tenant customer. Most of the depth beyond the minimum has also landed — typed relationships, heuristic decay, per-KB seq IDs, durable chat history, persistent ingest queue, Work Layer — which is why Phase 1 is much closer to "ready" than the 2026-04-18 snapshot suggested.
+
+### Foundations (original 20)
 
 | # | Feature | Shipped |
 |---|---------|---------|
@@ -44,6 +46,46 @@ Everything needed to run an end-to-end ingest → wiki → chat flow for a singl
 | F90 | Dynamic Curator Actions + Per-Trail Lint Policy + Action Translation | 2026-04 |
 | F91 | Neuron Editor (Markdown Split-View, Queue-Routed Save) | 2026-04 |
 
+### Curation + queue (Phase 1 unblockers)
+
+| # | Feature | Shipped |
+|---|---------|---------|
+| F17 | Curation Queue — HTTP Endpoints + sole wiki write path | 2026-04 |
+| F18 | Curator UI Shell (Vite + Preact) | 2026-04 |
+| F19 | Auto-Approval Policy Engine | 2026-04 |
+| F32 | Lint Pass (Orphans / Stale / Contradictions + Scheduler) | 2026-04 |
+| F40.1 | libSQL driver swap (single-tenant `@libsql/client`) | 2026-04 |
+| F92 | Tags on Neurons (Filter + Facet + Auto-Suggest) | 2026-04 |
+
+### Connectors, pipelines, dogfooding
+
+| # | Feature | Shipped |
+|---|---------|---------|
+| F24 | DOCX Pipeline | 2026-04 |
+| F39 | Claude Code Session → Trail Ingest | 2026-04 |
+| F95 | Connectors (ingestion attribution) | 2026-04 |
+| F96 | Action Recommender | 2026-04 |
+| F97 | Activity Log | 2026-04 |
+| F98 | Orphan-lint Connector-Awareness | 2026-04 |
+| F102 | Auto-maintained Glossary Neuron | 2026-04 |
+| F135 | Slug-based KB URLs (accept slug or UUID) | 2026-04 |
+
+### Depth + durability (2026-04-20 / 21 batch)
+
+| # | Feature | Shipped |
+|---|---------|---------|
+| F99 | Obsidian-style Neuron Graph (Sigma + FA2) | 2026-04 |
+| F136 | Compile-log Card (terminal-style progress in source rows) | 2026-04 |
+| F137 | Typed Neuron Relationships (edge_type column + render) | 2026-04 |
+| F138 | Work Layer — Tasks, Bugs, Milestones, Decisions (Kanban) | 2026-04 |
+| F139 | Heuristic Neurons with Temporal Decay | 2026-04 |
+| F140 | Hierarchical Context Inheritance (`_schema.md`) | 2026-04 |
+| F141 | Neuron Access Telemetry + Usage Weighting | 2026-04 |
+| F142 | New Neuron modal (curator-initiated create) | 2026-04 |
+| F143 | Persistent ingest queue (`ingest_jobs` table, boot recovery) | 2026-04-21 |
+| F144 | Chat history persistence (sessions + turns, sidebar) | 2026-04-21 |
+| F145 | Per-KB seq IDs (`<kbPrefix>_00000219` canonical handle) | 2026-04-21 |
+
 **End-to-end verified:** Markdown source → 6-8 cross-referenced wiki pages in ~60-100s. 8-page Danish PDF (NADA acupuncture) → 6 images extracted → vision-described → 7 wiki pages in ~155s.
 
 ---
@@ -64,10 +106,6 @@ The remaining Phase 1 scope, ordered by leverage and dependency.
 
 | # | Feature | Depends On | Effort | Status |
 |---|---------|------------|--------|--------|
-| F17 | Curation Queue — HTTP Endpoints + sole wiki write path | F16 | Medium | ✅ Done |
-| F18 | Curator UI Shell (Vite + Preact + shadcn) | F17 | Medium | 🏗 In progress (session 1 done) |
-| F19 | Auto-Approval Policy Engine | F17 | Small | ✅ Done (stub + trusted-pipeline) |
-| F40.1 | libSQL driver swap (still single-tenant) | F02 | Small | ⏭ Next |
 | F33 | Fly.io Arn Deploy for `apps/server` | F40.1 | Small | ⏭ Planned |
 | F35 | Google OAuth Production Credentials | F33 | Small | ⏭ Planned |
 | F62 | demo.trailmem.com — public reference site | F17, F18 | Medium | ⏭ Planned |
@@ -82,15 +120,11 @@ The remaining Phase 1 scope, ordered by leverage and dependency.
 | F22 | Stable `{#claim-xx}` Anchors | F07 | Small |
 | F23 | Wiki-Link Parser (`[[]]`, `[[kb:]]`, `[[ext:]]`) | F07 | Small |
 | F30 | Chat Citations Render | F12, F23 | Small |
-| F32 | Lint Pass (Orphans/Gaps/Contradictions) | F15, F17 | Medium |
-| F94 | Ambient Audio System (Per-Route Loops) | F18 | Small |
-| F99 | Obsidian-style Neuron Graph (Sigma + compile-time FA2) | F15, F18 | Medium |
 
 ### Pipelines + Adapters — widen the ingest surface
 
 | # | Feature | Depends On | Effort |
 |---|---------|------------|--------|
-| F24 | DOCX Pipeline | F28 | Small |
 | F25 | Image Pipeline (Standalone + SVG Passthrough) | F28, F27 | Small |
 | F26 | HTML / Web Clipper Ingest | F28 | Small |
 | F27 | Pluggable Vision Adapter | F08 | Small |
@@ -233,12 +267,15 @@ Regulated industries, on-prem, compliance, advanced architecture.
 
 ```
 ✅ F17    Queue API (sole wiki write path, two-session landed)
-✅ F18.1  Curator UI — Session 1 (queue panel on apps/admin)
+✅ F18    Curator UI — neurons/queue/sources/graph/work/chat/search/settings
+✅ F40.1  libSQL driver swap (@libsql/client in use since packages/db/libsql-adapter.ts)
+✅ F143   Persistent ingest queue (65-file batch survives server crash)
+✅ F144   Chat history persistence (sessions + turns, sidebar)
+✅ F145   Per-KB seq IDs (cross-session canonical handles)
 
-⏭ F40.1  libSQL driver swap (bun:sqlite → @libsql/client, still single-tenant, ~1 day)
+⏭ F34    Landing deploy (trailmem.com — DNS + Fly.io; page already built)
 ⏭ F33    Fly.io server deploy (arn, volumes, healthchecks)
 ⏭ F35    OAuth production credentials (for F33's first real login)
-⏭ F18.2  Curator UI — Session 2 (sources + wiki tree panels)
 ⏭ F62    demo.trailmem.com — polished public reference site ← forcing function for component polish
 ⏭ F37    Sanne live
 
