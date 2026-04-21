@@ -368,3 +368,92 @@ export const documentAccessRollup = sqliteTable(
     index('idx_rollup_kb').on(table.knowledgeBaseId),
   ],
 );
+
+// ── F143 — Persistent ingest queue ──────────────────────────────────────────
+//
+// Replaces the pair of module-scoped Maps (`activeIngests` + `ingestQueue`) in
+// services/ingest.ts. Queue survives server restarts / redeploys — a boot
+// sweep resets `running` rows back to `queued` so the scheduler picks them
+// up on the next tick. At-least-once semantics are covered by the existing
+// candidate idempotency key (F92 canonicalisation + ae56430 dedup guard),
+// so a duplicate job execution is harmless.
+
+export const ingestJobs = sqliteTable(
+  'ingest_jobs',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+    knowledgeBaseId: text('knowledge_base_id').notNull().references(() => knowledgeBases.id, { onDelete: 'cascade' }),
+    documentId: text('document_id').notNull().references(() => documents.id, { onDelete: 'cascade' }),
+    // queued → running → done | failed. Boot recovery re-queues any `running`
+    // rows. Terminal states are kept for audit so the admin UI can show
+    // "ingested 5 minutes ago" in the compile-log card.
+    status: text('status', { enum: ['queued', 'running', 'done', 'failed'] })
+      .notNull()
+      .default('queued'),
+    attempts: integer('attempts').notNull().default(0),
+    // LLM prompt shape (source-kind variant, context inheritance, etc.) —
+    // JSON stringified. Kept on the job so a re-run after boot-recovery uses
+    // the same shape the original trigger chose.
+    promptOptions: text('prompt_options'),
+    errorMessage: text('error_message'),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+    startedAt: text('started_at'),
+    completedAt: text('completed_at'),
+  },
+  (table) => [
+    index('idx_ingest_jobs_kb_status').on(table.knowledgeBaseId, table.status),
+    index('idx_ingest_jobs_doc').on(table.documentId),
+  ],
+);
+
+// ── F144 — Chat history persistence ─────────────────────────────────────────
+//
+// chat.tsx previously stored turns in a React useState, so any route-change,
+// reload, or tab-close wiped the conversation. These tables keep sessions
+// + turns server-side per-KB so curators can revisit answers days later and
+// citations survive slug-drift (neuronId is the stable key, title+slug are
+// display-only). Token counts + latency are captured per turn so the F121
+// budget ledger extends naturally into ad-hoc chat.
+
+export const chatSessions = sqliteTable(
+  'chat_sessions',
+  {
+    id: text('id').primaryKey(),
+    knowledgeBaseId: text('knowledge_base_id').notNull().references(() => knowledgeBases.id, { onDelete: 'cascade' }),
+    tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+    userId: text('user_id').notNull().references(() => users.id),
+    // Auto-derived from the first user-turn; editable via rename. Nullable
+    // only for the brief moment between session-create and the first turn
+    // landing — a freshly-minted session has no title yet.
+    title: text('title'),
+    archived: integer('archived', { mode: 'boolean' }).notNull().default(false),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+    updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (table) => [
+    index('idx_chat_sessions_kb').on(table.knowledgeBaseId, table.archived, table.updatedAt),
+    index('idx_chat_sessions_user').on(table.userId, table.updatedAt),
+  ],
+);
+
+export const chatTurns = sqliteTable(
+  'chat_turns',
+  {
+    id: text('id').primaryKey(),
+    sessionId: text('session_id').notNull().references(() => chatSessions.id, { onDelete: 'cascade' }),
+    role: text('role', { enum: ['user', 'assistant'] }).notNull(),
+    content: text('content').notNull(),
+    // JSON-encoded array of { neuronId, title, slug }. neuronId is the
+    // stable UUID so renames don't break the link; title+slug are frozen
+    // at write-time for display.
+    citations: text('citations'),
+    tokensIn: integer('tokens_in'),
+    tokensOut: integer('tokens_out'),
+    latencyMs: integer('latency_ms'),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (table) => [
+    index('idx_chat_turns_session').on(table.sessionId, table.createdAt),
+  ],
+);

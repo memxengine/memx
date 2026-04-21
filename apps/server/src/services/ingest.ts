@@ -1,5 +1,5 @@
-import { documents, knowledgeBases, DATA_DIR, type TrailDatabase } from '@trail/db';
-import { and, eq } from 'drizzle-orm';
+import { documents, knowledgeBases, ingestJobs, DATA_DIR, type TrailDatabase } from '@trail/db';
+import { and, asc, eq } from 'drizzle-orm';
 import {
   parseSchemaNeuron,
   renderSchemaForPrompt,
@@ -51,11 +51,11 @@ const INGEST_MODEL = process.env.INGEST_MODEL ?? '';
 const INGEST_TIMEOUT_MS = Number(process.env.INGEST_TIMEOUT_MS ?? 1_800_000); // 30 min
 const INGEST_MAX_TURNS = Number(process.env.INGEST_MAX_TURNS ?? 200);
 
-// Per-KB serialisation — one ingest at a time per KB, rest queued.
-// (A KB is the correct granularity here: ingest rewrites shared wiki pages, so
-// two concurrent ingests into the same KB would race on /neurons/overview.md etc.)
-const activeIngests = new Map<string, boolean>();
-const ingestQueue = new Map<string, IngestJob[]>();
+// F143 — durable per-KB queue. One row per pending job in `ingest_jobs`;
+// status transitions queued → running → done|failed. The scheduler picks
+// oldest-queued per KB atomically so two ticks can't double-claim the same
+// job, and a boot sweep rolls interrupted `running` rows back to `queued`
+// so a kill mid-ingest doesn't orphan the remaining upload batch.
 
 export interface IngestJob {
   trail: TrailDatabase;
@@ -65,26 +65,167 @@ export interface IngestJob {
   userId: string;
 }
 
+// In-flight set, scoped to the current process. We still need to know when
+// a KB has a running job locally so we don't pull two jobs into the same
+// process concurrently and race on /neurons/overview.md. Durability lives
+// in the DB column `status='running'`; this Set is purely an in-process
+// guard that survives a single poll cycle.
+const runningLocally = new Set<string>();
+
 export function triggerIngest(job: IngestJob): void {
-  if (activeIngests.get(job.kbId)) {
-    const queue = ingestQueue.get(job.kbId) ?? [];
-    queue.push(job);
-    ingestQueue.set(job.kbId, queue);
-    console.log(`[ingest] Queued ${job.docId} in KB ${job.kbId} (${queue.length} waiting)`);
-    return;
-  }
-  runIngest(job);
+  // Fire-and-forget from the caller's point of view — same ergonomics as
+  // the old in-memory version. The DB write + scheduler-tick happen async
+  // on the event loop; any error is logged but doesn't block the upload
+  // response.
+  void enqueueAndTick(job);
 }
 
-async function runIngest(job: IngestJob): Promise<void> {
-  activeIngests.set(job.kbId, true);
-  const { trail } = job;
+async function enqueueAndTick(job: IngestJob): Promise<void> {
+  try {
+    const jobId = `job_${crypto.randomUUID().slice(0, 12)}`;
+    await job.trail.db
+      .insert(ingestJobs)
+      .values({
+        id: jobId,
+        tenantId: job.tenantId,
+        knowledgeBaseId: job.kbId,
+        documentId: job.docId,
+        status: 'queued',
+      })
+      .run();
+    tickScheduler(job.trail, job.kbId, job.tenantId, job.userId);
+  } catch (err) {
+    console.error(`[ingest] enqueue failed for doc ${job.docId}:`, err);
+  }
+}
+
+/**
+ * Pull the oldest queued job for a KB, flip it to running, and fire
+ * runIngest. Idempotent — if another tick is already running a job for
+ * this KB (tracked via `runningLocally`), this call is a no-op. The
+ * finally-block in runIngest calls tickScheduler again so the queue
+ * drains one-by-one.
+ */
+function tickScheduler(
+  trail: TrailDatabase,
+  kbId: string,
+  tenantId: string,
+  userId: string,
+): void {
+  if (runningLocally.has(kbId)) return;
+  runningLocally.add(kbId);
+  // Fire-and-forget; every exit path clears the guard.
+  void claimAndRun(trail, kbId, tenantId, userId).catch((err) => {
+    console.error(`[ingest] scheduler error for KB ${kbId}:`, err);
+    runningLocally.delete(kbId);
+  });
+}
+
+async function claimAndRun(
+  trail: TrailDatabase,
+  kbId: string,
+  tenantId: string,
+  userId: string,
+): Promise<void> {
+  try {
+    const next = await trail.db
+      .select()
+      .from(ingestJobs)
+      .where(and(eq(ingestJobs.knowledgeBaseId, kbId), eq(ingestJobs.status, 'queued')))
+      .orderBy(asc(ingestJobs.createdAt))
+      .limit(1)
+      .get();
+    if (!next) {
+      runningLocally.delete(kbId);
+      return;
+    }
+    // Atomic claim — only one ticker can win the flip. A second concurrent
+    // tick finds status='running' and skips this job on its next SELECT.
+    const claimedAt = new Date().toISOString();
+    const claimed = await trail.db
+      .update(ingestJobs)
+      .set({ status: 'running', startedAt: claimedAt, attempts: next.attempts + 1 })
+      .where(and(eq(ingestJobs.id, next.id), eq(ingestJobs.status, 'queued')))
+      .run();
+    if (claimed.rowsAffected === 0) {
+      // Another tick beat us to it — try again immediately in case there's
+      // still work queued.
+      runningLocally.delete(kbId);
+      tickScheduler(trail, kbId, tenantId, userId);
+      return;
+    }
+    await runJob(trail, next.id, {
+      trail,
+      docId: next.documentId,
+      kbId,
+      tenantId: next.tenantId,
+      userId,
+    });
+  } finally {
+    runningLocally.delete(kbId);
+    // Drain: if more queued, schedule another tick. A fresh tickScheduler
+    // call re-takes the guard and loops until the queue is empty.
+    const more = await trail.db
+      .select({ id: ingestJobs.id })
+      .from(ingestJobs)
+      .where(and(eq(ingestJobs.knowledgeBaseId, kbId), eq(ingestJobs.status, 'queued')))
+      .limit(1)
+      .get();
+    if (more) tickScheduler(trail, kbId, tenantId, userId);
+  }
+}
+
+/**
+ * Boot recovery. Any `running` row in ingest_jobs at startup is from a
+ * previous process that didn't finish — roll it back to `queued` so the
+ * scheduler picks it up again. The zombie-doc sweep (separate, on the
+ * documents table) still runs for doc rows stuck at status='processing'
+ * from pre-F143 state; after F143 the job row is the source of truth.
+ */
+export async function recoverIngestJobs(trail: TrailDatabase): Promise<void> {
+  const res = await trail.db
+    .update(ingestJobs)
+    .set({ status: 'queued', startedAt: null })
+    .where(eq(ingestJobs.status, 'running'))
+    .run();
+  if (res.rowsAffected > 0) {
+    console.log(`[ingest] recovered ${res.rowsAffected} running jobs → queued`);
+  }
+  // Kick one tick per KB that has queued work, so the scheduler starts
+  // draining without waiting for the next upload.
+  const kbsWithWork = await trail.db
+    .selectDistinct({ kbId: ingestJobs.knowledgeBaseId, tenantId: ingestJobs.tenantId })
+    .from(ingestJobs)
+    .where(eq(ingestJobs.status, 'queued'))
+    .all();
+  for (const row of kbsWithWork) {
+    // User context on boot-recovered jobs: use the tenant's ingest service
+    // user. runJob will load the document and use the tenant id on it.
+    tickScheduler(trail, row.kbId, row.tenantId, 'service-ingest');
+  }
+}
+
+async function runJob(
+  trail: TrailDatabase,
+  jobId: string,
+  job: IngestJob,
+): Promise<void> {
 
   const doc = await trail.db.select().from(documents).where(eq(documents.id, job.docId)).get();
   const kb = await trail.db.select().from(knowledgeBases).where(eq(knowledgeBases.id, job.kbId)).get();
 
   if (!doc || !kb) {
-    activeIngests.delete(job.kbId);
+    // Orphaned job — document or KB deleted between enqueue and claim.
+    // Mark terminal so the row doesn't linger as "running" forever.
+    await trail.db
+      .update(ingestJobs)
+      .set({
+        status: 'failed',
+        errorMessage: 'document or KB no longer exists',
+        completedAt: new Date().toISOString(),
+      })
+      .where(eq(ingestJobs.id, jobId))
+      .run();
     return;
   }
 
@@ -257,10 +398,16 @@ IMPORTANT RULES:
       },
     });
 
+    const finishedAt = new Date().toISOString();
     await trail.db
       .update(documents)
-      .set({ status: 'ready', updatedAt: new Date().toISOString() })
+      .set({ status: 'ready', updatedAt: finishedAt })
       .where(eq(documents.id, job.docId))
+      .run();
+    await trail.db
+      .update(ingestJobs)
+      .set({ status: 'done', completedAt: finishedAt })
+      .where(eq(ingestJobs.id, jobId))
       .run();
 
     broadcaster.emit({
@@ -279,14 +426,20 @@ IMPORTANT RULES:
     // show the curator a short plain-language sentence.
     console.error(`[ingest] Failed for "${doc.filename}":`, rawMsg);
 
+    const finishedAt = new Date().toISOString();
     await trail.db
       .update(documents)
       .set({
         status: 'failed',
         errorMessage: errorMsg,
-        updatedAt: new Date().toISOString(),
+        updatedAt: finishedAt,
       })
       .where(eq(documents.id, job.docId))
+      .run();
+    await trail.db
+      .update(ingestJobs)
+      .set({ status: 'failed', errorMessage: errorMsg, completedAt: finishedAt })
+      .where(eq(ingestJobs.id, jobId))
       .run();
 
     broadcaster.emit({
@@ -297,16 +450,11 @@ IMPORTANT RULES:
       filename: doc.filename,
       error: errorMsg,
     });
-  } finally {
-    activeIngests.delete(job.kbId);
-
-    const queue = ingestQueue.get(job.kbId);
-    if (queue && queue.length > 0) {
-      const next = queue.shift()!;
-      if (queue.length === 0) ingestQueue.delete(job.kbId);
-      runIngest(next);
-    }
   }
+  // Draining happens in the caller (claimAndRun's finally-block) — it
+  // looks up whether any queued jobs remain and re-ticks the scheduler.
+  // That keeps the drain loop in one place and free of the Map-based
+  // state the old implementation relied on.
 }
 
 /**

@@ -586,13 +586,69 @@ export interface ChatCitation {
 export interface ChatResponse {
   answer: string;
   citations?: ChatCitation[];
+  sessionId?: string;
+}
+
+export interface ChatSession {
+  id: string;
+  knowledgeBaseId: string;
+  tenantId: string;
+  userId: string;
+  title: string | null;
+  archived: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ChatTurnRow {
+  id: string;
+  sessionId: string;
+  role: 'user' | 'assistant';
+  content: string;
+  citations: string | null;
+  tokensIn: number | null;
+  tokensOut: number | null;
+  latencyMs: number | null;
+  createdAt: string;
 }
 
 /** Single-turn chat against a KB. Engine retrieves via FTS + calls Claude. */
-export function chat(kbId: string, message: string): Promise<ChatResponse> {
+export function chat(kbId: string, message: string, sessionId?: string): Promise<ChatResponse> {
   return api(`/api/v1/chat`, {
     method: 'POST',
-    body: JSON.stringify({ message, knowledgeBaseId: kbId }),
+    body: JSON.stringify({ message, knowledgeBaseId: kbId, sessionId }),
+  });
+}
+
+/** F144 — list chat sessions for a KB. `archived` defaults to false. */
+export function listChatSessions(
+  kbId: string,
+  archived: 'false' | 'true' | 'all' = 'false',
+): Promise<ChatSession[]> {
+  const qs = new URLSearchParams({ archived });
+  return api(`/api/v1/knowledge-bases/${encodeURIComponent(kbId)}/chat/sessions?${qs.toString()}`);
+}
+
+/** F144 — fetch a session + all its turns in creation order. */
+export function getChatSession(sessionId: string): Promise<{ session: ChatSession; turns: ChatTurnRow[] }> {
+  return api(`/api/v1/chat/sessions/${encodeURIComponent(sessionId)}`);
+}
+
+/** F144 — rename or archive a session. */
+export function patchChatSession(
+  sessionId: string,
+  patch: { title?: string; archived?: boolean },
+): Promise<ChatSession> {
+  return api(`/api/v1/chat/sessions/${encodeURIComponent(sessionId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(patch),
+  });
+}
+
+/** F144 — hard-delete a session. Cascades to turns via FK. */
+export function deleteChatSession(sessionId: string): Promise<{ deleted: true }> {
+  return api(`/api/v1/chat/sessions/${encodeURIComponent(sessionId)}`, {
+    method: 'DELETE',
   });
 }
 

@@ -11,6 +11,7 @@ import { searchRoutes } from './routes/search.js';
 import { userRoutes } from './routes/user.js';
 import { imageRoutes } from './routes/images.js';
 import { chatRoutes } from './routes/chat.js';
+import { chatSessionRoutes } from './routes/chat-sessions.js';
 import { ingestRoutes } from './routes/ingest.js';
 import { streamRoutes } from './routes/stream.js';
 import { queueRoutes } from './routes/queue.js';
@@ -69,6 +70,7 @@ export function createApp(trail: TrailDatabase): Hono<AppBindings> {
   app.route('/api/v1', userRoutes);
   app.route('/api/v1', imageRoutes);
   app.route('/api/v1', chatRoutes);
+  app.route('/api/v1', chatSessionRoutes);
   app.route('/api/v1', ingestRoutes);
   app.route('/api/v1', streamRoutes);
   app.route('/api/v1', queueRoutes);

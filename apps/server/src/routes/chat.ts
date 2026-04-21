@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { documents, knowledgeBases, type TrailDatabase } from '@trail/db';
+import { documents, knowledgeBases, chatSessions, chatTurns, type TrailDatabase } from '@trail/db';
 import { and, eq, like } from 'drizzle-orm';
 import { requireAuth, getTenant, getUser, getTrail } from '../middleware/auth.js';
 import { spawnClaude, extractAssistantText } from '../services/claude.js';
@@ -179,16 +179,119 @@ ${currentTrailName ? `## Current Trail\nThe user is currently viewing the Trail 
     TRAIL_USER_ID: user.id,
   };
 
+  const started = Date.now();
   try {
     const raw = await spawnClaude(args, { timeoutMs: CHAT_TIMEOUT_MS, env: spawnEnv });
     const answer = extractAssistantText(raw);
-    return c.json({ answer, citations });
+    const latencyMs = Date.now() - started;
+    // F144 — persist the turn pair. Session is auto-created on first turn
+    // if the client didn't pass one; subsequent turns append to the same
+    // session. Out-of-band so a DB hiccup doesn't swallow the already-
+    // computed answer — but we do surface the sessionId in the response.
+    const sessionId = await persistTurnPair(
+      trail,
+      tenant.id,
+      user.id,
+      resolvedKbId ?? kbs[0]!.id,
+      body.sessionId ?? null,
+      body.message,
+      answer,
+      citations,
+      latencyMs,
+    );
+    return c.json({ answer, citations, sessionId });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[chat] Error:', msg);
     return c.json({ error: msg }, 500);
   }
 });
+
+/**
+ * F144 — write the user+assistant turn pair to chat_turns. Session is
+ * created on first turn if no sessionId passed; title is derived from
+ * the user question (truncated to 60 chars). All DB work here is best-
+ * effort: if persistence fails we still return the answer, just without
+ * a durable record. Returns the session id for the client to pin to.
+ */
+async function persistTurnPair(
+  trail: TrailDatabase,
+  tenantId: string,
+  userId: string,
+  kbId: string,
+  incomingSessionId: string | null,
+  userMessage: string,
+  assistantAnswer: string,
+  citations: Citation[],
+  latencyMs: number,
+): Promise<string | null> {
+  try {
+    let sessionId = incomingSessionId;
+    const now = new Date().toISOString();
+    if (!sessionId) {
+      sessionId = `chs_${crypto.randomUUID().slice(0, 12)}`;
+      await trail.db
+        .insert(chatSessions)
+        .values({
+          id: sessionId,
+          tenantId,
+          knowledgeBaseId: kbId,
+          userId,
+          title: deriveSessionTitle(userMessage),
+          createdAt: now,
+          updatedAt: now,
+        })
+        .run();
+    } else {
+      await trail.db
+        .update(chatSessions)
+        .set({ updatedAt: now })
+        .where(and(eq(chatSessions.id, sessionId), eq(chatSessions.tenantId, tenantId)))
+        .run();
+    }
+    const citationsJson = citations.length
+      ? JSON.stringify(
+          citations.map((c) => ({
+            neuronId: c.documentId,
+            path: c.path,
+            filename: c.filename,
+          })),
+        )
+      : null;
+    await trail.db
+      .insert(chatTurns)
+      .values({
+        id: `ctn_${crypto.randomUUID().slice(0, 12)}`,
+        sessionId,
+        role: 'user',
+        content: userMessage,
+        createdAt: now,
+      })
+      .run();
+    await trail.db
+      .insert(chatTurns)
+      .values({
+        id: `ctn_${crypto.randomUUID().slice(0, 12)}`,
+        sessionId,
+        role: 'assistant',
+        content: assistantAnswer,
+        citations: citationsJson,
+        latencyMs,
+        createdAt: new Date().toISOString(),
+      })
+      .run();
+    return sessionId;
+  } catch (err) {
+    console.error('[chat] persist-turn failed:', err instanceof Error ? err.message : err);
+    return incomingSessionId;
+  }
+}
+
+function deriveSessionTitle(message: string): string {
+  const normalised = message.replace(/\s+/g, ' ').trim();
+  if (normalised.length <= 60) return normalised;
+  return normalised.slice(0, 57).replace(/[,.!?;:]+$/, '') + '…';
+}
 
 async function callAnthropicAPI(system: string, userMessage: string): Promise<string> {
   const res = await fetch('https://api.anthropic.com/v1/messages', {

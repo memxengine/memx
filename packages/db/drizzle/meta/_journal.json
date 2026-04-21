@@ -64,6 +64,20 @@
       "when": 1777400000000,
       "tag": "0008_seq_id",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1777500000000,
+      "tag": "0009_ingest_jobs",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1777600000000,
+      "tag": "0010_chat_history",
+      "breakpoints": true
     }
   ]
 }

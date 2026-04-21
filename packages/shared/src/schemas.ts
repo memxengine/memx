@@ -371,10 +371,17 @@ export const ResolveCandidateSchema = z.object({
 export const ChatRequestSchema = z.object({
   message: z.string().min(1),
   knowledgeBaseId: z.string().optional(),
+  // F144 — optional session id. When omitted + knowledgeBaseId is set, the
+  // chat endpoint creates a new session and returns its id so the client
+  // can append subsequent turns to it.
+  sessionId: z.string().optional(),
 });
 
 export const ChatResponseSchema = z.object({
   answer: z.string(),
+  // F144 — always present when the question was scoped to a KB; echoed
+  // back so the client stays anchored to the created/continued session.
+  sessionId: z.string().optional(),
   citations: z.array(z.object({
     documentId: z.string(),
     path: z.string(),
