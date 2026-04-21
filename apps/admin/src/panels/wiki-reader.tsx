@@ -47,6 +47,37 @@ export function WikiReaderPanel() {
  * isn't found, returns the original content unchanged — safer than
  * swallowing the whole body on a malformed header.
  */
+/**
+ * Extract the `tags:` line from a leading YAML frontmatter block. Handles
+ * both inline arrays (`tags: [a, b, "c d"]`) and the rarer block form
+ * (`tags:\n  - a\n  - b`). Returns empty array when no frontmatter or no
+ * tags line — the reader falls back to the DB column in that case.
+ */
+function parseFrontmatterTags(raw: string): string[] {
+  if (!raw.startsWith('---')) return [];
+  const end = raw.indexOf('\n---', 4);
+  if (end === -1) return [];
+  const block = raw.slice(0, end);
+  // Inline form: `tags: [a, b, "c"]`
+  const inline = block.match(/^tags\s*:\s*\[(.+)\]\s*$/m);
+  if (inline) {
+    return inline[1]!
+      .split(',')
+      .map((t) => t.trim().replace(/^["']|["']$/g, ''))
+      .filter(Boolean);
+  }
+  // Block form: `tags:\n  - a\n  - b`
+  const blockMatch = block.match(/^tags\s*:\s*\n((?:\s*-\s*.+\n?)+)/m);
+  if (blockMatch) {
+    return blockMatch[1]!
+      .split('\n')
+      .map((line) => line.replace(/^\s*-\s*/, '').trim())
+      .map((t) => t.replace(/^["']|["']$/g, ''))
+      .filter(Boolean);
+  }
+  return [];
+}
+
 function stripFrontmatter(raw: string): string {
   if (!raw.startsWith('---')) return raw;
   // Require the opening `---` to be on its own line (next char is \n).
@@ -127,7 +158,12 @@ function ReaderView() {
   const d = doc as (Document & { filename: string; title: string | null; version: number; path?: string; tags?: string | null; createdAt?: string; updatedAt?: string }) | null;
   const effectiveVersion = localVersion ?? (d?.version ?? 0);
   const editHref = d ? `/kb/${kbId}/neurons/${encodeURIComponent(slug)}?edit=1` : null;
-  const readerTags = d ? parseTags(d.tags) : [];
+  // Prefer the DB column (kept in sync by F92 on approve), fall back to
+  // the frontmatter so older Neurons written before F92's backfill still
+  // show chips. Same parser accepts both `[a, b]` arrays and CSV strings.
+  const dbTags = d ? parseTags(d.tags) : [];
+  const frontmatterTags = parseFrontmatterTags(content ?? '');
+  const readerTags = dbTags.length > 0 ? dbTags : frontmatterTags;
 
   return (
     <div class="page-shell">
@@ -200,7 +236,18 @@ function ReaderView() {
                 </span>
               ) : null}
               {readerTags.length > 0 ? (
-                <TagChips tags={readerTags} />
+                <div class="inline-flex flex-wrap gap-1.5">
+                  {readerTags.map((tag) => (
+                    <a
+                      key={tag}
+                      href={`/kb/${kbId}/neurons?tag=${encodeURIComponent(tag)}`}
+                      class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-mono bg-[color:var(--color-accent)]/15 text-[color:var(--color-accent)] border border-[color:var(--color-accent)]/30 hover:bg-[color:var(--color-accent)]/25 transition"
+                      title={`Filter Neurons by "${tag}"`}
+                    >
+                      {tag}
+                    </a>
+                  ))}
+                </div>
               ) : null}
               {isHeuristicPath(d.path) ? (
                 <HeuristicBadge

@@ -44,9 +44,18 @@ export function WikiTreePanel() {
   // the chip row, and an open/closed toggle that auto-opens when any
   // filter is active. AND-semantics: a Neuron is visible only when
   // every selected tag is on its tags column.
-  const [tagFilter, setTagFilter] = useState<Set<string>>(new Set());
+  // Deep-link: `?tag=foo&tag=bar` seeds the filter so a click from the
+  // reader's tag-chip lands directly on a filtered view. The set is
+  // lower-cased because `toggleTag` canonicalises to lower internally.
+  const initialTagFilter = (() => {
+    const raw = route.query.tag;
+    if (!raw) return new Set<string>();
+    const arr = Array.isArray(raw) ? raw : [raw];
+    return new Set(arr.map((t) => t.toLowerCase()));
+  })();
+  const [tagFilter, setTagFilter] = useState<Set<string>>(initialTagFilter);
   const [allTags, setAllTags] = useState<TagCount[]>([]);
-  const [tagFilterOpen, setTagFilterOpen] = useState(false);
+  const [tagFilterOpen, setTagFilterOpen] = useState(initialTagFilter.size > 0);
 
   useEffect(() => {
     if (!kbId) return;
