@@ -926,6 +926,12 @@ async function executeRetireNeuron(
   }
 
   return trail.db.transaction(async (tx) => {
+    // Despite the action name, the `retire-neuron` effect is reused by
+    // orphan-lint's `archive-source` action (see lint/orphans.ts:282) — so
+    // we can't filter on kind='wiki' or bulk-accept on orphan Sources
+    // blows up with "target Neuron not found" even though the Source
+    // exists. Archive is a reversible, kind-agnostic op, so accepting any
+    // document kind is safe.
     const doc = await tx
       .select()
       .from(documents)
@@ -933,11 +939,10 @@ async function executeRetireNeuron(
         and(
           eq(documents.id, targetId),
           eq(documents.tenantId, candidate.tenantId),
-          eq(documents.kind, 'wiki'),
         ),
       )
       .get();
-    if (!doc) throw new Error(`retire-neuron: target Neuron not found: ${targetId}`);
+    if (!doc) throw new Error(`retire-neuron: target document not found: ${targetId}`);
 
     const prevEventId = await lastEventIdFor(tx, candidate.tenantId, doc.id);
     await tx
