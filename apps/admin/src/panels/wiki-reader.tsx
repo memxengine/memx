@@ -40,6 +40,27 @@ export function WikiReaderPanel() {
   return route.query.edit === '1' ? <NeuronEditorPanel /> : <ReaderView />;
 }
 
+/**
+ * Drop a leading YAML frontmatter block (`---\n…\n---\n`) from the body
+ * before markdown rendering. Only touches content that STARTS with `---`
+ * so mid-doc separators (hr rules) still render. If the closing fence
+ * isn't found, returns the original content unchanged — safer than
+ * swallowing the whole body on a malformed header.
+ */
+function stripFrontmatter(raw: string): string {
+  if (!raw.startsWith('---')) return raw;
+  // Require the opening `---` to be on its own line (next char is \n).
+  if (raw[3] !== '\n' && raw[3] !== '\r') return raw;
+  // Look for the closing `\n---\n` (allow trailing whitespace on either line).
+  const end = raw.indexOf('\n---', 4);
+  if (end === -1) return raw;
+  // Advance past the closing fence + its newline (may be \r\n).
+  let after = end + 4;
+  if (raw[after] === '\r') after++;
+  if (raw[after] === '\n') after++;
+  return raw.slice(after);
+}
+
 function ReaderView() {
   const route = useRoute();
   const kbId = route.params.kbId ?? '';
@@ -93,7 +114,13 @@ function ReaderView() {
 
   const html = useMemo(() => {
     if (content === null) return '';
-    const preprocessed = rewriteWikiLinks(content, kbId);
+    // Strip YAML frontmatter before rendering. It's load-bearing for the
+    // reference-extractor (sources:) + F139 decay (pinned:, type:) so we
+    // keep it in the raw content, but the reader's header already shows
+    // title / tags / date in a styled form — re-rendering the same metadata
+    // as plain prose clutters the top of every Neuron.
+    const stripped = stripFrontmatter(content);
+    const preprocessed = rewriteWikiLinks(stripped, kbId);
     return marked.parse(preprocessed, { async: false }) as string;
   }, [content, kbId]);
 
