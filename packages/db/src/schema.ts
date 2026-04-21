@@ -104,6 +104,13 @@ export const documents = sqliteTable(
     // Meaningful when kind='source': marks the document as authoritative for its topic.
     // Used later for trust-tier rules (e.g. reject auto-approval of contradicting sources).
     isCanonical: integer('is_canonical', { mode: 'boolean' }).notNull().default(false),
+    // F145 — per-KB monotone sequence. Rendered as `<kbPrefix>_<seq:8>` (e.g.
+    // `buddy_00000219`) for cross-session references. Populated at insert time
+    // by packages/core/src/queue/candidates.ts inside the approve transaction;
+    // backfilled for pre-existing rows by migration 0008. Nullable only on the
+    // column to avoid a failed migration on a huge pre-seq database — every
+    // row should carry a seq after 0008 runs.
+    seq: integer('seq'),
     // F138 — Work Layer fields. Only meaningful when kind='work'; null on
     // all other rows. Kept on documents (not a separate table) so wiki-
     // links, backlinks, F99 graph, search and chat treat Work items as
@@ -124,6 +131,7 @@ export const documents = sqliteTable(
     index('idx_docs_kb_canonical').on(table.knowledgeBaseId, table.isCanonical),
     index('idx_docs_work_status').on(table.knowledgeBaseId, table.workStatus),
     index('idx_docs_work_assignee').on(table.knowledgeBaseId, table.workAssignee),
+    uniqueIndex('idx_docs_kb_seq').on(table.knowledgeBaseId, table.seq),
   ],
 );
 

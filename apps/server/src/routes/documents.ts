@@ -102,6 +102,10 @@ documentRoutes.get('/knowledge-bases/:kbId/documents', async (c) => {
       sortOrder: documents.sortOrder,
       archived: documents.archived,
       isCanonical: documents.isCanonical,
+      // F145 — per-KB monotone sequence; admin + MCP use this to build the
+      // `<kbPrefix>_<seq:8>` display id. Included here so the list view can
+      // render it without a second round-trip.
+      seq: documents.seq,
       createdAt: documents.createdAt,
       updatedAt: documents.updatedAt,
       // Count of DISTINCT Neurons that cite this Source via
@@ -292,6 +296,8 @@ documentRoutes.post('/knowledge-bases/:kbId/documents/note', async (c) => {
       status: 'ready',
       content: body.content,
       version: 1,
+      // F145 — inline per-KB seq (see candidates.ts for the same pattern).
+      seq: sql<number>`COALESCE((SELECT MAX(${documents.seq}) FROM ${documents} WHERE ${documents.knowledgeBaseId} = ${kbId}), 0) + 1`,
     })
     .run();
 

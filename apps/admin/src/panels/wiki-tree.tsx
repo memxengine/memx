@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'preact/hooks';
 import { useRoute } from 'preact-iso';
 import type { Document } from '@trail/shared';
+import { formatSeqId } from '@trail/shared';
 import { listWikiPages, listTags, runLint, createNeuron, ApiError, type WikiSortOrder, type TagCount } from '../api';
 import { displayPath } from '../lib/display-path';
+import { useKb } from '../lib/kb-cache';
 import { useKbEvents, onStreamOpen, onFocusRefresh, debounce } from '../lib/event-stream';
 import { t, useLocale } from '../lib/i18n';
 import { CenteredLoader } from '../components/centered-loader';
@@ -18,6 +20,7 @@ export function WikiTreePanel() {
   const route = useRoute();
   const kbId = route.params.kbId ?? '';
   useLocale();
+  const kb = useKb(kbId);
   const [pages, setPages] = useState<Document[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [lintBusy, setLintBusy] = useState(false);
@@ -365,9 +368,22 @@ export function WikiTreePanel() {
                           ))}
                         </div>
                       </div>
-                      <span class="text-[color:var(--color-fg-subtle)] group-hover:text-[color:var(--color-accent)] transition">
-                        →
-                      </span>
+                      <div class="shrink-0 flex items-center gap-2">
+                        {(() => {
+                          const seqId = formatSeqId(kb?.name, d.seq);
+                          return seqId ? (
+                            <span
+                              class="font-mono text-[10px] text-[color:var(--color-fg-subtle)] tabular-nums"
+                              title={seqId}
+                            >
+                              {seqId}
+                            </span>
+                          ) : null;
+                        })()}
+                        <span class="text-[color:var(--color-fg-subtle)] group-hover:text-[color:var(--color-accent)] transition">
+                          →
+                        </span>
+                      </div>
                     </a>
                   </li>
                 );

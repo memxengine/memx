@@ -15,6 +15,7 @@ import {
 } from '@trail/db';
 import { eq, and, like, sql, desc } from 'drizzle-orm';
 import { createCandidate, slugify } from '@trail/core';
+import { formatSeqId } from '@trail/shared';
 
 // MCP-initiated wiki mutations flow through the Curation Queue. The server's
 // auto-approval policy (see @trail/core shouldAutoApprove) fires for LLM-actor
@@ -224,7 +225,11 @@ server.tool(
       } else {
         text += `### Documents (${docResults.length})\n`;
         for (const r of docResults) {
-          text += `- [${r.kind}] \`${r.path}${r.filename}\` — ${r.title ?? r.filename}\n`;
+          // F145 — include seqId so cross-session references can use it as
+          // the canonical handle (`#buddy_00000219`).
+          const seqId = formatSeqId(kb.name, r.seq);
+          const prefix = seqId ? `\`${seqId}\` ` : '';
+          text += `- ${prefix}[${r.kind}] \`${r.path}${r.filename}\` — ${r.title ?? r.filename}\n`;
         }
         text += `\n### Chunks (${chunkResults.length})\n`;
         for (const c of chunkResults) {
@@ -250,6 +255,7 @@ server.tool(
         kind: documents.kind,
         fileType: documents.fileType,
         status: documents.status,
+        seq: documents.seq,
         updatedAt: documents.updatedAt,
       })
       .from(documents)
@@ -260,7 +266,10 @@ server.tool(
     let text = `## ${kb.name} — ${docs.length} documents\n\n`;
     for (const doc of docs) {
       const statusIcon = doc.status === 'ready' ? '✓' : doc.status === 'processing' ? '⏳' : '•';
-      text += `${statusIcon} [${doc.kind}] \`${doc.path}${doc.filename}\` — ${doc.title ?? doc.filename} (${doc.fileType})\n`;
+      // F145 — seqId as the canonical cross-session handle.
+      const seqId = formatSeqId(kb.name, doc.seq);
+      const prefix = seqId ? `\`${seqId}\` ` : '';
+      text += `${statusIcon} ${prefix}[${doc.kind}] \`${doc.path}${doc.filename}\` — ${doc.title ?? doc.filename} (${doc.fileType})\n`;
     }
     return { content: [{ type: 'text' as const, text }] };
   },
@@ -321,7 +330,10 @@ server.tool(
           text += `\n\n---\n_Truncated: ${docs.length - docs.indexOf(doc)} more documents not shown._\n`;
           break;
         }
-        text += `\n\n---\n## ${doc.path}${doc.filename}\n\n`;
+        // F145 — seqId header so multi-doc reads carry the canonical id.
+        const seqId = formatSeqId(kb.name, doc.seq);
+        const header = seqId ? `\n\n---\n## ${doc.path}${doc.filename}  \`${seqId}\`\n\n` : `\n\n---\n## ${doc.path}${doc.filename}\n\n`;
+        text += header;
         const content = doc.content ?? '_No content_';
         text += content;
         totalChars += content.length;
@@ -377,7 +389,12 @@ server.tool(
         });
     }
 
-    return { content: [{ type: 'text' as const, text: doc.content ?? '_No content_' }] };
+    // F145 — prepend seqId so the agent that just read this doc sees the
+    // canonical handle and can cite it in return output.
+    const seqId = formatSeqId(kb.name, doc.seq);
+    const body = doc.content ?? '_No content_';
+    const text = seqId ? `<!-- ${seqId} -->\n${body}` : body;
+    return { content: [{ type: 'text' as const, text }] };
   },
 );
 

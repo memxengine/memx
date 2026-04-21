@@ -1,6 +1,8 @@
 import { Hono } from 'hono';
+import { documents, knowledgeBases } from '@trail/db';
+import { and, eq } from 'drizzle-orm';
 import { requireAuth, getTenant, getTrail } from '../middleware/auth.js';
-import { parseTags, canonicaliseTag } from '@trail/shared';
+import { parseTags, canonicaliseTag, parseSeqId, kbPrefix } from '@trail/shared';
 import { resolveKbId } from '@trail/core';
 
 export const searchRoutes = new Hono();
@@ -25,6 +27,21 @@ searchRoutes.get('/knowledge-bases/:kbId/search', async (c) => {
     .filter((t): t is string => !!t);
 
   if (!query.trim()) {
+    return c.json({ documents: [], chunks: [] });
+  }
+
+  // F145 — `#`-prefixed queries are seqId lookups, not FTS. Three shapes:
+  //   #buddy_00000219 → exact hit if this KB's prefix matches "buddy"
+  //   #00000219 / #219 → plain digits, look up seq in current KB
+  //   anything else after `#` → fall through to FTS
+  // No tag filter interaction: seqId uniquely identifies a row, so tags
+  // would just narrow away the intended result.
+  if (query.trim().startsWith('#')) {
+    const hit = await lookupBySeqId(trail, tenant.id, kbId, query.trim());
+    if (hit) return c.json({ documents: [hit], chunks: [] });
+    // Unknown #id — return empty rather than silently fall through so the
+    // curator knows the id didn't resolve (not that "nothing looks like that
+    // word either"). Matches how #tag searches behave elsewhere.
     return c.json({ documents: [], chunks: [] });
   }
 
@@ -95,6 +112,62 @@ async function loadTagsForDocIds(
     map.set(row.id, row.tags);
   }
   return map;
+}
+
+/**
+ * F145 — resolve a `#`-prefixed seqId query to a single document row.
+ * Accepts the full `#prefix_digits` form or a bare `#digits` that defaults
+ * to the current KB. Returns null when the id doesn't match anything in
+ * the current tenant.
+ */
+async function lookupBySeqId(
+  trail: ReturnType<typeof getTrail>,
+  tenantId: string,
+  currentKbId: string,
+  query: string,
+): Promise<{ id: string; title: string | null; path: string; kind: string; tags: string | null; seq: number } | null> {
+  const parsed = parseSeqId(query);
+  let seq: number;
+  let targetKbId = currentKbId;
+  if (parsed) {
+    seq = parsed.seq;
+    // Verify the parsed prefix matches the current KB. If not, resolve to
+    // whichever KB in this tenant has a matching prefix.
+    const kbs = await trail.db
+      .select({ id: knowledgeBases.id, name: knowledgeBases.name })
+      .from(knowledgeBases)
+      .where(eq(knowledgeBases.tenantId, tenantId))
+      .all();
+    const match = kbs.find((kb) => kbPrefix(kb.name) === parsed.prefix);
+    if (!match) return null;
+    targetKbId = match.id;
+  } else {
+    // `#<digits>` shorthand — look up in current KB.
+    const digits = query.trim().replace(/^#/, '');
+    const parsedDigits = Number.parseInt(digits, 10);
+    if (!Number.isFinite(parsedDigits) || parsedDigits < 0) return null;
+    seq = parsedDigits;
+  }
+  const row = await trail.db
+    .select({
+      id: documents.id,
+      title: documents.title,
+      path: documents.path,
+      kind: documents.kind,
+      tags: documents.tags,
+      seq: documents.seq,
+    })
+    .from(documents)
+    .where(
+      and(
+        eq(documents.tenantId, tenantId),
+        eq(documents.knowledgeBaseId, targetKbId),
+        eq(documents.seq, seq),
+      ),
+    )
+    .get();
+  if (!row || row.seq === null) return null;
+  return { ...row, seq: row.seq };
 }
 
 // Turn user input into a safe FTS5 MATCH expression.

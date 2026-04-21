@@ -73,6 +73,7 @@ export interface DocumentSearchHit {
   kind: 'source' | 'wiki';
   highlight: string;
   rank: number;
+  seq: number | null;
 }
 
 export interface ChunkSearchHit {

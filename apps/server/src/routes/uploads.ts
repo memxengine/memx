@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { documents, type TrailDatabase } from '@trail/db';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { requireAuth, getUser, getTenant, getTrail } from '../middleware/auth.js';
 import { processPdf, processDocx, processPptx, processXlsx } from '@trail/pipelines';
 import { storage, sourcePath } from '../lib/storage.js';
@@ -90,6 +90,8 @@ uploadRoutes.post('/knowledge-bases/:kbId/documents/upload', async (c) => {
       fileType: ext,
       fileSize: file.size,
       status: initialStatus,
+      // F145 — inline per-KB seq (see candidates.ts for the same pattern).
+      seq: sql<number>`COALESCE((SELECT MAX(${documents.seq}) FROM ${documents} WHERE ${documents.knowledgeBaseId} = ${kbId}), 0) + 1`,
     })
     .run();
 

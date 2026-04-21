@@ -114,6 +114,9 @@ export const DocumentSchema = z.object({
   workAssignee: z.string().nullable().optional(),
   workDueAt: z.string().nullable().optional(),
   workKind: WorkKindEnum.nullable().optional(),
+  // F145 — per-KB monotone sequence. Nullable on the schema for pre-0008
+  // snapshots; every row should have one after the migration backfill.
+  seq: z.number().int().nullable().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

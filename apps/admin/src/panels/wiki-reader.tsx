@@ -2,6 +2,9 @@ import { useEffect, useMemo, useState } from 'preact/hooks';
 import { useRoute } from 'preact-iso';
 import { marked } from 'marked';
 import type { Document } from '@trail/shared';
+import { formatSeqId } from '@trail/shared';
+import { useKb } from '../lib/kb-cache';
+import { CopyId } from '../components/copy-id';
 import {
   slugify,
   isHeuristicPath,
@@ -41,6 +44,7 @@ function ReaderView() {
   const route = useRoute();
   const kbId = route.params.kbId ?? '';
   const slug = decodeURIComponent(route.params.slug ?? '');
+  const kb = useKb(kbId);
   const [pages, setPages] = useState<Document[] | null>(null);
   const [content, setContent] = useState<string | null>(null);
   const [provenance, setProvenance] = useState<NeuronProvenance | null>(null);
@@ -150,6 +154,13 @@ function ReaderView() {
               {d.title ?? d.filename}
             </h1>
             <div class="flex items-center gap-3 flex-wrap">
+              {(() => {
+                // F145 — the per-KB seq is the stable, human-readable handle for
+                // cross-session references. Shown next to the version so it sits
+                // with the other identity metadata.
+                const seqId = formatSeqId(kb?.name, (d as Document & { seq?: number | null }).seq);
+                return seqId ? <CopyId id={seqId} /> : null;
+              })()}
               <span class="text-[11px] font-mono text-[color:var(--color-fg-subtle)]">
                 v{d.version}
               </span>

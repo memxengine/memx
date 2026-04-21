@@ -697,6 +697,11 @@ async function approveCreate(
       tags: op.tags ?? null,
       status: 'ready',
       version: 1,
+      // F145 — atomic per-KB seq assignment. Computed inline so two
+      // concurrent inserts in the same KB can't read the same MAX and
+      // then race past the UNIQUE constraint. SQLite serialises writes,
+      // so this subquery sees the latest committed seq for the KB.
+      seq: sql<number>`COALESCE((SELECT MAX(${documents.seq}) FROM ${documents} WHERE ${documents.knowledgeBaseId} = ${candidate.knowledgeBaseId}), 0) + 1`,
       ...(docKind === 'work'
         ? {
             workStatus: op.workStatus ?? 'open',

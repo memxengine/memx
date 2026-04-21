@@ -14,6 +14,7 @@ const DOCUMENTS_SQL = `
          d.title                                            AS title,
          d.path                                             AS path,
          d.kind                                             AS kind,
+         d.seq                                              AS seq,
          highlight(documents_fts, 0, '<mark>', '</mark>')   AS highlight,
          rank                                               AS rank
     FROM documents_fts
@@ -61,6 +62,7 @@ export async function searchDocuments(
     kind: row.kind as 'source' | 'wiki',
     highlight: row.highlight as string,
     rank: row.rank as number,
+    seq: (row.seq as number | null) ?? null,
   }));
 }
 
