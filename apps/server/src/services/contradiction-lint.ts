@@ -154,6 +154,7 @@ async function runForEvent(
       id: documents.id,
       filename: documents.filename,
       title: documents.title,
+      path: documents.path,
       content: documents.content,
       kind: documents.kind,
       tenantId: documents.tenantId,
@@ -167,6 +168,14 @@ async function runForEvent(
 
   if (!doc || doc.kind !== 'wiki' || !doc.content) return;
   if (doc.content.length < MIN_CONTENT_CHARS) return;
+  // F102 — the auto-maintained glossary is definitional vocabulary, not
+  // claims. A glossary entry that says "Connector: source of attribution"
+  // is not in conflict with a Neuron detailing the connector pipeline —
+  // they're different scopes, and the lint's similarity retrieval is
+  // prone to flag them anyway. Skip glossary docs as the subject side
+  // (the findSimilarNeurons filter below skips them as the counterparty
+  // side too).
+  if (doc.path === '/neurons/' && doc.filename === 'glossary.md') return;
 
   const similars = await findSimilarNeurons(trail, doc);
   if (similars.length === 0) return;
@@ -279,6 +288,7 @@ async function findSimilarNeurons(
       .select({
         id: documents.id,
         filename: documents.filename,
+        path: documents.path,
         title: documents.title,
         content: documents.content,
         version: documents.version,
@@ -287,6 +297,10 @@ async function findSimilarNeurons(
       .where(and(eq(documents.id, hit.id), ne(documents.kind, 'source')))
       .get();
     if (!row || !row.content || row.content.length < MIN_CONTENT_CHARS) continue;
+    // F102 — glossary is definitional; never treat as a contradiction
+    // counterparty. See subject-side skip in runForEvent for the symmetric
+    // guard that fires when the glossary ITSELF is the newly-approved doc.
+    if (row.path === '/neurons/' && row.filename === 'glossary.md') continue;
     results.push({
       documentId: row.id,
       filename: row.filename,
