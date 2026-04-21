@@ -109,8 +109,9 @@ export function QueuePanel() {
   const route = useRoute();
   const kbId = route.params.kbId ?? '';
   // Re-render on locale change so tab labels + button text follow the
-  // active language.
-  useLocale();
+  // active language. Capture the locale value for bilingual() calls
+  // outside the JSX (e.g. when deriving action labels for bulk buttons).
+  const locale = useLocale();
   const [status, setStatus] = useState<FilterStatus>('pending');
   // Set of connector ids currently included in the filter. Empty set =
   // "show all". Multi-select (OR logic on server side).
@@ -306,6 +307,47 @@ export function QueuePanel() {
     return !!meta?.recommendation?.recommendedActionId;
   });
 
+  // Adaptive bulk actions: show a dedicated button for every action
+  // present on every selected candidate. An orphan-lint selection
+  // shares {keep-for-now, archive-source, dismiss} so the curator can
+  // bulk-archive without click-per-row; a mixed selection shrinks the
+  // shared set and the UI only exposes what will actually execute.
+  // Excludes the per-candidate `recommendedActionId` since that's
+  // already the dedicated "Accept recs" button, and excludes reject-
+  // effect actions because those route through the reason-modal.
+  const sharedBulkActions: Array<{ id: string; label: string; effect: string }> = (() => {
+    if (selectedItems.length === 0) return [];
+    const richSelected = selectedItems.filter((c) => c.actions !== null && c.actions.length > 0);
+    if (richSelected.length === 0 || richSelected.length !== selectedItems.length) return [];
+    // Start with action-id set from the first candidate, narrow with each.
+    const first = richSelected[0]!.actions!;
+    let shared = new Map(first.map((a) => [a.id, a]));
+    for (let i = 1; i < richSelected.length; i++) {
+      const ids = new Set(richSelected[i]!.actions!.map((a) => a.id));
+      shared = new Map(Array.from(shared.entries()).filter(([id]) => ids.has(id)));
+      if (shared.size === 0) return [];
+    }
+    // Hide reject-effect here (covered by "Reject N" reason-modal) and
+    // hide the candidate's recommendedActionId when every candidate
+    // recommends the same one (already the "Accept N recs" button).
+    const recIds = new Set(
+      selectedWithRecommendation
+        .map((c) => parseMetadata(c.metadata)?.recommendation?.recommendedActionId)
+        .filter((x): x is string => typeof x === 'string'),
+    );
+    const allShareSameRec =
+      selectedWithRecommendation.length === selectedItems.length && recIds.size === 1;
+    const recToHide = allShareSameRec ? Array.from(recIds)[0] : null;
+    return Array.from(shared.values())
+      .filter((a) => a.effect !== 'reject')
+      .filter((a) => a.id !== recToHide)
+      .map((a) => ({
+        id: a.id,
+        effect: a.effect,
+        label: bilingual(a.label, locale),
+      }));
+  })();
+
   // F32.3 — ids of visible pending candidates with confidence < low-tier
   // threshold. The "Dismiss all <0.5" shortcut rejects these in one call.
   // Scope is the already-filtered view (connector + tag + confidence tier
@@ -421,6 +463,35 @@ export function QueuePanel() {
 
   function openBulkReject() {
     setBulkReject({ ids: Array.from(selected), reason: '' });
+  }
+
+  /**
+   * Adaptive bulk-action dispatcher — invoked from the auto-generated
+   * buttons for each shared actionId (see `sharedBulkActions`). Sends
+   * one HTTP call to /queue/bulk with the shared id; the server uses
+   * each candidate's own pre-stored args per-row, so an orphan-source
+   * bulk-archive passes the right documentId for each without the
+   * client doing any per-row plumbing.
+   */
+  async function onBulkSharedAction(actionId: string, label: string) {
+    const ids = Array.from(selected);
+    if (ids.length === 0) return;
+    setBulkBusy(true);
+    try {
+      const r = await bulkQueue({ actionId, ids });
+      setToast({
+        kind: r.failed.length === 0 ? 'success' : 'error',
+        text:
+          `${label}: ${r.succeeded.length}/${r.requested}` +
+          (r.failed.length ? t('queue.bulk.failureSuffix', { n: r.failed.length }) : ''),
+      });
+      clearSelection();
+      reload();
+    } catch (err) {
+      setToast({ kind: 'error', text: err instanceof Error ? err.message : t('common.error') });
+    } finally {
+      setBulkBusy(false);
+    }
   }
 
   /**
@@ -913,6 +984,23 @@ export function QueuePanel() {
                   {t('common.approve')} {selected.size}
                 </button>
               ) : null}
+              {/* Adaptive bulk-action buttons — one per actionId shared across every
+                  selected candidate (see `sharedBulkActions`). An orphan-source
+                  selection typically surfaces Keep-for-now / Archive / Dismiss so
+                  the curator can act on them as a batch without click-per-row. */}
+              {status === 'pending'
+                ? sharedBulkActions.map((a) => (
+                    <button
+                      key={a.id}
+                      disabled={bulkBusy}
+                      onClick={() => onBulkSharedAction(a.id, a.label)}
+                      title={`${a.label} · ${selected.size}`}
+                      class="px-3 py-1.5 text-[11px] rounded-md border border-[color:var(--color-border-strong)] hover:bg-[color:var(--color-bg)] disabled:opacity-50 transition"
+                    >
+                      {a.label} {selected.size}
+                    </button>
+                  ))
+                : null}
               {status === 'pending' ? (
                 <button
                   disabled={bulkBusy}
