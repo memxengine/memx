@@ -944,6 +944,19 @@ async function executeRetireNeuron(
       .get();
     if (!doc) throw new Error(`retire-neuron: target document not found: ${targetId}`);
 
+    // F102 — the per-KB glossary.md Neuron is auto-maintained by the
+    // ingest pipeline; archiving it breaks the compile-time str_replace
+    // the prompt does on every subsequent ingest and leaves the KB
+    // without a vocabulary root. Refuse the retire outright — if a
+    // curator really wants it gone they can empty the body or delete
+    // the row manually via DB. The F102 bootstrap re-seeds on boot
+    // when no active glossary exists.
+    if (doc.path === '/neurons/' && doc.filename === 'glossary.md') {
+      throw new Error(
+        'retire-neuron: refusing to archive the auto-maintained glossary. Edit the body instead.',
+      );
+    }
+
     const prevEventId = await lastEventIdFor(tx, candidate.tenantId, doc.id);
     await tx
       .update(documents)

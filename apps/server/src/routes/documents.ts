@@ -428,6 +428,22 @@ documentRoutes.delete('/documents/:docId', async (c) => {
   const tenant = getTenant(c);
   const docId = c.req.param('docId');
 
+  // F102 — refuse to archive the per-KB glossary Neuron. It's auto-
+  // maintained; the compile-pipeline str_replace's into it on every
+  // ingest. Empty body is fine; archived means the next ingest can't
+  // find it and ingest-summary candidates start failing silently.
+  const existing = await trail.db
+    .select({ path: documents.path, filename: documents.filename })
+    .from(documents)
+    .where(and(eq(documents.id, docId), eq(documents.tenantId, tenant.id)))
+    .get();
+  if (existing && existing.path === '/neurons/' && existing.filename === 'glossary.md') {
+    return c.json(
+      { error: 'Refusing to archive the auto-maintained glossary Neuron — edit the body instead.' },
+      409,
+    );
+  }
+
   await trail.db
     .update(documents)
     .set({ archived: true, status: 'archived', updatedAt: new Date().toISOString() })
