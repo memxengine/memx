@@ -15,7 +15,7 @@ import { displayPath } from '../lib/display-path';
 import { UploadDropzone } from '../components/upload-dropzone';
 import { ProcessingIndicator } from '../components/processing-indicator';
 import { Modal, ModalButton } from '../components/modal';
-import { useEvents, onStreamOpen, onFocusRefresh, debounce } from '../lib/event-stream';
+import { useKbEvents, onStreamOpen, onFocusRefresh, debounce } from '../lib/event-stream';
 import { t, useLocale } from '../lib/i18n';
 import { CenteredLoader } from '../components/centered-loader';
 import { CopyId } from '../components/copy-id';
@@ -123,8 +123,7 @@ export function SourcesPanel() {
     reload();
   }, [reload]);
 
-  useEvents((e) => {
-    if (e.kbId !== kbId) return;
+  useKbEvents(kbId, (e) => {
     if (
       e.type === 'ingest_started' ||
       e.type === 'ingest_completed' ||

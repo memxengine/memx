@@ -3,7 +3,7 @@ import { useRoute } from 'preact-iso';
 import type { Document } from '@trail/shared';
 import { listWikiPages, listTags, runLint, createNeuron, ApiError, type WikiSortOrder, type TagCount } from '../api';
 import { displayPath } from '../lib/display-path';
-import { useEvents, onStreamOpen, onFocusRefresh, debounce } from '../lib/event-stream';
+import { useKbEvents, onStreamOpen, onFocusRefresh, debounce } from '../lib/event-stream';
 import { t, useLocale } from '../lib/i18n';
 import { CenteredLoader } from '../components/centered-loader';
 import { parseTags } from '../components/tag-chips';
@@ -110,8 +110,7 @@ export function WikiTreePanel() {
   // to redraw for rejects or for non-document actions. Debounced so bulk
   // approves coalesce into one reload. F92 — also re-fetch the tag
   // aggregate so new tags from the approval show up in the chip row.
-  useEvents((e) => {
-    if (e.kbId !== kbId) return;
+  useKbEvents(kbId, (e) => {
     if (e.type === 'candidate_approved') {
       reloadDebounced();
       listTags(kbId).then(setAllTags).catch(() => {

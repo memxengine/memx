@@ -13,6 +13,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { DomainEvent, StreamFrame } from '@trail/shared';
 import { isDomainEvent } from '@trail/shared';
+import { useKb } from './kb-cache';
 
 type Handler = (event: DomainEvent) => void;
 type OpenHandler = () => void;
@@ -155,6 +156,30 @@ export function useEvents(handler: Handler): void {
 }
 
 /**
+ * Subscribe only to events for a given KB — URL-independent. Engine events
+ * stamp `e.kbId` with the UUID, but F135-style URLs may pass a slug. This
+ * helper resolves the slug→UUID via useKb and matches either form, so every
+ * panel that filters by "current KB" gets it right without re-doing the
+ * dance. Replaces the `useEvents(e => { if (e.kbId !== kbId) return; ... })`
+ * pattern that broke silently after F135.
+ */
+export function useKbEvents(kbIdOrSlug: string | undefined, handler: Handler): void {
+  const kb = useKb(kbIdOrSlug ?? '');
+  const canonicalKbId = kb?.id;
+  const saved = useRef(handler);
+  saved.current = handler;
+  useEffect(
+    () =>
+      subscribe((e) => {
+        if (!kbIdOrSlug) return;
+        if (e.kbId !== kbIdOrSlug && e.kbId !== canonicalKbId) return;
+        saved.current(e);
+      }),
+    [kbIdOrSlug, canonicalKbId],
+  );
+}
+
+/**
  * Count of pending candidates for a given KB. Fetches on mount, then
  * stays live via SSE: candidate_created (pending ones) increments,
  * candidate_approved and candidate_rejected decrement. Returns `null`
@@ -163,6 +188,12 @@ export function useEvents(handler: Handler): void {
  */
 export function usePendingCount(kbId: string | undefined): number | null {
   const [count, setCount] = useState<number | null>(null);
+  // F135 lets URLs carry either the KB slug or UUID, but engine events
+  // always stamp `e.kbId` with the canonical UUID. Resolve to the UUID so
+  // the filter below matches on slug-routed admin pages — otherwise every
+  // event gets dropped and the badge drifts until the next full refetch.
+  const kb = useKb(kbId ?? '');
+  const canonicalKbId = kb?.id;
 
   useEffect(() => {
     if (!kbId) {
@@ -209,7 +240,11 @@ export function usePendingCount(kbId: string | undefined): number | null {
     // events; treat it as harmless duplication — the 100ms debounce
     // coalesces the pair into a single refetch.
     const offEvents = subscribe((e) => {
-      if (e.kbId !== kbId) return;
+      // Accept both forms: when the URL is slug-based, `kbId` is the slug
+      // but `canonicalKbId` holds the UUID that events carry. Either match
+      // counts — comparing both keeps this forward-compatible if an event
+      // emitter ever switches to slugs.
+      if (e.kbId !== kbId && e.kbId !== canonicalKbId) return;
       if (
         e.type === 'candidate_created' ||
         e.type === 'candidate_approved' ||
@@ -224,7 +259,7 @@ export function usePendingCount(kbId: string | undefined): number | null {
       offFocus();
       offEvents();
     };
-  }, [kbId]);
+  }, [kbId, canonicalKbId]);
 
   return count;
 }

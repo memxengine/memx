@@ -29,7 +29,7 @@ import {
   ROADMAP_CONNECTORS,
   type ConnectorId,
 } from '@trail/shared';
-import { useEvents, onStreamOpen, onFocusRefresh, debounce } from '../lib/event-stream';
+import { useKbEvents, onStreamOpen, onFocusRefresh, debounce } from '../lib/event-stream';
 import { t, useLocale, bilingual } from '../lib/i18n';
 import { useCandidateBundle } from '../lib/translate-candidate';
 
@@ -226,8 +226,7 @@ export function QueuePanel() {
   // re-fetch of the current filter. Debounced so a bulk action that emits
   // 22 rejects in a burst coalesces into a single refetch once the burst
   // ends — otherwise out-of-order HTTP responses can leave stale state.
-  useEvents((e) => {
-    if (e.kbId !== kbId) return;
+  useKbEvents(kbId, (e) => {
     if (
       e.type === 'candidate_created' ||
       e.type === 'candidate_approved' ||
