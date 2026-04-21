@@ -9,13 +9,22 @@
 -- packages/core/src/queue/candidates.ts).
 ALTER TABLE `documents` ADD `seq` integer;
 --> statement-breakpoint
+-- Use ROW_NUMBER() over (kb, created_at, id) for a total ordering. The
+-- naive COUNT-based rank over (created_at<=X AND id<=Y) double-filters —
+-- rows with smaller id but earlier created_at get skipped, producing
+-- duplicate ranks that violate the unique index below. ROW_NUMBER sees
+-- each row exactly once.
 UPDATE `documents`
 SET `seq` = (
-  SELECT COUNT(*)
-  FROM `documents` AS d2
-  WHERE d2.`knowledge_base_id` = `documents`.`knowledge_base_id`
-    AND d2.`created_at` <= `documents`.`created_at`
-    AND d2.`id` <= `documents`.`id`
+  SELECT rn FROM (
+    SELECT `id`,
+           ROW_NUMBER() OVER (
+             PARTITION BY `knowledge_base_id`
+             ORDER BY `created_at`, `id`
+           ) AS rn
+      FROM `documents`
+  ) AS ranked
+  WHERE ranked.`id` = `documents`.`id`
 )
 WHERE `seq` IS NULL;
 --> statement-breakpoint
