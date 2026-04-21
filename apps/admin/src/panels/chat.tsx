@@ -105,6 +105,7 @@ export function ChatPanel() {
   const [saveTarget, setSaveTarget] = useState<LocalTurn | null>(null);
   const [saveTitle, setSaveTitle] = useState('');
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveBusy, setSaveBusy] = useState(false);
   const [toast, setToast] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false); // mobile drawer
   const [renameTarget, setRenameTarget] = useState<ChatSession | null>(null);
@@ -230,13 +231,15 @@ export function ChatPanel() {
 
   const confirmSave = useCallback(async () => {
     const turn = saveTarget;
-    if (!turn || !turn.content) return;
+    if (!turn || !turn.content || saveBusy) return;
     const title = saveTitle.trim();
     if (!title) {
       setSaveError('Title is required');
       return;
     }
     const paired = findUserTurn(turns, turn);
+    setSaveBusy(true);
+    setSaveError(null);
     try {
       await saveChatAsNeuron({
         kbId,
@@ -250,8 +253,10 @@ export function ChatPanel() {
       setSaveTarget(null);
     } catch (err) {
       setSaveError(err instanceof ApiError ? err.message : String(err));
+    } finally {
+      setSaveBusy(false);
     }
-  }, [saveTarget, saveTitle, kbId, turns]);
+  }, [saveTarget, saveTitle, kbId, turns, saveBusy]);
 
   const confirmRename = useCallback(async () => {
     if (!renameTarget) return;
@@ -416,12 +421,23 @@ export function ChatPanel() {
       <Modal
         open={saveTarget !== null}
         title="Save as Neuron"
-        onClose={() => setSaveTarget(null)}
+        // Block backdrop-close while the queue POST is in flight — the modal
+        // is showing progress, closing it would strand the user not knowing
+        // whether the save landed.
+        onClose={() => {
+          if (!saveBusy) setSaveTarget(null);
+        }}
         footer={
           <>
-            <ModalButton onClick={() => setSaveTarget(null)}>Cancel</ModalButton>
-            <ModalButton variant="primary" onClick={confirmSave} disabled={!saveTitle.trim()}>
-              Send to queue
+            <ModalButton onClick={() => setSaveTarget(null)} disabled={saveBusy}>
+              Cancel
+            </ModalButton>
+            <ModalButton
+              variant="primary"
+              onClick={confirmSave}
+              disabled={!saveTitle.trim() || saveBusy}
+            >
+              {saveBusy ? 'Sending…' : 'Send to queue'}
             </ModalButton>
           </>
         }
