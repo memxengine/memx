@@ -218,6 +218,14 @@ Queue + chat state now outlive process crashes, and Neurons carry a stable per-K
 | F144 | [Chat history persistence](features/F144-chat-history.md) | Shipped | 2 | [plan](features/F144-chat-history.md) |
 | F145 | Per-KB seq IDs (`<kbPrefix>_<seq:8>` canonical handle) | Shipped | 2 | — |
 
+### F146 — Local-first native app + CRDT sync
+
+Phase 3 power-user tier: native Mac / Win / Linux shell around the existing bun engine, syncing to cloud via Yjs CRDT. Keeps `claude -p` subprocess ingest legal on user hardware (no API quota for bulk imports), while cloud stays source of truth for retrieval + cross-device.
+
+| # | Feature | Status | Phase | Plan |
+|---|---------|--------|-------|------|
+| F146 | [Local-first native app + CRDT sync](features/F146-local-first-native-app-sync.md) | Planned | 3 | [plan](features/F146-local-first-native-app-sync.md) |
+
 ---
 
 ## Descriptions

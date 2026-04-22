@@ -1,5 +1,9 @@
 # CRDTs og local-first sync
 
+> **Promoted to F146** — see [F146 plan doc](features/F146-local-first-native-app-sync.md)
+> for the implementation plan. This page stays as the user-facing explainer.
+
+
 > "Built on CRDTs. Your knowledge graph lives locally for zero-latency access, syncing securely to the cloud when connected."
 
 Kort fortalt: din data bor på din egen enhed først, og synkronisering til skyen sker i baggrunden — uden konflikter, selv hvis du har været offline.
