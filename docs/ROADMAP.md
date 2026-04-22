@@ -1,6 +1,6 @@
 # Trail — Roadmap
 
-**Last updated:** 2026-04-21
+**Last updated:** 2026-04-22
 **Source of truth for feature numbering:** [FEATURES.md](./FEATURES.md)
 
 ---
@@ -85,6 +85,8 @@ Everything needed to run an end-to-end ingest → wiki → chat flow for a singl
 | F143 | Persistent ingest queue (`ingest_jobs` table, boot recovery) | 2026-04-21 |
 | F144 | Chat history persistence (sessions + turns, sidebar) | 2026-04-21 |
 | F145 | Per-KB seq IDs (`<kbPrefix>_00000219` canonical handle) | 2026-04-21 |
+| F111 | Trail Web Clipper (Browser Extension) — **local/dev** · Chrome Web Store submission pending | 2026-04-22 |
+| F111.1 | Per-user Bearer API Keys (`trail_` prefix, SHA-256 hash, revoke endpoint) | 2026-04-22 |
 
 **End-to-end verified:** Markdown source → 6-8 cross-referenced wiki pages in ~60-100s. 8-page Danish PDF (NADA acupuncture) → 6 images extracted → vision-described → 7 wiki pages in ~155s.
 
@@ -126,7 +128,7 @@ The remaining Phase 1 scope, ordered by leverage and dependency.
 | # | Feature | Depends On | Effort |
 |---|---------|------------|--------|
 | F25 | Image Pipeline (Standalone + SVG Passthrough) | F28, F27 | Small |
-| F26 | HTML / Web Clipper Ingest | F28 | Small |
+| ~~F26~~ | ~~HTML / Web Clipper Ingest~~ — covered by F111 | — | — |
 | F27 | Pluggable Vision Adapter | F08 | Small |
 | F28 | Pluggable Pipeline Interface | F06 | Medium |
 
@@ -182,7 +184,7 @@ Multi-tenant SaaS, billing, richer pipelines, first 3rd-party adapters.
 | F47 | Audio Transcription Pipeline | Should |
 | F48 | Email Ingest Pipeline | Could |
 | F49 | Slack Ingest Pipeline | Could |
-| F50 | Web Clipper Browser Extension | Could |
+| ~~F50~~ | ~~Web Clipper Browser Extension~~ — shipped as F111 (local); Chrome store TBD | — |
 
 ### Widget Growth
 

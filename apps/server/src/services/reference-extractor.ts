@@ -27,7 +27,7 @@
  */
 import { documents, documentReferences, type TrailDatabase } from '@trail/db';
 import { and, eq } from 'drizzle-orm';
-import type { CandidateApprovedEvent } from '@trail/shared';
+import type { CandidateApprovedEvent, IngestCompletedEvent } from '@trail/shared';
 import { broadcaster } from './broadcast.js';
 
 type WikiDoc = {
@@ -277,19 +277,29 @@ export async function backfillReferences(trail: TrailDatabase): Promise<void> {
  */
 export function startReferenceExtractor(trail: TrailDatabase): () => void {
   const unsubscribe = broadcaster.subscribe((event) => {
-    if (event.type !== 'candidate_approved') return;
-    run(trail, event).catch((err) => {
-      console.error('[reference-extractor] error:', err);
-    });
+    if (event.type === 'candidate_approved') {
+      runForDoc(trail, event.documentId).catch((err) => {
+        console.error('[reference-extractor] error:', err);
+      });
+    } else if (event.type === 'ingest_completed') {
+      // Ingest rewrites the wiki doc with compiled content (frontmatter
+      // including `sources: [...]`) AFTER candidate_approved fires, so we
+      // must also re-extract refs when ingest finishes. Without this,
+      // sources compiled from raw-HTML or raw-text candidates (web clipper,
+      // text uploads) never get a document_references row until next restart.
+      runForDoc(trail, event.docId).catch((err) => {
+        console.error('[reference-extractor] error:', err);
+      });
+    }
   });
   console.log('  reference-extractor: listening');
   return unsubscribe;
 }
 
-async function run(trail: TrailDatabase, event: CandidateApprovedEvent): Promise<void> {
-  if (!event.documentId) return;
-  const inserted = await extractReferencesForDoc(trail, event.documentId);
+async function runForDoc(trail: TrailDatabase, docId: string | null | undefined): Promise<void> {
+  if (!docId) return;
+  const inserted = await extractReferencesForDoc(trail, docId);
   if (inserted > 0) {
-    console.log(`[reference-extractor] ${event.documentId.slice(0, 8)}…: +${inserted} ref${inserted === 1 ? '' : 's'}`);
+    console.log(`[reference-extractor] ${docId.slice(0, 8)}…: +${inserted} ref${inserted === 1 ? '' : 's'}`);
   }
 }

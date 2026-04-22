@@ -19,6 +19,7 @@ import { useKbEvents, onStreamOpen, onFocusRefresh, debounce } from '../lib/even
 import { t, useLocale } from '../lib/i18n';
 import { CenteredLoader } from '../components/centered-loader';
 import { CopyId } from '../components/copy-id';
+import { ConnectorBadge } from '../components/connector-badge';
 
 /**
  * Sources panel — the original documents uploaded into a Trail. Sources
@@ -553,6 +554,12 @@ function SourceRow({
             <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono uppercase tracking-wider bg-[color:var(--color-bg)] border border-[color:var(--color-border)] text-[color:var(--color-fg-muted)]">
               {doc.fileType || 'doc'}
             </span>
+            {(() => {
+              const connector = getConnector(doc.metadata);
+              return connector && connector !== 'upload'
+                ? <ConnectorBadge variant="tag" connector={connector} />
+                : null;
+            })()}
             <StatusBadge
               status={doc.status}
               neuronCount={
@@ -757,6 +764,14 @@ function StatusBadge({
       {label}
     </span>
   );
+}
+
+function getConnector(metadata: string | null | undefined): string | null {
+  if (!metadata) return null;
+  try {
+    const m = JSON.parse(metadata) as { connector?: unknown };
+    return typeof m.connector === 'string' ? m.connector : null;
+  } catch { return null; }
 }
 
 function formatBytes(n: number): string {
