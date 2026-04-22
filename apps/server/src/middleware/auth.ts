@@ -1,8 +1,8 @@
 import type { Context, Next } from 'hono';
 import { getCookie } from 'hono/cookie';
-import { timingSafeEqual } from 'node:crypto';
-import { sessions, users, tenants, type TrailDatabase } from '@trail/db';
-import { and, eq, gt } from 'drizzle-orm';
+import { createHash, timingSafeEqual } from 'node:crypto';
+import { sessions, users, tenants, apiKeys, type TrailDatabase } from '@trail/db';
+import { and, eq, gt, isNull } from 'drizzle-orm';
 import { INGEST_USER_ID } from '../bootstrap/ingest-user.js';
 
 export interface AuthUser {
@@ -42,16 +42,43 @@ const TENANT_COLUMNS = {
 export async function requireAuth(c: Context, next: Next): Promise<Response | void> {
   const trail = c.get('trail') as TrailDatabase;
 
-  // Service-to-service path: Authorization: Bearer <TRAIL_INGEST_TOKEN>. Gated
-  // by the env var — without it, all Bearer headers are ignored so a stray
-  // token never short-circuits the session-cookie path.
+  // Bearer token path — two sub-variants:
+  //   (a) trail_<64hex>  → DB-backed API key (F111, per-user, revocable)
+  //   (b) anything else  → legacy TRAIL_INGEST_TOKEN env-var comparison
   const authHeader = c.req.header('authorization');
   if (authHeader?.toLowerCase().startsWith('bearer ')) {
+    const presented = authHeader.slice(7).trim();
+
+    // (a) DB-backed API key
+    if (presented.startsWith('trail_')) {
+      const hash = createHash('sha256').update(presented).digest('hex');
+      const row = await trail.db
+        .select({ user: USER_COLUMNS, tenant: TENANT_COLUMNS, keyId: apiKeys.id })
+        .from(apiKeys)
+        .innerJoin(users, eq(users.id, apiKeys.userId))
+        .innerJoin(tenants, eq(tenants.id, users.tenantId))
+        .where(and(eq(apiKeys.keyHash, hash), isNull(apiKeys.revokedAt)))
+        .get();
+      if (!row) {
+        return c.json({ error: 'Invalid or revoked API key' }, 401);
+      }
+      c.set('user', row.user);
+      c.set('tenant', row.tenant);
+      // last_used_at is best-effort — don't block the request on it
+      trail.db
+        .update(apiKeys)
+        .set({ lastUsedAt: new Date().toISOString() })
+        .where(eq(apiKeys.id, row.keyId))
+        .run()
+        .catch(() => {});
+      return next();
+    }
+
+    // (b) Legacy service-to-service env-var token
     const expected = process.env.TRAIL_INGEST_TOKEN;
     if (!expected) {
       return c.json({ error: 'Bearer auth not configured on this engine' }, 401);
     }
-    const presented = authHeader.slice(7).trim();
     // Constant-time compare — plain `!==` leaks per-byte timing that a
     // patient attacker could aggregate across many requests to recover
     // the token. Length check first: timingSafeEqual throws on mismatched

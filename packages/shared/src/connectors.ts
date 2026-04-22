@@ -82,6 +82,11 @@ export const CONNECTORS = {
     status: 'live',
     hint: 'A bearer-authed POST to /api/v1/queue/candidates from a script, CI hook, or generic webhook.',
   },
+  'web-clipper': {
+    label: 'Web Clipper',
+    status: 'live',
+    hint: 'A web page clipped from the browser via the Trail Web Clipper extension (F111).',
+  },
   slack: { label: 'Slack',   status: 'roadmap', hint: 'Not yet wired — planned ingest of channel messages into Trail.' },
   discord: { label: 'Discord', status: 'roadmap', hint: 'Not yet wired — planned ingest of server messages into Trail.' },
   notion: { label: 'Notion',  status: 'roadmap', hint: 'Not yet wired — planned ingest of Notion pages into Trail.' },
@@ -123,6 +128,7 @@ export const EXTERNAL_CONNECTORS: readonly ConnectorId[] = [
   'mcp:cursor',
   'chat',
   'api',
+  'web-clipper',
 ];
 
 export function isExternalConnector(id: string | null | undefined): boolean {

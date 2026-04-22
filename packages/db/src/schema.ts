@@ -407,6 +407,27 @@ export const ingestJobs = sqliteTable(
   ],
 );
 
+// ── F111 — API Keys (bearer auth for extensions + external clients) ──────────
+
+export const apiKeys = sqliteTable(
+  'api_keys',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+    userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    // SHA-256 hex of the raw `trail_<64hex>` token. Never stored in plaintext.
+    keyHash: text('key_hash').notNull(),
+    lastUsedAt: text('last_used_at'),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+    revokedAt: text('revoked_at'),
+  },
+  (table) => [
+    uniqueIndex('idx_api_keys_user_name').on(table.userId, table.name),
+    index('idx_api_keys_hash').on(table.keyHash),
+  ],
+);
+
 // ── F144 — Chat history persistence ─────────────────────────────────────────
 //
 // chat.tsx previously stored turns in a React useState, so any route-change,
