@@ -243,6 +243,28 @@ export async function extractReferencesForDoc(
 }
 
 /**
+ * Scan every wiki Neuron in a specific KB and populate refs. Used as a
+ * targeted post-ingest sweep when a source doc has just been compiled.
+ * Idempotent — existing refs skip via unique index.
+ */
+async function backfillReferencesForKb(
+  trail: TrailDatabase,
+  kbId: string,
+): Promise<number> {
+  const wikiDocs = await trail.db
+    .select({ id: documents.id })
+    .from(documents)
+    .where(and(eq(documents.kind, 'wiki'), eq(documents.archived, false), eq(documents.knowledgeBaseId, kbId)))
+    .all();
+
+  let total = 0;
+  for (const d of wikiDocs) {
+    total += await extractReferencesForDoc(trail, d.id);
+  }
+  return total;
+}
+
+/**
  * Boot-time backfill: scan every wiki Neuron in every KB and populate refs.
  * Idempotent — safe to re-run on every restart. Logs a summary when it
  * touches anything, silent otherwise.
@@ -282,12 +304,19 @@ export function startReferenceExtractor(trail: TrailDatabase): () => void {
         console.error('[reference-extractor] error:', err);
       });
     } else if (event.type === 'ingest_completed') {
-      // Ingest rewrites the wiki doc with compiled content (frontmatter
-      // including `sources: [...]`) AFTER candidate_approved fires, so we
-      // must also re-extract refs when ingest finishes. Without this,
-      // sources compiled from raw-HTML or raw-text candidates (web clipper,
-      // text uploads) never get a document_references row until next restart.
-      runForDoc(trail, event.docId).catch((err) => {
+      // Two cases depending on which path fired ingest:
+      //
+      // Queue path (web clipper, external-feed): docId IS the wiki doc.
+      // The wiki doc was created with raw candidate content, then ingest
+      // rewrote it with compiled frontmatter (sources: [...]). Running
+      // extractReferencesForDoc on it now finds the frontmatter and
+      // creates the ref.
+      //
+      // Upload path (re-ingest of a source file): docId IS the source doc.
+      // extractReferencesForDoc returns 0 immediately (kind != 'wiki').
+      // Fall back to a KB-scoped backfill that scans all wiki docs in the
+      // same KB — any that have `sources: ["<this_filename>"]` get a ref.
+      runForDocOrKb(trail, event.docId, event.kbId).catch((err) => {
         console.error('[reference-extractor] error:', err);
       });
     }
@@ -301,5 +330,22 @@ async function runForDoc(trail: TrailDatabase, docId: string | null | undefined)
   const inserted = await extractReferencesForDoc(trail, docId);
   if (inserted > 0) {
     console.log(`[reference-extractor] ${docId.slice(0, 8)}…: +${inserted} ref${inserted === 1 ? '' : 's'}`);
+  }
+}
+
+async function runForDocOrKb(
+  trail: TrailDatabase,
+  docId: string,
+  kbId: string,
+): Promise<void> {
+  const direct = await extractReferencesForDoc(trail, docId);
+  if (direct > 0) {
+    console.log(`[reference-extractor] ${docId.slice(0, 8)}…: +${direct} ref${direct === 1 ? '' : 's'}`);
+    return;
+  }
+  // docId was a source doc (upload path) — sweep the KB
+  const kbInserted = await backfillReferencesForKb(trail, kbId);
+  if (kbInserted > 0) {
+    console.log(`[reference-extractor] kb ${kbId.slice(0, 8)}… post-ingest sweep: +${kbInserted} ref${kbInserted === 1 ? '' : 's'}`);
   }
 }
