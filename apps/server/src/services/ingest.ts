@@ -1,5 +1,5 @@
-import { documents, knowledgeBases, ingestJobs, DATA_DIR, type TrailDatabase } from '@trail/db';
-import { and, asc, eq } from 'drizzle-orm';
+import { documents, knowledgeBases, ingestJobs, documentReferences, DATA_DIR, type TrailDatabase } from '@trail/db';
+import { and, asc, eq, gt } from 'drizzle-orm';
 import {
   parseSchemaNeuron,
   renderSchemaForPrompt,
@@ -383,6 +383,7 @@ IMPORTANT RULES:
     ...(INGEST_MODEL ? ['--model', INGEST_MODEL] : []),
   ];
 
+  const jobStartedAt = new Date().toISOString();
   try {
     await spawnClaude(args, {
       timeoutMs: INGEST_TIMEOUT_MS,
@@ -416,6 +417,11 @@ IMPORTANT RULES:
       .set({ status: 'done', completedAt: finishedAt })
       .where(eq(ingestJobs.id, jobId))
       .run();
+
+    // Deterministic source→Neuron ref wiring. Any wiki doc created in this
+    // KB since the job started is a product of this ingest run — wire it to
+    // the source doc directly, without relying on LLM frontmatter.
+    await wireSourceRefs(trail, doc, jobStartedAt);
 
     broadcaster.emit({
       type: 'ingest_completed',
@@ -462,6 +468,64 @@ IMPORTANT RULES:
   // looks up whether any queued jobs remain and re-ticks the scheduler.
   // That keeps the drain loop in one place and free of the Map-based
   // state the old implementation relied on.
+}
+
+/**
+ * Deterministic source→Neuron reference wiring.
+ *
+ * After the LLM subprocess completes, we know exactly which wiki docs were
+ * created during this ingest run: all wiki docs in this KB with
+ * `created_at >= jobStartedAt`. We write a document_references row for each
+ * of them pointing at the source doc that was just compiled.
+ *
+ * This is the authoritative path — it doesn't depend on the LLM including
+ * `sources: [...]` in frontmatter. The frontmatter-based reference extractor
+ * (reference-extractor.ts) remains active and handles cross-source citations
+ * that the LLM explicitly declares. These two paths are additive, and
+ * insertRef is idempotent via the unique index.
+ */
+async function wireSourceRefs(
+  trail: TrailDatabase,
+  sourceDoc: { id: string; tenantId: string; knowledgeBaseId: string },
+  jobStartedAt: string,
+): Promise<void> {
+  const newWikiDocs = await trail.db
+    .select({ id: documents.id, tenantId: documents.tenantId, knowledgeBaseId: documents.knowledgeBaseId, filename: documents.filename })
+    .from(documents)
+    .where(
+      and(
+        eq(documents.tenantId, sourceDoc.tenantId),
+        eq(documents.knowledgeBaseId, sourceDoc.knowledgeBaseId),
+        eq(documents.kind, 'wiki'),
+        eq(documents.archived, false),
+        gt(documents.createdAt, jobStartedAt),
+      ),
+    )
+    .all();
+
+  let inserted = 0;
+  for (const wiki of newWikiDocs) {
+    const id = `ref_${crypto.randomUUID().slice(0, 12)}`;
+    try {
+      await trail.db
+        .insert(documentReferences)
+        .values({
+          id,
+          tenantId: wiki.tenantId,
+          knowledgeBaseId: wiki.knowledgeBaseId,
+          wikiDocumentId: wiki.id,
+          sourceDocumentId: sourceDoc.id,
+          claimAnchor: null,
+        })
+        .run();
+      inserted += 1;
+    } catch {
+      // unique-index hit — ref already exists, skip silently
+    }
+  }
+  if (inserted > 0) {
+    console.log(`[ingest] wired ${inserted} source ref${inserted === 1 ? '' : 's'} → ${sourceDoc.id.slice(0, 8)}…`);
+  }
 }
 
 /**
