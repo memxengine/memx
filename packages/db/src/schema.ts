@@ -119,6 +119,9 @@ export const documents = sqliteTable(
     workAssignee: text('work_assignee'),
     workDueAt: text('work_due_at'),
     workKind: text('work_kind', { enum: ['task', 'bug', 'milestone', 'decision'] }),
+    // F111.2 — stamped by the ingest subprocess via the MCP write tool so
+    // wireSourceRefs can identify all docs touched by a specific job.
+    ingestJobId: text('ingest_job_id'),
     createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
     updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
   },
@@ -132,6 +135,7 @@ export const documents = sqliteTable(
     index('idx_docs_work_status').on(table.knowledgeBaseId, table.workStatus),
     index('idx_docs_work_assignee').on(table.knowledgeBaseId, table.workAssignee),
     uniqueIndex('idx_docs_kb_seq').on(table.knowledgeBaseId, table.seq),
+    index('idx_docs_ingest_job').on(table.ingestJobId),
   ],
 );
 

@@ -49,6 +49,9 @@ const ACTOR_USER_ID = process.env.TRAIL_USER_ID ?? '';
 //   apps/server ingest subprocess → TRAIL_CONNECTOR=upload
 //   unset       → 'mcp' (generic fallback)
 const CONNECTOR_ID = process.env.TRAIL_CONNECTOR ?? 'mcp';
+// F111.2 — set by ingest.ts spawnClaude env so every MCP write during an
+// ingest subprocess is stamped with the job ID for wireSourceRefs.
+const INGEST_JOB_ID = process.env.TRAIL_INGEST_JOB_ID ?? null;
 
 interface ResolvedContext {
   tenantId: string;
@@ -445,7 +448,7 @@ server.tool(
           kind: 'ingest-summary',
           title,
           content: fullContent,
-          metadata: JSON.stringify({ op: 'create', filename, path, tags: tags ?? null, connector: CONNECTOR_ID }),
+          metadata: JSON.stringify({ op: 'create', filename, path, tags: tags ?? null, connector: CONNECTOR_ID, ingestJobId: INGEST_JOB_ID }),
           confidence: 1,
         },
         LLM_ACTOR(ctx.userId),
@@ -537,7 +540,7 @@ server.tool(
           kind: 'ingest-page-update',
           title: doc.title ?? doc.filename,
           content: updated,
-          metadata: JSON.stringify({ op: 'update', targetDocumentId: doc.id, connector: CONNECTOR_ID }),
+          metadata: JSON.stringify({ op: 'update', targetDocumentId: doc.id, connector: CONNECTOR_ID, ingestJobId: INGEST_JOB_ID }),
           confidence: 1,
         },
         LLM_ACTOR(ctx.userId),
@@ -599,7 +602,7 @@ server.tool(
           kind: 'ingest-page-update',
           title: doc.title ?? doc.filename,
           content: updated,
-          metadata: JSON.stringify({ op: 'update', targetDocumentId: doc.id, connector: CONNECTOR_ID }),
+          metadata: JSON.stringify({ op: 'update', targetDocumentId: doc.id, connector: CONNECTOR_ID, ingestJobId: INGEST_JOB_ID }),
           confidence: 1,
         },
         LLM_ACTOR(ctx.userId),

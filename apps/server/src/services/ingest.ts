@@ -1,5 +1,5 @@
 import { documents, knowledgeBases, ingestJobs, documentReferences, DATA_DIR, type TrailDatabase } from '@trail/db';
-import { and, asc, eq, gt } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
 import {
   parseSchemaNeuron,
   renderSchemaForPrompt,
@@ -383,7 +383,6 @@ IMPORTANT RULES:
     ...(INGEST_MODEL ? ['--model', INGEST_MODEL] : []),
   ];
 
-  const jobStartedAt = new Date().toISOString();
   try {
     await spawnClaude(args, {
       timeoutMs: INGEST_TIMEOUT_MS,
@@ -403,6 +402,9 @@ IMPORTANT RULES:
             return typeof m.connector === 'string' ? m.connector : 'upload';
           } catch { return 'upload'; }
         })(),
+        // F111.2 — pass the job ID so the MCP write tool can stamp each
+        // wiki doc it creates/updates, enabling deterministic attribution.
+        TRAIL_INGEST_JOB_ID: jobId,
       },
     });
 
@@ -418,10 +420,10 @@ IMPORTANT RULES:
       .where(eq(ingestJobs.id, jobId))
       .run();
 
-    // Deterministic source→Neuron ref wiring. Any wiki doc created in this
-    // KB since the job started is a product of this ingest run — wire it to
-    // the source doc directly, without relying on LLM frontmatter.
-    await wireSourceRefs(trail, doc, jobStartedAt);
+    // Deterministic source→Neuron ref wiring. Every wiki doc stamped with
+    // this jobId (by the MCP write tool during the subprocess) is a product
+    // of this ingest run — wire it to the source doc directly.
+    await wireSourceRefs(trail, doc, jobId);
 
     broadcaster.emit({
       type: 'ingest_completed',
@@ -473,10 +475,12 @@ IMPORTANT RULES:
 /**
  * Deterministic source→Neuron reference wiring.
  *
- * After the LLM subprocess completes, we know exactly which wiki docs were
- * created during this ingest run: all wiki docs in this KB with
- * `created_at >= jobStartedAt`. We write a document_references row for each
- * of them pointing at the source doc that was just compiled.
+ * After the LLM subprocess completes, every wiki doc it touched carries
+ * `ingest_job_id = jobId` (stamped by the MCP write tool). We query on
+ * that column — catching both newly created Neurons AND updates to existing
+ * concept/entity Neurons in the same KB (the timing-boundary approach
+ * missed updates entirely). We then write a document_references row for
+ * each → source doc.
  *
  * This is the authoritative path — it doesn't depend on the LLM including
  * `sources: [...]` in frontmatter. The frontmatter-based reference extractor
@@ -487,24 +491,22 @@ IMPORTANT RULES:
 async function wireSourceRefs(
   trail: TrailDatabase,
   sourceDoc: { id: string; tenantId: string; knowledgeBaseId: string },
-  jobStartedAt: string,
+  jobId: string,
 ): Promise<void> {
-  const newWikiDocs = await trail.db
+  const touchedWikiDocs = await trail.db
     .select({ id: documents.id, tenantId: documents.tenantId, knowledgeBaseId: documents.knowledgeBaseId, filename: documents.filename })
     .from(documents)
     .where(
       and(
-        eq(documents.tenantId, sourceDoc.tenantId),
-        eq(documents.knowledgeBaseId, sourceDoc.knowledgeBaseId),
         eq(documents.kind, 'wiki'),
         eq(documents.archived, false),
-        gt(documents.createdAt, jobStartedAt),
+        eq(documents.ingestJobId, jobId),
       ),
     )
     .all();
 
   let inserted = 0;
-  for (const wiki of newWikiDocs) {
+  for (const wiki of touchedWikiDocs) {
     const id = `ref_${crypto.randomUUID().slice(0, 12)}`;
     try {
       await trail.db

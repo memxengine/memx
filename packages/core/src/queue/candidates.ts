@@ -86,6 +86,8 @@ export interface CandidateOp {
   workAssignee?: string | null;
   workDueAt?: string | null;
   workKind?: 'task' | 'bug' | 'milestone' | 'decision';
+  /** F111.2 — ingest job that produced this write; stamped onto the document for wireSourceRefs. */
+  ingestJobId?: string | null;
 }
 
 /**
@@ -702,6 +704,7 @@ async function approveCreate(
       // then race past the UNIQUE constraint. SQLite serialises writes,
       // so this subquery sees the latest committed seq for the KB.
       seq: sql<number>`COALESCE((SELECT MAX(${documents.seq}) FROM ${documents} WHERE ${documents.knowledgeBaseId} = ${candidate.knowledgeBaseId}), 0) + 1`,
+      ingestJobId: op.ingestJobId ?? null,
       ...(docKind === 'work'
         ? {
             workStatus: op.workStatus ?? 'open',
@@ -786,6 +789,7 @@ async function approveUpdate(
       updatedAt: ctx.now,
       ...(op.title !== undefined ? { title: op.title } : {}),
       ...(op.tags !== undefined ? { tags: op.tags } : {}),
+      ...(op.ingestJobId !== undefined ? { ingestJobId: op.ingestJobId } : {}),
     })
     .where(eq(documents.id, doc.id))
     .run();
