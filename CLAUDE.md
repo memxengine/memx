@@ -101,3 +101,42 @@ Neuron reader shows "Created via <connector>" attribution.
 Roadmap ids (`slack`, `discord`, `notion`, `github`, `linear`) are
 already stubbed out as `status: 'roadmap'` — flip them to `'live'` when
 the implementation lands.
+
+## Verification before "this works"
+
+Typecheck is not verification. `pnpm typecheck` only proves the code
+compiles — it proves nothing about runtime behaviour, env-var plumbing,
+DB-column presence, migration side-effects, or MCP-subprocess env
+forwarding. Confirmations like "shipped, working" require runtime proof.
+
+**Before claiming a fix works, write a local TypeScript script that
+exercises the exact code path end-to-end** and prints the observable
+effect. Put the script under `apps/server/scripts/verify-<feature>.ts`
+and run it with `bun run`.
+
+Examples of what the script must prove, NOT infer:
+
+- **DB column** — `SELECT name FROM pragma_table_info('…') WHERE name='…'`
+  returns the column AND a subsequent `INSERT … VALUES (…)` / `SELECT`
+  round-trips a real value through it.
+- **Migration** — both `__drizzle_migrations` has the hash AND the DDL
+  effect (column / index / constraint) is present. Drizzle recording a
+  migration is not the same as the DDL landing. Verify both.
+- **Env to subprocess** — don't assume child processes inherit. Spawn
+  the exact subprocess you care about and read back its `process.env`.
+  For MCP specifically: claude CLI does NOT forward parent env to the
+  MCP subprocess it spawns; env must be written into the mcp-config
+  file's `env` block. See `writeIngestMcpConfig` in
+  `apps/server/src/lib/mcp-config.ts`.
+- **Cross-table effect** — if a write is supposed to produce a row in
+  table B, `SELECT COUNT(*) FROM B WHERE …` after the write and assert
+  the delta is what you expected.
+
+Avoid burning LLM tokens on "let me try a real ingest and see" when a
+30-line script + direct SQL would answer the question. A real ingest
+costs tokens + 1-10 min of wall-clock; the script costs milliseconds
+and you can run it a hundred times.
+
+**The rule**: if you say "shipped" or "verified" without having run a
+scripted end-to-end probe, you are making a claim about something you
+haven't checked. Don't do it.
