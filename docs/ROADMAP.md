@@ -185,6 +185,7 @@ Multi-tenant SaaS, billing, richer pipelines, first 3rd-party adapters.
 | F48 | Email Ingest Pipeline | Could |
 | F49 | Slack Ingest Pipeline | Could |
 | ~~F50~~ | ~~Web Clipper Browser Extension~~ — shipped as F111 (local); Chrome store TBD | — |
+| F147 | Share Extension (iOS + Android) — mobile share sheet target | Should |
 
 ### Widget Growth
 

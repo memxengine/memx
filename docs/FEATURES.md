@@ -226,6 +226,14 @@ Phase 3 power-user tier: native Mac / Win / Linux shell around the existing bun 
 |---|---------|--------|-------|------|
 | F146 | [Local-first native app + CRDT sync](features/F146-local-first-native-app-sync.md) | Planned | 3 | [plan](features/F146-local-first-native-app-sync.md) |
 
+### F147 — Share Extension (iOS + Android)
+
+Mobile share targets: "Del til Trail" fra Fotos, Safari, Instagram og alle andre apps. Tekst, links og billeder uploades med ét tap. Billeder sendes gennem vision AI for beskrivelse + OCR.
+
+| # | Feature | Status | Phase | Plan |
+|---|---------|--------|-------|------|
+| F147 | [Share Extension (iOS + Android)](features/F147-share-extension.md) | Idea | 2 | [plan](features/F147-share-extension.md) |
+
 ---
 
 ## Descriptions
@@ -500,4 +508,7 @@ One Haiku call per pending candidate analyzing its content + available actions, 
 Central append-only `activity_log` table capturing every meaningful action on a trail server — auth, uploads, ingests, candidate lifecycle, Neuron edits, lint runs, connector events. One subscriber bridges the broadcaster's ephemeral SSE events into persisted rows; explicit `logActivity()` calls in 6 gap sites (auth, kb-create/update, upload-received, lint-scheduled/completed) cover what the broadcaster doesn't emit. Admin timeline panel at `/activity` with connector-chip-style filters (actor / kind-group / Trail / timeframe), expandable rows showing full `metadata` JSON, and deep-links to the subject. Unlocks credits/usage metering (tokens live in `metadata`), per-user activity summaries, compliance exports, and "show me everything that happened to Neuron X". Schema + subscriber + helper is MVP; timeline UI ships after.
 
 ### F98 — Orphan-lint Connector-Awareness
-Orphan-Neuron detection now skips Neurons whose originating candidate came from an external connector (`buddy`, `mcp`, `mcp:claude-code`, `mcp:cursor`, `chat`, `api`). Their "source" lives outside Trail's KB — a cc session, a git commit, a conversation context — so "zero `document_references` rows" is the expected state, not an anomaly. Before F98 the orphan detector flagged them anyway, Auto-link-sources could never succeed (the sources literally don't exist as Trail documents), and the curator was stuck with unsolvable queue work. F98 adds `EXTERNAL_CONNECTORS` to `packages/shared/src/connectors.ts` + a connector-resolution helper in `detectOrphans()` that walks wiki_events → sourceCandidateId → metadata.connector and skips flagging when external. One-shot bootstrap `cleanupExternalOrphans()` dismisses pending false-positive findings retroactively. Idempotent — zero rows affected on steady-state boots. Validation logic is now contract-specific to the ingestion pathway; future lint detectors (stale, gap-detection, contradiction) can consult the same connector-aware contract.
+Orphan-Neuron detection now skips Neurons whose originating candidate came from an external connector (`buddy`, `mcp`, `mcp:claude-code`, `mcp:cursor`, `chat`, `api`, `share-extension`). Their "source" lives outside Trail's KB — a cc session, a git commit, a conversation context, or a mobile share — so "zero `document_references` rows" is the expected state, not an anomaly. Before F98 the orphan detector flagged them anyway, Auto-link-sources could never succeed (the sources literally don't exist as Trail documents), and the curator was stuck with unsolvable queue work. F98 adds `EXTERNAL_CONNECTORS` to `packages/shared/src/connectors.ts` + a connector-resolution helper in `detectOrphans()` that walks wiki_events → sourceCandidateId → metadata.connector and skips flagging when external. One-shot bootstrap `cleanupExternalOrphans()` dismisses pending false-positive findings retroactively. Idempotent — zero rows affected on steady-state boots. Validation logic is now contract-specific to the ingestion pathway; future lint detectors (stale, gap-detection, contradiction) can consult the same connector-aware contract.
+
+### F147 — Share Extension (iOS + Android)
+Native share targets for iOS og Android der lader brugeren sende tekst, links og billeder direkte fra andre apps til Trail. iOS Share Extension (Swift/SwiftUI) dukker op i share sheet som "Trail Clipper" og deler credentials med hoved-appen via App Group. Android Share Extension (Kotlin) gør det samme. Billeder sendes gennem den eksisterende vision backend for beskrivelse + OCR. Connector: `share-extension`.
