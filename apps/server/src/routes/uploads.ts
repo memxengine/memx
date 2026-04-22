@@ -61,6 +61,38 @@ uploadRoutes.post('/knowledge-bases/:kbId/documents/upload', async (c) => {
   const formData = await c.req.formData();
   const file = formData.get('file') as File | null;
   const path = (formData.get('path') as string) ?? '/';
+  const metadataRaw = formData.get('metadata') as string | null;
+
+  let connector: string | undefined;
+  let sourceUrl: string | undefined;
+  let uploadTags: string[] | undefined;
+
+  if (metadataRaw) {
+    try {
+      const meta = JSON.parse(metadataRaw);
+      connector = meta.connector;
+      sourceUrl = meta.sourceUrl;
+      uploadTags = meta.tags;
+    } catch {
+      // Ignore malformed metadata
+    }
+  }
+  const metadataRaw = formData.get('metadata') as string | null;
+
+  let connector: string | undefined;
+  let sourceUrl: string | undefined;
+  let uploadTags: string[] | undefined;
+
+  if (metadataRaw) {
+    try {
+      const meta = JSON.parse(metadataRaw);
+      connector = meta.connector;
+      sourceUrl = meta.sourceUrl;
+      uploadTags = meta.tags;
+    } catch {
+      // Ignore malformed metadata
+    }
+  }
 
   if (!file) return c.json({ error: 'No file provided' }, 400);
   if (file.size > MAX_FILE_SIZE) return c.json({ error: 'File too large (max 100MB)' }, 413);
@@ -90,6 +122,8 @@ uploadRoutes.post('/knowledge-bases/:kbId/documents/upload', async (c) => {
       fileType: ext,
       fileSize: file.size,
       status: initialStatus,
+      tags: uploadTags?.join(', ') ?? null,
+      metadata: connector ? JSON.stringify({ connector, sourceUrl }) : null,
       // F145 — inline per-KB seq (see candidates.ts for the same pattern).
       seq: sql<number>`COALESCE((SELECT MAX(${documents.seq}) FROM ${documents} WHERE ${documents.knowledgeBaseId} = ${kbId}), 0) + 1`,
     })

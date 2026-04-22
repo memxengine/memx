@@ -96,6 +96,40 @@ async function uploadClip(
   return res.json()
 }
 
+async function extractFromTab(tabId: number): Promise<{ title: string; content: string }> {
+  const manifest = chrome.runtime.getManifest()
+  const contentScriptPath = manifest.content_scripts?.[0]?.js?.[0]
+  if (!contentScriptPath) throw new Error('Content script not configured in manifest')
+
+  // Try sending to existing content script first
+  try {
+    const result = await chrome.tabs.sendMessage(tabId, { action: 'extract' })
+    if (result && result.content) return result
+  } catch {
+    // Content script not loaded — inject it
+  }
+
+  // Inject content script dynamically
+  await chrome.scripting.executeScript({
+    target: { tabId },
+    files: [contentScriptPath],
+  })
+
+  // Retry with exponential backoff (content script needs time to register listener)
+  const delays = [300, 500, 1000]
+  for (const delay of delays) {
+    await new Promise((r) => setTimeout(r, delay))
+    try {
+      const result = await chrome.tabs.sendMessage(tabId, { action: 'extract' })
+      if (result && result.content) return result
+    } catch {
+      // Continue retrying
+    }
+  }
+
+  throw new Error('Content script did not respond — try refreshing the page')
+}
+
 export function Popup() {
   const [config, setConfig] = useState<Config | null>(null)
   const [showSettings, setShowSettings] = useState(false)
@@ -158,28 +192,7 @@ export function Popup() {
 
       setClippedUrl(tab.url || '')
 
-      const results = await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        func: () => {
-          try {
-            const clone = document.cloneNode(true) as Document
-            const reader = new (window as any).Readability(clone, { keepClasses: false, charThreshold: 0 })
-            const article = reader.parse()
-            if (!article) return null
-            const td = new (window as any).TurndownService({ headingStyle: 'atx', codeBlockStyle: 'fenced', bulletListMarker: '-' })
-            td.addRule('remove-scripts', { filter: ['script', 'style', 'noscript', 'iframe', 'nav', 'footer', 'header'], replacement: () => '' })
-            return { title: article.title || document.title || 'Untitled', content: td.turndown(article.content) }
-          } catch (e) {
-            console.error('Trail Clipper extract error:', e)
-            return null
-          }
-        },
-      })
-
-      const extracted = results?.[0]?.result as { title: string; content: string } | null
-      if (!extracted || !extracted.content) {
-        throw new Error('Could not extract readable content from this page')
-      }
+      const extracted = await extractFromTab(tab.id)
 
       setClipState('uploading')
 
@@ -282,7 +295,7 @@ export function Popup() {
             type: 'text',
             value: tempServerUrl,
             onInput: (e) => setTempServerUrl((e.target as HTMLInputElement).value),
-            placeholder: 'http://localhost:3031',
+            placeholder: 'http://127.0.0.1:58031',
           }),
         ]),
       ]),
@@ -293,7 +306,7 @@ export function Popup() {
             type: 'password',
             value: tempToken,
             onInput: (e) => setTempToken((e.target as HTMLInputElement).value),
-            placeholder: 'TRAIL_INGEST_TOKEN',
+            placeholder: 'trail_xxx',
           }),
         ]),
       ]),

@@ -10,6 +10,12 @@ export default defineConfig({
       input: {
         popup: 'popup.html',
       },
+      output: {
+        entryFileNames: (chunkInfo) => {
+          if (chunkInfo.name.includes('extractor')) return 'content/extractor.js'
+          return 'assets/[name]-[hash].js'
+        },
+      },
     },
   },
   plugins: [
