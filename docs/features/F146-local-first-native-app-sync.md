@@ -24,6 +24,32 @@ Two unrelated problems collapse into one solution.
 - **Cloud as source of truth for retrieval**: chat / search / embed widget hit the cloud engine, which holds a merged view of every device's contributions. The local app can also serve retrieval when offline, using its own merged view.
 - **Plan tiers**: Hobby + Pro = cloud-only (API ingest). Business + Enterprise = local app available (subprocess ingest). Nudge the "you have a big import" flow to mention the native app when it would save them money.
 
+### User-side prerequisite: Anthropic Pro or Max subscription
+
+The native app's subprocess ingest depends on `claude -p` being installed and
+logged in on the user's machine. `claude -p` authenticates against the user's
+**Anthropic Pro or Max subscription** — it is NOT a standalone tool we can
+bundle.
+
+This means a Business / Enterprise Trail user on the native tier needs TWO
+subscriptions running in parallel:
+
+1. **Trail** (our business + enterprise plan) — covers retrieval, chat,
+   cloud sync, multi-device.
+2. **Anthropic Pro or Max** (user's own subscription, separate billing from
+   Trail) — covers the LLM compute for local ingest runs.
+
+Trail's onboarding + docs must surface this upfront. The value prop still
+works: Anthropic Pro is ~$20/mo flat, and it covers unlimited `claude -p`
+usage for their token budget — far cheaper than pay-per-token API rates
+at bulk-import scale. A single 200-source import that would cost $30-40
+through our API path costs effectively $0 marginal against an already-paid
+Anthropic Pro sub.
+
+The install flow on native must detect missing `claude -p` / unauthenticated
+state and link out to Anthropic's subscription page with a clear "why you
+need this" explainer — not fail silently.
+
 ### Out (future phases)
 
 - Real-time collaborative editing (CRDT enables it architecturally, but the UX is not the v1 story — F76 covers that).
