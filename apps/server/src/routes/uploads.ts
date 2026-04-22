@@ -77,22 +77,6 @@ uploadRoutes.post('/knowledge-bases/:kbId/documents/upload', async (c) => {
       // Ignore malformed metadata
     }
   }
-  const metadataRaw = formData.get('metadata') as string | null;
-
-  let connector: string | undefined;
-  let sourceUrl: string | undefined;
-  let uploadTags: string[] | undefined;
-
-  if (metadataRaw) {
-    try {
-      const meta = JSON.parse(metadataRaw);
-      connector = meta.connector;
-      sourceUrl = meta.sourceUrl;
-      uploadTags = meta.tags;
-    } catch {
-      // Ignore malformed metadata
-    }
-  }
 
   if (!file) return c.json({ error: 'No file provided' }, 400);
   if (file.size > MAX_FILE_SIZE) return c.json({ error: 'File too large (max 100MB)' }, 413);
