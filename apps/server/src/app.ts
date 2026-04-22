@@ -49,14 +49,18 @@ export function createApp(trail: TrailDatabase): Hono<AppBindings> {
   app.use(
     '/api/*',
     cors({
-      // Allow the admin UI + any browser extension (chrome-extension:// or
-      // moz-extension://). Extensions use Bearer API keys, not cookies, so
-      // credentials: true is irrelevant for them but harmless to keep.
       origin: (origin) => {
-        if (!origin) return adminOrigin;
-        if (origin === adminOrigin) return origin;
-        if (origin.startsWith('chrome-extension://') || origin.startsWith('moz-extension://')) return origin;
-        return adminOrigin;
+        // Allow configured APP_URL, localhost variants, and browser extensions
+        const allowed = [
+          process.env.APP_URL ?? 'http://localhost:3030',
+          'http://localhost:3030',
+          'http://127.0.0.1:3030',
+        ];
+        if (allowed.includes(origin)) return origin;
+        if (origin.startsWith('chrome-extension://')) return origin;
+        if (origin.startsWith('moz-extension://')) return origin;
+        if (origin.startsWith('safari-web-extension://')) return origin;
+        return allowed[0];
       },
       credentials: true,
       allowHeaders: ['Content-Type', 'Authorization', 'Cookie'],

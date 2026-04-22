@@ -669,9 +669,11 @@ body[data-menu-open="true"] { overflow: hidden; }
   <link rel="canonical" href="https://trail.webhouse.app/trails/how-trail-works/knowledge-that-compounds/" />
   <meta property="og:url" content="https://trail.webhouse.app/trails/how-trail-works/knowledge-that-compounds/" />
   <meta property="og:site_name" content="trail" />
-  <meta name="twitter:card" content="summary" />
+  <meta property="og:image" content="https://trail.webhouse.app/uploads/trail-infogfx-5a48.webp" />
+  <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="Why Your Knowledge Base Should Compile, Not Search" />
   <meta name="twitter:description" content="Most AI knowledge systems are sophisticated search engines that forget between queries. The organizations winning are building something different — and the architectural choice has direct consequences for cost, accuracy, and defensibility." />
+  <meta name="twitter:image" content="https://trail.webhouse.app/uploads/trail-infogfx-5a48.webp" />
   <link rel="manifest" href="/manifest.json" />
 </head>
 <body>
@@ -817,6 +819,7 @@ body[data-menu-open="true"] { overflow: hidden; }
 <p>If your organization is investing in AI for knowledge work — internal knowledge stores, customer-facing chat, expert systems, research support — there is a foundational architectural decision being made on your behalf, often without anyone naming it explicitly. The decision is between <strong>search-time</strong> and <strong>compile-time</strong> knowledge systems. The two are not interchangeable. They have different cost profiles, different accuracy characteristics, different defensibility properties, and they suit different classes of problem.</p>
 <p>The dominant pattern in the market right now is <strong>retrieval-augmented generation</strong>, or RAG. RAG is a search engine with a language model attached. It works well for some problems and poorly for others, and the difference matters for what you can build on top of it.</p>
 <p>Trail is a different architecture: compile-time knowledge infrastructure, modeled on how human memory actually works. This document explains the difference in terms that should matter to anyone deciding where to place an organizational bet.</p>
+<p><img src="/uploads/trail-infogfx-5a48.webp" alt="trail-infogfx.webp"></p>
 <h2>The two architectures, plainly</h2>
 <p>A search-time system answers each question fresh. The user asks something; the system searches a database of document fragments; the language model writes an answer based on what was retrieved; the system forgets everything and waits for the next query. Nothing accumulates. Each query is independent.</p>
 <p>A compile-time system does the work in advance. Sources are read, integrated, cross-referenced, and compiled into structured knowledge pages as they enter the system. When a user asks a question, the system reads from already-integrated knowledge rather than searching raw fragments. The structure grows and improves with every source added.</p>
