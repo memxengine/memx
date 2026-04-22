@@ -313,6 +313,7 @@ server.tool(
           path: documents.path,
           title: documents.title,
           content: documents.content,
+          seq: documents.seq,
         })
         .from(documents)
         .where(
