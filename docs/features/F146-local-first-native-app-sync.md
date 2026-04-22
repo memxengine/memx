@@ -26,25 +26,36 @@ Two unrelated problems collapse into one solution.
 
 ### User-side prerequisite: Anthropic Pro or Max subscription
 
-The native app's subprocess ingest depends on `claude -p` being installed and
-logged in on the user's machine. `claude -p` authenticates against the user's
-**Anthropic Pro or Max subscription** — it is NOT a standalone tool we can
-bundle.
+The native app's subprocess ingest depends on `claude -p` being installed
+and logged in on the user's machine. `claude -p` authenticates against the
+user's **Anthropic Pro or Max subscription** — it is NOT a standalone tool
+we can bundle.
 
-This means a Business / Enterprise Trail user on the native tier needs TWO
+**Verified via Anthropic pricing (2026-04-22):** Claude Code is explicitly
+included in Pro (~$20/mo) and Max (~$100+/mo). The CLI surface — `claude`
+and `claude -p` — is part of the Claude Code offering across all surfaces
+(Terminal, VS Code, JetBrains, Desktop, Web). Rumors that Claude Code is
+Max-only or API-only are not current — Pro is sufficient.
+
+Tier guidance for Trail native users:
+
+| Anthropic tier | Fit for Trail native ingest |
+|---|---|
+| **Pro** (~$20/mo) | Works for typical curator flow — a few sources per day, occasional 10-20-source batch. Hits Pro's usage ceiling (~5h rolling window) on genuinely large imports. |
+| **Max** (~$100-200/mo) | Recommended for bulk-import users (Sanne's 15y case archive, FysioDK's full protocol library). 5-20× Pro's ceiling, comfortable for 200+ sources in a single weekend. |
+
+A Business / Enterprise Trail user on the native tier needs TWO
 subscriptions running in parallel:
 
 1. **Trail** (our business + enterprise plan) — covers retrieval, chat,
    cloud sync, multi-device.
-2. **Anthropic Pro or Max** (user's own subscription, separate billing from
-   Trail) — covers the LLM compute for local ingest runs.
+2. **Anthropic Pro or Max** (user's own subscription, separate billing
+   from Trail) — covers the LLM compute for local ingest runs.
 
-Trail's onboarding + docs must surface this upfront. The value prop still
-works: Anthropic Pro is ~$20/mo flat, and it covers unlimited `claude -p`
-usage for their token budget — far cheaper than pay-per-token API rates
-at bulk-import scale. A single 200-source import that would cost $30-40
-through our API path costs effectively $0 marginal against an already-paid
-Anthropic Pro sub.
+Trail's onboarding + docs must surface this upfront. The economic point
+holds: a 200-source import that costs $30-40 via our API path costs $0
+marginal against an already-paid Anthropic sub — that's the entire reason
+native exists.
 
 The install flow on native must detect missing `claude -p` / unauthenticated
 state and link out to Anthropic's subscription page with a clear "why you
