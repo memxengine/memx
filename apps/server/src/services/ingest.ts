@@ -8,7 +8,7 @@ import {
 } from '@trail/core';
 import { broadcaster } from './broadcast.js';
 import { spawnClaude } from './claude.js';
-import { ensureMcpConfig } from '../lib/mcp-config.js';
+import { ensureMcpConfig, writeIngestMcpConfig, cleanupIngestMcpConfig } from '../lib/mcp-config.js';
 import { listKbTags } from './tag-aggregate.js';
 
 /**
@@ -367,7 +367,29 @@ IMPORTANT RULES:
 
   console.log(`[ingest] Starting for "${doc.filename}" in "${kb.name}" (tenant ${job.tenantId})`);
 
-  const mcpConfigPath = ensureMcpConfig();
+  // Resolve the source's original connector — carried on the doc's metadata
+  // by web-clipper / API upload paths; default to 'upload' for plain drops.
+  const sourceConnector = (() => {
+    if (!doc.metadata) return 'upload';
+    try {
+      const m = JSON.parse(doc.metadata) as { connector?: unknown };
+      return typeof m.connector === 'string' ? m.connector : 'upload';
+    } catch { return 'upload'; }
+  })();
+
+  // F111.2 — claude CLI does NOT forward parent-process env to the MCP
+  // subprocess; env must be baked into the mcp-config file the CLI reads.
+  // Write a per-job config with the ingest context so the MCP write tool
+  // can stamp documents.ingest_job_id on every create/update. Cleaned up
+  // in the finally-block below.
+  const mcpConfigPath = writeIngestMcpConfig({
+    ingestJobId: jobId,
+    tenantId: job.tenantId,
+    userId: job.userId,
+    knowledgeBaseId: job.kbId,
+    dataDir: DATA_DIR,
+    connector: sourceConnector,
+  });
   const args = [
     '-p',
     prompt,
@@ -384,6 +406,10 @@ IMPORTANT RULES:
   ];
 
   try {
+    // Env on claude CLI itself — kept as a belt-and-braces duplicate of the
+    // mcp-config env, in case a future claude-CLI release starts forwarding
+    // to MCP. Today the MCP reads only from the config file (see
+    // writeIngestMcpConfig above).
     await spawnClaude(args, {
       timeoutMs: INGEST_TIMEOUT_MS,
       env: {
@@ -391,19 +417,7 @@ IMPORTANT RULES:
         TRAIL_USER_ID: job.userId,
         TRAIL_KNOWLEDGE_BASE_ID: job.kbId,
         TRAIL_DATA_DIR: DATA_DIR,
-        // Tag candidates emitted by this ingest run with the source's
-        // original connector so web-clipper / API uploads retain their
-        // attribution through to the compiled Neuron. Fall back to
-        // 'upload' for plain file drops.
-        TRAIL_CONNECTOR: (() => {
-          if (!doc.metadata) return 'upload';
-          try {
-            const m = JSON.parse(doc.metadata) as { connector?: unknown };
-            return typeof m.connector === 'string' ? m.connector : 'upload';
-          } catch { return 'upload'; }
-        })(),
-        // F111.2 — pass the job ID so the MCP write tool can stamp each
-        // wiki doc it creates/updates, enabling deterministic attribution.
+        TRAIL_CONNECTOR: sourceConnector,
         TRAIL_INGEST_JOB_ID: jobId,
       },
     });
@@ -465,6 +479,11 @@ IMPORTANT RULES:
       filename: doc.filename,
       error: errorMsg,
     });
+  } finally {
+    // Per-job mcp-config file lives on disk until we clean it up. Drop it
+    // here regardless of success/failure so data/ doesn't accumulate stale
+    // mcp-<jobId>.json files.
+    cleanupIngestMcpConfig(jobId);
   }
   // Draining happens in the caller (claimAndRun's finally-block) — it
   // looks up whether any queued jobs remain and re-ticks the scheduler.
