@@ -37,20 +37,20 @@ Status reflects the engine (this repo). Landing-site and CMS-adapter work lives 
 | F16 | [Wiki Events (Replay-Able Event Stream)](#f16-wiki-events) | Done | 1 | — |
 | F17 | [Curation Queue — HTTP Endpoints](#f17-curation-queue-api) | Planned | 1 | [features/F17-curation-queue-api.md](features/F17-curation-queue-api.md) |
 | F18 | [Curator UI Shell (Vite + Preact + shadcn)](#f18-curator-ui) | Planned | 1 | [features/F18-curator-ui.md](features/F18-curator-ui.md) |
-| F19 | [Auto-Approval Policy Engine](#f19-auto-approval-policy) | Planned | 1 | — |
-| F20 | [Curator Diff UI (Before/After)](#f20-diff-ui) | Planned | 1 | — |
-| F21 | [Ingest Backpressure](#f21-ingest-backpressure) | Planned | 1 | — |
-| F22 | [Stable `{#claim-xx}` Anchors](#f22-claim-anchors) | Planned | 1 | — |
-| F23 | [Wiki-Link Parser (`[[]]`, `[[kb:]]`, `[[ext:]]`)](#f23-wiki-link-parser) | Planned | 1 | — |
-| F24 | [DOCX Pipeline](#f24-docx-pipeline) | Planned | 1 | — |
-| F25 | [Image Source Pipeline (Standalone Images + SVG Passthrough)](#f25-image-pipeline) | Planned | 1 | — |
-| F26 | [HTML / Web Clipper Ingest](#f26-web-clipper) | Planned | 1 | — |
-| F27 | [Pluggable Vision Adapter](#f27-vision-adapter) | Planned | 1 | — |
+| F19 | [Auto-Approval Policy Engine](#f19-auto-approval-policy) | Planned | 1 | [plan](features/F19-auto-approval-policy.md) |
+| F20 | [Curator Diff UI (Before/After)](#f20-diff-ui) | Planned | 1 | [plan](features/F20-curator-diff-ui.md) |
+| F21 | [Ingest Backpressure](#f21-ingest-backpressure) | Planned | 1 | [plan](features/F21-ingest-backpressure.md) |
+| F22 | [Stable `{#claim-xx}` Anchors](#f22-claim-anchors) | Planned | 1 | [plan](features/F22-stable-claim-anchors.md) |
+| F23 | [Wiki-Link Parser (`[[]]`, `[[kb:]]`, `[[ext:]]`)](#f23-wiki-link-parser) | Planned | 1 | [plan](features/F23-wiki-link-parser.md) |
+| F24 | [DOCX Pipeline](#f24-docx-pipeline) | Planned | 1 | [plan](features/F24-docx-pipeline.md) |
+| F25 | [Image Source Pipeline (Standalone Images + SVG Passthrough)](#f25-image-pipeline) | Planned | 1 | [plan](features/F25-image-source-pipeline.md) |
+| F26 | [HTML / Web Clipper Ingest](#f26-web-clipper) | Planned | 1 | [plan](features/F26-html-web-clipper-ingest.md) |
+| F27 | [Pluggable Vision Adapter](#f27-vision-adapter) | Planned | 1 | [plan](features/F27-pluggable-vision-adapter.md) |
 | F28 | [Pluggable Pipeline Interface](#f28-pipeline-interface) | Planned | 1 | [features/F28-pipeline-interface.md](features/F28-pipeline-interface.md) |
 | F29 | [`<trail-chat>` Embeddable Widget (Lit)](#f29-trail-chat-widget) | Planned | 1 | [features/F29-trail-chat-widget.md](features/F29-trail-chat-widget.md) |
-| F30 | [Chat Citations Render (`[[wiki-links]]` → `<a>`)](#f30-chat-citations) | Planned | 1 | — |
-| F31 | [Reader Feedback Button → Queue](#f31-reader-feedback) | Planned | 1 | — |
-| F32 | [Lint Pass (Orphans / Gaps / Contradictions)](#f32-lint-pass) | Planned | 1 | — |
+| F30 | [Chat Citations Render (`[[wiki-links]]` → `<a>`)](#f30-chat-citations) | Planned | 1 | [plan](features/F30-chat-citations-render.md) |
+| F31 | [Reader Feedback Button → Queue](#f31-reader-feedback) | Planned | 1 | [plan](features/F31-reader-feedback.md) |
+| F32 | [Lint Pass (Orphans / Gaps / Contradictions)](#f32-lint-pass) | Planned | 1 | [plan](features/F32-lint-pass.md) |
 | F33 | [Fly.io Arn Deploy for `apps/server`](#f33-fly-server-deploy) | Planned | 1 | [features/F33-fly-server-deploy.md](features/F33-fly-server-deploy.md) |
 | F34 | [Landing Site Deploy (`trailmem.com` + `trail.broberg.ai`)](#f34-landing-deploy) | In progress | 1 | [features/F34-landing-deploy.md](features/F34-landing-deploy.md) |
 | F35 | [Google OAuth Production Credentials](#f35-oauth-production) | Planned | 1 | — |
