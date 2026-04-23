@@ -6,9 +6,20 @@
 
 The current ingest code is entangled: `apps/server/src/services/ingest.ts` dispatches on MIME type inline, and adding a new source format (DOCX, HTML, image-only) would grow the function. `packages/pipelines` has the PDF extractor but no shared contract. Every new format costs a refactor.
 
+## Secondary Pain Points
+- No way to test pipelines in isolation (tightly coupled to ingest service)
+- No visibility into which pipeline processed a source
+- Adding a new format requires modifying core ingest logic
+
 ## Solution
 
 Extract a `Pipeline` interface. Each format is a module that implements `handle(source: SourceFile): Promise<PipelineResult>`. The orchestrator picks a pipeline by MIME type + extension + content heuristics, runs it, and feeds the result into the candidate-emitter (F17).
+
+## Non-Goals
+- Pipeline versioning or A/B testing
+- Hot-reloading pipelines without server restart
+- Pipeline marketplace or plugin system
+- Streaming pipeline output (batch-only in Phase 1)
 
 ## Technical Design
 
@@ -78,37 +89,69 @@ After a pipeline returns fragments, the ingest orchestrator pipes them into Clau
 
 Pipelines call into the Vision adapter (F27) for image descriptions and the LLM adapter (F14) for any summarisation. These are passed in as dependencies, not imported directly, so pipelines stay testable.
 
+## Interface
+
+### Pipeline Contract
+```typescript
+interface Pipeline {
+  name: string;
+  accepts: (source: SourceFile) => number;
+  handle: (source: SourceFile) => Promise<PipelineResult>;
+}
+```
+
+### Registry API
+```typescript
+function register(pipeline: Pipeline): void;
+function dispatch(source: SourceFile): Promise<PipelineResult>;
+function listPipelines(): Pipeline[];
+```
+
+## Rollout
+
+**Single-phase refactor.** The pipeline interface replaces inline MIME dispatch. Existing PDF and Markdown pipelines are wrapped into the new interface — output is identical.
+
+## Success Criteria
+- `dispatch(source)` picks correct pipeline with score > 0.9 for known formats
+- Markdown ingest end-to-end still produces 6-8 wiki pages (same as before refactor)
+- 8-page Danish PDF still extracts 6 images + generates descriptions + compiles 7 wiki pages in ~155s
+- Adding a new pipeline requires zero changes to `ingest.ts`
+- Pipeline unit tests run in < 1 second each (no DB, no network)
+
 ## Impact Analysis
 
-### Files affected
+### Files created (new)
+- `packages/pipelines/src/interface.ts`
+- `packages/pipelines/src/registry.ts`
+- `packages/pipelines/src/dispatch.ts`
 
-- **Create:** `packages/pipelines/src/{interface.ts, registry.ts, dispatch.ts}`
-- **Refactor:** `packages/pipelines/src/pdf.ts` (existing PDF code wraps into a Pipeline instance)
-- **Refactor:** `apps/server/src/services/ingest.ts` (replace inline MIME dispatch with `dispatch(source)`)
+### Files modified
+- `packages/pipelines/src/pdf.ts` (wrap existing PDF code into Pipeline instance)
+- `apps/server/src/services/ingest.ts` (replace inline MIME dispatch with `dispatch(source)`)
 
 ### Downstream dependents
+`apps/server/src/services/ingest.ts` is imported by 9 files (see F21 analysis). Changing from inline dispatch to `dispatch()` is a refactor — callers see same behavior.
 
-- `apps/server/src/services/ingest.ts` — sole caller of existing pipeline code; change is local.
-- `apps/mcp/src/tools/*` — unchanged; pipelines sit below MCP.
+`packages/pipelines/src/pdf.ts` is imported by:
+- `apps/server/src/routes/uploads.ts` (1 ref) — calls `processPdf()`, signature unchanged after wrap
 
 ### Blast radius
-
 Existing PDF pipeline is the only production consumer — wrapping it into the new interface is a pure refactor with identical output.
 
 ### Breaking changes
-
 None externally. `packages/pipelines` public API changes (shared only internally).
 
 ### Test plan
-
-- [ ] TypeScript compiles: `bun run typecheck`
+- [ ] TypeScript compiles: `pnpm typecheck`
 - [ ] Unit: `registry.dispatch` picks `markdownPipeline` for `.md` sources with score > 0.9
 - [ ] Unit: `registry.dispatch` picks `pdfPipeline` for `application/pdf`
+- [ ] Unit: `registry.dispatch` throws for unknown MIME types
+- [ ] Unit: Pipeline `accepts()` returns 0 for non-matching sources
 - [ ] Regression: Markdown ingest end-to-end still produces 6-8 wiki pages
 - [ ] Regression: 8-page Danish PDF still extracts 6 images + generates descriptions + compiles 7 wiki pages
+- [ ] Regression: DOCX pipeline (when added) integrates without ingest.ts changes
 
 ## Implementation Steps
-
 1. Write the `Pipeline` / `SourceFile` / `PipelineResult` interfaces.
 2. Extract the PDF extractor into `pdfPipeline` with `accepts: s => s.mimeType === "application/pdf" ? 1 : 0`.
 3. Write `markdownPipeline` by moving the current markdown-passthrough logic.
@@ -117,13 +160,21 @@ None externally. `packages/pipelines` public API changes (shared only internally
 6. Remove the old MIME-type branching.
 
 ## Dependencies
-
 - F06 Ingest pipeline (rewires into this)
 - F13 Storage adapter (provides `storagePath` + `bytes()` resolution)
 - F17 Curation Queue API (candidate emitter)
 
 Unlocks: F24 DOCX, F25 Image/SVG, F26 HTML, F46 Video, F47 Audio, F48 Email, F49 Slack.
 
-## Effort Estimate
+## Open Questions
+None — all decisions made.
 
+## Related Features
+- **F24** (DOCX Pipeline) — implements Pipeline interface
+- **F25** (Image Source Pipeline) — implements Pipeline interface
+- **F26** (HTML/Web Clipper Ingest) — implements Pipeline interface
+- **F27** (Pluggable Vision Adapter) — dependency for image pipelines
+- **F14** (Multi-Provider LLM Adapter) — dependency for summarisation
+
+## Effort Estimate
 **Medium** — 4-5 days including refactor of the current PDF + Markdown paths.

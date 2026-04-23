@@ -1,5 +1,153 @@
 [
   {
+    "savedAt": "2026-04-22T16:46:52.847Z",
+    "status": "published",
+    "data": {
+      "title": "Knowledge Infrastructure for the AI Era",
+      "metaDescription": "Trail is a knowledge infrastructure engine that turns your sources into a persistent, compounding Neuron-graph — maintained by an LLM on your behalf. Realizing Vannevar Bush's 1945 Memex vision with modern LLMs.",
+      "sections": [
+        {
+          "_block": "hero",
+          "eyebrow": "Trail engine v0.1.3 is live",
+          "titleLine1": "Knowledge Infrastructure",
+          "titleLine2": "for the AI Era.",
+          "description": "A minimalist engine to ingest, connect, and retrieve your organization's collective intelligence. Reimagining Vannevar Bush's 1945 vision with geometric precision.",
+          "ctas": [
+            {
+              "label": "Start Building",
+              "href": "#",
+              "variant": "primary"
+            },
+            {
+              "label": "Read the Docs",
+              "href": "#docs",
+              "variant": "secondary"
+            }
+          ],
+          "showScrollIndicator": true
+        },
+        {
+          "_block": "features",
+          "title": "Architecture of thought.",
+          "description": "The primitives for a persistent graph of cross-referenced Neurons — compiled by an LLM, curated by you, navigated by association.",
+          "items": [
+            {
+              "icon": "spark",
+              "title": "LLM-Compiled Wiki",
+              "description": "Sources aren't chunked and indexed — they're read by an LLM that authors a persistent graph of Neurons on your behalf. Every new fact updates existing Neurons instead of spawning isolated fragments."
+            },
+            {
+              "icon": "graph",
+              "title": "Cross-Referenced Neurons",
+              "description": "Every Neuron links bidirectionally to its source documents and to related Neurons. Follow a claim back to its origin, or forward to everything it touches — the associative trails Vannevar Bush imagined."
+            },
+            {
+              "icon": "search",
+              "title": "Instant Full-Text Search",
+              "description": "Built-in SQLite FTS5 with auto-sync triggers keeps sources and compiled Neurons searchable in lockstep. No vector index to rebuild, no embedding drift."
+            },
+            {
+              "icon": "layers",
+              "title": "Adapter Architecture",
+              "description": "Storage, LLM, vision, and pipeline processors sit behind pluggable interfaces. Start local with SQLite and Claude Code; swap in R2, Anthropic API, or a CMS consumer (@webhouse/cms, Laravel) without touching the engine."
+            },
+            {
+              "icon": "cube",
+              "title": "Extensible Ingestion",
+              "description": "Connectors roadmap: Slack, Discord, Notion, GitHub, Linear. Today: Markdown, Web-Clipper, DOCX and PDF upload, plus native MCP for Claude Code and Cursor."
+            },
+            {
+              "icon": "lock",
+              "title": "Curator, Not Dictator",
+              "description": "The LLM proposes, you dispose. Twelve candidate kinds, an auto-approval threshold, and a replay-able event log keep every change reviewable and reversible."
+            }
+          ]
+        }
+      ],
+      "date": "2026-04-15",
+      "_lastEditedBy": {
+        "userId": "fb4eda6a-bc5c-4dec-8cb6-c77c9fb74cd9",
+        "name": "Christian Broberg",
+        "email": "cb@webhouse.dk",
+        "at": "2026-04-22T16:44:00.035Z"
+      }
+    }
+  },
+  {
+    "savedAt": "2026-04-22T16:44:00.035Z",
+    "status": "published",
+    "data": {
+      "title": "Knowledge Infrastructure for the AI Era",
+      "metaDescription": "Trail is a knowledge infrastructure engine that turns your sources into a persistent, compounding Neuron-graph — maintained by an LLM on your behalf. Realizing Vannevar Bush's 1945 Memex vision with modern LLMs.",
+      "sections": [
+        {
+          "_block": "hero",
+          "eyebrow": "Trail engine v0.1.3 is live",
+          "titleLine1": "Knowledge Infrastructure",
+          "titleLine2": "for the AI Era.",
+          "description": "A minimalist engine to ingest, connect, and retrieve your organization's collective intelligence. Reimagining Vannevar Bush's 1945 vision with geometric precision.",
+          "ctas": [
+            {
+              "label": "Start Building",
+              "href": "#",
+              "variant": "primary"
+            },
+            {
+              "label": "Read the Docs",
+              "href": "#docs",
+              "variant": "secondary"
+            }
+          ],
+          "showScrollIndicator": true
+        },
+        {
+          "_block": "features",
+          "title": "Architecture of thought.",
+          "description": "The primitives for a persistent graph of cross-referenced Neurons — compiled by an LLM, curated by you, navigated by association.",
+          "items": [
+            {
+              "icon": "spark",
+              "title": "LLM-Compiled Wiki",
+              "description": "Sources aren't chunked and indexed — they're read by an LLM that authors a persistent graph of Neurons on your behalf. Every new fact updates existing Neurons instead of spawning isolated fragments."
+            },
+            {
+              "icon": "graph",
+              "title": "Cross-Referenced Neurons",
+              "description": "Every Neuron links bidirectionally to its source documents and to related Neurons. Follow a claim back to its origin, or forward to everything it touches — the associative trails Vannevar Bush imagined."
+            },
+            {
+              "icon": "search",
+              "title": "Instant Full-Text Search",
+              "description": "Built-in SQLite FTS5 with auto-sync triggers keeps sources and compiled Neurons searchable in lockstep. No vector index to rebuild, no embedding drift."
+            },
+            {
+              "icon": "layers",
+              "title": "Adapter Architecture",
+              "description": "Storage, LLM, vision, and pipeline processors sit behind pluggable interfaces. Start local with SQLite and Claude Code; swap in R2, Anthropic API, or a CMS consumer (@webhouse/cms, Laravel) without touching the engine."
+            },
+            {
+              "icon": "cube",
+              "title": "Extensible Ingestion",
+              "description": "Connectors roadmap: Slack, Discord, Notion, GitHub, Linear. Today: Markdown and PDF upload, plus native MCP for Claude Code and Cursor."
+            },
+            {
+              "icon": "lock",
+              "title": "Curator, Not Dictator",
+              "description": "The LLM proposes, you dispose. Twelve candidate kinds, an auto-approval threshold, and a replay-able event log keep every change reviewable and reversible."
+            }
+          ]
+        }
+      ],
+      "date": "2026-04-15",
+      "_lastEditedBy": {
+        "userId": "fb4eda6a-bc5c-4dec-8cb6-c77c9fb74cd9",
+        "name": "Christian Broberg",
+        "email": "cb@webhouse.dk",
+        "at": "2026-04-15T08:44:21.092Z"
+      }
+    }
+  },
+  {
     "savedAt": "2026-04-15T08:44:21.092Z",
     "status": "published",
     "data": {

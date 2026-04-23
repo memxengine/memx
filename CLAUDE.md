@@ -102,6 +102,49 @@ Roadmap ids (`slack`, `discord`, `notion`, `github`, `linear`) are
 already stubbed out as `status: 'roadmap'` — flip them to `'live'` when
 the implementation lands.
 
+## HARD RULE — feature plans must be written, not faked
+
+**When Christian asks for a plan-doc, write the full plan-doc in the SAME turn
+that the F-number is created.** No exceptions.
+
+What is NOT acceptable:
+
+- Adding a row to `docs/FEATURES.md` with a `[plan](features/F999-x.md)`
+  link that points at a file you haven't written.
+- Adding a row to `docs/ROADMAP.md` describing a feature that has no
+  plan-doc behind it.
+- Saying "planned" / "added to roadmap" / "F-numbered" when what you
+  actually did is add an index row and nothing else.
+- Deferring the plan with "I'll write the plan next" — you won't. The
+  context that motivated the plan evaporates within a turn, and the user
+  ends up days later with a roadmap full of topic strings and no
+  reasoning behind them. It is AI slop.
+
+What IS required:
+
+1. The plan-doc file (`docs/features/F<nn>-<slug>.md`) exists on disk
+   BEFORE the `FEATURES.md` / `ROADMAP.md` entries are added.
+2. The plan-doc captures the motivation, scope (in + explicit
+   non-goals), architecture sketch, dependencies, and rollout while the
+   conversation context that produced it is still live.
+3. If the scope is still fuzzy when the user asks for the plan, write
+   an interim plan-doc that records "open questions" at the top and
+   call it out — don't silently skip the file.
+4. The commit that introduces the F-number is the one that introduces
+   the plan-doc. One commit, all three files (plan-doc + FEATURES.md +
+   ROADMAP.md) land together.
+
+Audit on 2026-04-23 found 43 feature entries in the index with no
+plan-doc behind them — the reasoning that originally justified them
+was lost forever because the plans were never written. That is the
+exact cost this rule exists to prevent. Do not repeat it.
+
+Trigger check before committing any change that touches FEATURES.md or
+ROADMAP.md: does every F-number mentioned in the diff have a
+corresponding `docs/features/F<nn>-*.md` file? If not, write it now
+or remove the index row. No "I'll do it next turn." There is no next
+turn for context.
+
 ## Verification before "this works"
 
 Typecheck is not verification. `pnpm typecheck` only proves the code

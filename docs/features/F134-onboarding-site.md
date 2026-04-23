@@ -1,16 +1,20 @@
-# F134 — Onboarding site (`apps/onboarding/`)
+# F134 — Onboarding Site (`apps/onboarding/`)
 
-**Status**: Phase 1 — ported from Claude Design handoff, functional standalone.
-Next: wire the final `SDone → /admin` step to the real KB-creation API.
+> Seven-step wizard that takes a new tenant from "never heard of trail" to "KB online, first Neurons compiled, chat verified". Linked from the `trail.webhouse.dk` landing page. Phase 1 — ported from Claude Design handoff, functional standalone. Tier: alle. Effort: 1.5 days to wire real APIs. Status: Phase 1 complete.
 
-## What it is
+## Problem
 
-A seven-step wizard that takes a new tenant from "never heard of trail" to
-"KB online, first Neurons compiled, chat verified". Linked from the
-`trail.webhouse.dk` landing page (managed by `@webhouse/cms` — see note
-below).
+Nye brugere møder Trail uden guidet introduktion. Uden onboarding skal de selv finde ud af: hvad er en KB, hvordan uploader man kilder, hvad sker der under ingest, hvordan virker chat. Høj friction for nye brugere der ikke allerede kender konceptet.
 
-Steps (DA + EN):
+## Secondary Pain Points
+
+- Ingen struktureret måde at præsentere Trail's value proposition (Vannevar Bush / memex framing)
+- Template-valg (Blank, Personal Memex, Clinic, Engineering, Research, Legal) er ikke tilgængeligt uden onboarding
+- Team-invite flow er ikke integreret i nogen eksisterende flow
+
+## Solution
+
+A seven-step wizard (DA + EN) linked from the `trail.webhouse.dk` landing page:
 
 | # | Screen | Purpose |
 |---|--------|---------|
@@ -23,29 +27,16 @@ Steps (DA + EN):
 | 07 | Query | Scripted chat demo with `[[wiki-link]]` citations |
 | — | Done | Checklist + "Open admin dashboard" CTA |
 
-## Origin
+## Non-Goals
 
-Ported from a Claude Design (`claude.ai/design`) handoff bundle. The
-prototype was HTML + `<script type="text/babel">` JSX with CDN React +
-Babel-standalone. This port:
+- Erstatte admin UI — onboarding er en engangs-guide, ikke en permanent interface
+- Real-time compile streaming i Phase 1 — hardcoded animation, reel SSE i Phase 2
+- Multi-tenant support i Phase 1 — single-user flow
+- Custom template editor — kun pre-defined templates
 
-- Replaced React + Babel CDN with Preact + Vite + TS (same stack as
-  `apps/admin`).
-- Replaced the handoff's `window.COPY`, `window.S1Concept` etc. globals
-  with ES-module named exports.
-- Stripped the `TWEAKS` design-tweak sidecar (dev-only — belongs in the
-  design tool, not production).
-- Replaced the `window.confirm`/`window.alert` demo hooks with real link
-  navigation (state persists to `localStorage` on every change so "Save
-  & exit" just navigates back).
-- Kept the Bauhaus/editorial `styles.css` verbatim (700 lines of custom
-  tokens that match the landing page + admin palette) — no Tailwind
-  needed.
+## Technical Design
 
-Handoff artifacts are preserved for reference at
-`/Users/cb/Downloads/trail-handoff (1).zip`.
-
-## Stack
+### Stack
 
 | Layer | Choice |
 |---|---|
@@ -57,7 +48,7 @@ Handoff artifacts are preserved for reference at
 | State | Local-only: `useState` + `localStorage` (`trail.onboarding.v1`, `trail.onboarding.theme`) |
 | Dev port | 3040 (admin=3030, server=3031) |
 
-## File map
+### File Map
 
 ```
 apps/onboarding/
@@ -75,7 +66,18 @@ apps/onboarding/
     └── styles.css        # Custom CSS tokens + component styles
 ```
 
-## Dev
+### API Integration (TODO — Phase 2)
+
+1. Step 02 → `POST /api/v1/kbs` with `{ name, slug, description }`
+2. Step 03 → attach `template: TemplateKey` to the KB record
+3. Step 04 → use the existing file-upload ingest pipeline (already F95-connector-stamped)
+4. Step 05 → `POST /api/v1/kbs/:id/invites` with email + role
+5. Step 06 → stream the real first-compile log via SSE instead of the hardcoded script
+6. Step 07 → hit the real `/api/v1/chat` endpoint against the new KB
+
+## Interface
+
+### Dev Commands
 
 ```sh
 pnpm --filter @trail/onboarding dev          # → http://localhost:3040
@@ -83,45 +85,95 @@ pnpm --filter @trail/onboarding typecheck
 pnpm --filter @trail/onboarding build        # → dist/
 ```
 
-## Deployment
+### Deployment Options
 
-Built output in `dist/` is static. Options:
+- **Subpath under landing**: CMS build copies `apps/onboarding/dist/` under `/onboarding/` in the landing's static output — `trail.webhouse.dk/onboarding/`
+- **Standalone subdomain**: `onboarding.trail.webhouse.dk` pointing at a dedicated Fly.io static service
 
-- **Subpath under landing**: CMS build copies `apps/onboarding/dist/` under
-  `/onboarding/` in the landing's static output — `trail.webhouse.dk/onboarding/`.
-  Link from landing CTA.
-- **Standalone subdomain**: `onboarding.trail.webhouse.dk` pointing at a
-  dedicated Fly.io static service.
+Phase 1 recommendation: subpath. Smaller surface area, shared origin with `/admin`, no extra DNS.
 
-Phase 1 recommendation: subpath. Smaller surface area, shared origin with
-`/admin`, no extra DNS.
+## Rollout
 
-## API integration (TODO)
+**Phase 1 (done):** Standalone app with localStorage state, hardcoded flows, navigates to `/admin` on completion.
 
-The wizard is currently self-contained — finishing it just sets
-`window.location.href = '/admin'`. Wiring for later:
+**Phase 2 (TODO):** Wire real API endpoints for KB creation, template selection, file upload, team invites, SSE compile streaming, and real chat.
 
-1. Step 02 → `POST /api/v1/kbs` with `{ name, slug, description }`.
-2. Step 03 → attach `template: TemplateKey` to the KB record.
-3. Step 04 → use the existing file-upload ingest pipeline (already
-   F95-connector-stamped).
-4. Step 05 → `POST /api/v1/kbs/:id/invites` with email + role.
-5. Step 06 → stream the real first-compile log via SSE instead of the
-   hardcoded script.
-6. Step 07 → hit the real `/api/v1/chat` endpoint against the new KB.
+## Success Criteria
 
-## Landing migration (related)
+- Ny bruger kan gennemføre alle 7 steps på <5 minutter
+- Onboarding er tilgængelig på både dansk og engelsk
+- "Open admin dashboard" CTA navigerer til korrekt KB efter oprettelse
+- Build output deployes som statisk fil under landing site
 
-The trail-branded landing site (previously living at
-`/Users/cb/Apps/webhouse/cms/examples/static/trail/`) was rsync'd into
-`apps/landing/` in this repo so landing + onboarding + admin + engine all
-live in one place. The landing is NOT a workspace package — it's
-excluded in `pnpm-workspace.yaml` because its `@webhouse/cms` dependency
-points at the CMS monorepo, not this one. The @webhouse/cms admin
-(localhost:3010, org BROBERG-AI) should be repointed:
+## Impact Analysis
 
-- **Config path**: `/Users/cb/Apps/broberg/trail/apps/landing/cms.config.ts`
-- **Content directory**: `/Users/cb/Apps/broberg/trail/apps/landing/content`
+### Files created (new)
+- `apps/onboarding/` (entire directory — already exists from Phase 1 port)
 
-The CMS admin owns building + deploying the landing; trail repo just
-hosts the authoring surface.
+### Files modified
+- `pnpm-workspace.yaml` (exclude onboarding from workspace — uses @webhouse/cms dependency from CMS monorepo)
+- `apps/landing/cms.config.ts` (config path for landing CMS admin)
+- `apps/landing/content/` (content directory for landing)
+
+### Downstream dependents
+Onboarding is a standalone static app — no downstream dependents. It links TO admin (`/admin`) and landing (`trail.webhouse.dk`), but nothing imports FROM it.
+
+`apps/landing/cms.config.ts` — config file, no downstream dependents.
+
+### Blast radius
+- Very low — standalone static app, no shared state with admin or server
+- Landing migration (rsync fra CMS repo) er en engangs-operation
+- Edge case: onboarding state i localStorage kan blive stale ved schema changes
+
+### Breaking changes
+None — entirely new app, no existing interfaces modified.
+
+### Test plan
+- [ ] TypeScript compiles: `pnpm --filter @trail/onboarding typecheck`
+- [ ] `pnpm --filter @trail/onboarding build` → dist/ output
+- [ ] All 7 steps render correctly in both DA and EN
+- [ ] localStorage persists state across page reload
+- [ ] "Save & exit" navigates back without losing state
+- [ ] "Open admin dashboard" CTA navigates to `/admin`
+- [ ] Regression: landing site (apps/landing/) builds independently
+- [ ] Regression: admin UI (apps/admin/) unaffected
+
+## Implementation Steps
+1. **Phase 1 (done):** Port Claude Design handoff → Preact + Vite + TS
+2. **Phase 1 (done):** Replace CDN React with Preact, strip TWEAKS sidecar, replace window.confirm/alert with real navigation
+3. **Phase 1 (done):** Keep Bauhaus/styles.css verbatim (700 lines of custom tokens)
+4. **Phase 2:** Wire Step 02 → `POST /api/v1/kbs`
+5. **Phase 2:** Wire Step 03 → template attachment
+6. **Phase 2:** Wire Step 04 → file-upload ingest pipeline
+7. **Phase 2:** Wire Step 05 → team invites
+8. **Phase 2:** Wire Step 06 → SSE compile streaming
+9. **Phase 2:** Wire Step 07 → real chat endpoint
+10. Deploy under landing site as `/onboarding/` subpath
+
+## Dependencies
+- F95 (file-upload ingest pipeline — Step 04)
+- F10 (KB creation API — Step 02)
+- F40 (multi-tenancy / team invites — Step 05)
+- F143 (persistent ingest queue — Step 06 SSE streaming)
+
+## Open Questions
+1. **Deployment target:** Subpath under landing (`trail.webhouse.dk/onboarding/`) eller standalone subdomain (`onboarding.trail.webhouse.dk`)? Phase 1 recommendation: subpath.
+2. **Template persistence:** Should templates be stored in DB or as static JSON? Phase 1: static. Phase 2: DB-backed for curator customization.
+3. **Landing CMS admin repointing:** `@webhouse/cms` admin (localhost:3010, org BROBERG-AI) skal repointes til trail repo's landing content.
+
+## Related Features
+- **F95** (Connectors / file upload) — Step 04 uses existing ingest pipeline
+- **F143** (Persistent ingest queue) — Step 06 SSE streaming benefits from persistent queue state
+- **F130** (llms.txt) — Trail's own KB llms.txt can be used as a demo in Step 07
+- **F138** (Work layer) — templates could include work-layer setup (tasks, milestones)
+
+## Effort Estimate
+**Medium** — 1.5 days for Phase 2 API wiring
+- 0.25 day: Step 02 → KB creation API
+- 0.25 day: Step 03 → template attachment
+- 0.25 day: Step 04 → file-upload integration
+- 0.25 day: Step 05 → team invites
+- 0.25 day: Step 06 → SSE compile streaming
+- 0.25 day: Step 07 → real chat + testing
+
+Phase 1 (already done): ~2 days for the Preact port from Claude Design handoff.

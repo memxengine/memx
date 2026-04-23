@@ -1,6 +1,22 @@
 {
   "deploys": [
     {
+      "id": "dpl-1776876412872-5xg3",
+      "provider": "github-pages",
+      "status": "success",
+      "timestamp": "2026-04-22T16:46:52.872Z",
+      "url": "https://trail.webhouse.app",
+      "duration": 4898
+    },
+    {
+      "id": "dpl-1776876240073-pg9x",
+      "provider": "github-pages",
+      "status": "success",
+      "timestamp": "2026-04-22T16:44:00.073Z",
+      "url": "https://trail.webhouse.app",
+      "duration": 4967
+    },
+    {
       "id": "dpl-1776862514119-0ldv",
       "provider": "github-pages",
       "status": "success",

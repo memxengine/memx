@@ -4,16 +4,16 @@
   "version": "0.0.1",
   "description": "Clip any web page and save it to your Trail knowledge base.",
   "icons": {
-    "16": "icons/icon16.png",
-    "48": "icons/icon48.png",
-    "128": "icons/icon128.png"
+    "16": "icons/icon16-dark.png",
+    "48": "icons/icon48-dark.png",
+    "128": "icons/icon128-dark.png"
   },
   "action": {
     "default_popup": "popup.html",
     "default_icon": {
-      "16": "icons/icon16.png",
-      "48": "icons/icon48.png",
-      "128": "icons/icon128.png"
+      "16": "icons/icon16-dark.png",
+      "48": "icons/icon48-dark.png",
+      "128": "icons/icon128-dark.png"
     }
   },
   "permissions": [
@@ -34,5 +34,11 @@
       "js": ["src/content/extractor.ts"],
       "run_at": "document_idle"
     }
-  ]
+  ],
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "trail-clipper@broberg.ai",
+      "strict_min_version": "109.0"
+    }
+  }
 }

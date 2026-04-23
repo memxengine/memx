@@ -1,6 +1,6 @@
-# F137 — Chunked ingest for large sources
+# F142 — Chunked ingest for large sources
 
-> A 120-page clinical textbook compiled in one `spawnClaude -p` call is architecturally wrong. Today's pipeline crams the entire source into a single prompt and asks the LLM to emit every Neuron in one session — a flow that hit the 25-turn limit and the 180-second timeout on sources as small as 14 pages. Ship three ingest strategies — **monolith** (current), **chained per-page**, **parallel per-concept** — with an auto-selector that picks the right one per source size + shape, plus a user override at upload time.
+> A 120-page clinical textbook compiled in one `spawnClaude -p` call is architecturally wrong. Today's pipeline crams the entire source into a single prompt and asks the LLM to emit every Neuron in one session — a flow that hit the 25-turn limit and the 180-second timeout on sources as small as 14 pages. Ship three ingest strategies — **monolith** (current), **chained per-page**, **parallel per-concept** — with an auto-selector that picks the right one per source size + shape, plus a user override at upload time. Tier: alle. Effort: 3 days.
 
 ## Problem
 
@@ -19,6 +19,12 @@ Observed failure modes on real customer PDFs:
 
 Raising the budget ceilings (done as interim fix: 30 min / 200 turns) moves the ceiling higher but doesn't fix the underlying shape. Sanne's next sources are 80-120 page clinical books. The architecture has to change.
 
+## Secondary Pain Points
+
+- No progress visibility during long compiles
+- Failed ingest means re-upload from scratch
+- No way to choose strategy based on document shape
+
 ## Solution
 
 Introduce three ingest strategies and an auto-selector.
@@ -28,8 +34,6 @@ Introduce three ingest strategies and an auto-selector.
 - **Parallel per-concept** (`parallel`) — outline the source once, then compile one Neuron per concept in independent parallel calls. Fastest wall-time for huge disconnected content (reference manuals, sitemaps, scattered articles). Weakest on cross-concept coherence.
 
 An `ingest_strategy` column on `documents` records which strategy ran; a `default_ingest_strategy` column on `knowledge_bases` provides a KB-wide preference; an auto-selector chooses based on source size when neither is set.
-
-## Scope
 
 ### v1 — ship all three strategies + auto-selector
 
@@ -101,7 +105,14 @@ An `ingest_strategy` column on `documents` records which strategy ran; a `defaul
 - **Summary compression** (F137.4): at 500-page books the `conceptsSoFar` block could grow to ~10 KB; compress it between chunks. Not needed until we see the problem.
 - **Image-rich chunks**: a page that is mostly a vision-described image gets compiled the same as a text page. Richer per-page treatment later.
 
-## Technical design
+## Non-Goals
+
+- Real-time collaborative ingest editing
+- Per-chunk LLM model selection (v1)
+- Cross-source chaining (v1)
+- Hybrid strategies (v1)
+
+## Technical Design
 
 ### Strategy selector
 
@@ -179,8 +190,6 @@ All nullable — old rows behave as today (`strategy=NULL` → auto-select at ne
 
 ### Coherence trade-off table
 
-Documented for curator reference (surfaced in KB settings hover text):
-
 | Capability | Monolith | Chained | Parallel |
 |---|---|---|---|
 | Cross-document thematic synthesis | ✅ | ❌ | ❌ |
@@ -191,18 +200,65 @@ Documented for curator reference (surfaced in KB settings hover text):
 | Robust at 100+ pages | ❌ | ✅ | ✅ |
 | Token-cost efficiency at scale | ❌ | 🟡 | ✅ |
 
-## Impact analysis
+## Interface
 
-### Files affected
+### Upload form field
 
-**New:**
-- `apps/server/src/services/ingest-strategy.ts` — selector + routing.
-- `apps/server/src/services/chained-ingest.ts` — per-page orchestrator.
-- `apps/server/src/services/parallel-ingest.ts` — outline + per-concept orchestrator.
-- `apps/server/src/services/ingest-state.ts` — shared `IngestState` type + merge helpers.
-- Migration: add `page_chunks`, `ingest_strategy`, `ingest_progress` to `documents`; add `default_ingest_strategy` to `knowledge_bases`.
+```typescript
+interface UploadRequest {
+  files: File[];
+  ingestStrategy?: IngestStrategy; // optional override
+}
+```
 
-**Modified:**
+### API Endpoints
+
+| Method | Path | Description |
+|---|---|---|
+| PATCH | `/knowledge-bases/:kbId` | Accepts `default_ingest_strategy` |
+| POST | `/documents/:id/reingest` | Accepts optional `strategy` override |
+
+### Env knobs
+
+- `TRAIL_INGEST_CHUNK_TIMEOUT_MS`
+- `TRAIL_INGEST_MAX_CONSECUTIVE_FAILS`
+- `TRAIL_INGEST_PARALLEL_CONCURRENCY`
+
+## Rollout
+
+**Single-phase deploy:**
+1. Migration + per-page extraction refactor
+2. Strategy selector + dispatcher
+3. Chained orchestrator
+4. Parallel orchestrator
+5. UI (upload dropdown, KB settings, progress bar)
+6. F136 compile-log events integration
+7. Revert interim budget bumps
+
+## Success Criteria
+
+- Selector: ≤ 15 pages + no override + no KB default → `monolith`
+- Selector: 16 pages + no override → `chained`
+- Selector: 100 pages + KB default `parallel` → `parallel`
+- Selector: 100 pages + upload override `monolith` → `monolith`
+- Chained: 22-page PDF compiles without failure. 22 chunk events in log.
+- Chained: 120-page PDF compiles end-to-end. No duplicate concepts.
+- Chained: Kill server at page 50 → restart → resumes at page 51 with state intact.
+- Parallel: 40-page reference doc: outline pass emits ~12 concepts; per-concept fan-out compiles each in ≤90 s.
+- Parallel: Concurrency=3 cap holds.
+- Parallel: Dedup: two concept compiles targeting the same slug → second becomes an update candidate.
+- Regression: Sanne's existing 3–8 page PDFs compile identically to today.
+
+## Impact Analysis
+
+### Files created (new)
+- `apps/server/src/services/ingest-strategy.ts`
+- `apps/server/src/services/chained-ingest.ts`
+- `apps/server/src/services/parallel-ingest.ts`
+- `apps/server/src/services/ingest-state.ts`
+- `packages/db/drizzle/migrations/XXXX_chunked_ingest.sql`
+
+### Files modified
 - `apps/server/src/services/ingest.ts` — dispatcher, no longer contains the actual compile logic.
 - `apps/server/src/routes/uploads.ts` — PDF / PPTX / XLSX extractors emit `pages[]` and persist to `documents.page_chunks`; upload dialog accepts `ingest_strategy` form field.
 - `apps/server/src/routes/documents.ts` — `/reingest` accepts optional `strategy` override.
@@ -213,15 +269,18 @@ Documented for curator reference (surfaced in KB settings hover text):
 - `apps/admin/src/panels/sources.tsx` — source card shows strategy badge + progress bar.
 - i18n: all new labels in `en.json` + `da.json`.
 
-**Unchanged:**
-- Queue write path — every strategy funnels candidates through `createCandidate`.
-- MCP server — tool contracts stable.
-
 ### Downstream dependents
+`apps/server/src/services/ingest.ts` is imported by 7 files:
+- `apps/server/src/routes/uploads.ts` (1 ref) — calls triggerIngest, unaffected (API unchanged)
+- `apps/server/src/routes/documents.ts` (1 ref) — calls triggerIngest for reingest, unaffected
+- `apps/server/src/routes/ingest.ts` (1 ref) — calls triggerIngest, unaffected
+- `apps/server/src/app.ts` (1 ref) — mounts ingest routes, unaffected
+- `apps/server/src/index.ts` (2 refs) — imports recoverIngestJobs + zombie-ingest, unaffected
+- `docs/features/F26-html-web-clipper-ingest.md` (1 ref) — documentation, no code impact
 
-- F136 (compile-log-card) gets granular events — per-chunk / per-concept logging.
-- Queue bulk actions — nothing about chunking changes candidate shape.
-- F92 tag aggregator — still fed from all candidates regardless of strategy.
+`apps/server/src/routes/uploads.ts` is imported by 2 files:
+- `apps/server/src/app.ts` (1 ref) — mounts route, unaffected
+- `apps/server/src/bootstrap/recover-pending-sources.ts` (1 ref) — imports processPdfAsync/processDocxAsync, unaffected
 
 ### Blast radius
 
@@ -233,32 +292,24 @@ None.
 
 ### Test plan
 
-**Selector:**
-- ≤ 15 pages + no override + no KB default → `monolith`.
-- 16 pages + no override → `chained`.
-- 100 pages + KB default `parallel` → `parallel`.
-- 100 pages + upload override `monolith` → `monolith` (engine tries anyway, logs warning if it fails).
+- [ ] TypeScript compiles: `pnpm typecheck`
+- [ ] Selector: ≤ 15 pages → monolith
+- [ ] Selector: 16 pages → chained
+- [ ] Selector: 100 pages + KB default parallel → parallel
+- [ ] Selector: 100 pages + upload override monolith → monolith
+- [ ] Monolith regression: 3–8 page PDFs compile identically
+- [ ] Chained: 22-page PDF → 22 chunk events, no failures
+- [ ] Chained: 120-page PDF → end-to-end, no duplicate concepts
+- [ ] Chained: Kill at page 50 → resume at 51
+- [ ] Chained: Inject error at page 10 → continues to 11
+- [ ] Parallel: 40-page doc → outline ~12 concepts → fan-out → finalize
+- [ ] Parallel: Concurrency=3 cap holds
+- [ ] Parallel: Dedup collision → second becomes update
+- [ ] Upload dialog dropdown reflects selector default
+- [ ] Source card shows strategy badge + progress bar
+- [ ] F136 compile-log-card renders chunk/concept events live
 
-**Monolith (regression):**
-- Sanne's existing 3–8 page PDFs compile identically to today.
-
-**Chained:**
-- 22-page PDF compiles without failure. 22 chunk events in log.
-- 120-page PDF compiles end-to-end. `conceptsSoFar` grows sensibly; no duplicate `/neurons/concepts/shen-men.md`; book's cross-page references resolve.
-- Kill server at page 50 → restart → resumes at page 51 with state intact.
-- Inject compile-error at page 10 → orchestrator continues to page 11 → doc lands `ready` with `lastError` preserved for the failed chunk.
-
-**Parallel:**
-- 40-page reference doc: outline pass emits ~12 concepts; per-concept fan-out compiles each in ≤90 s; finalize merges to overview.
-- Concurrency=3 cap holds; we don't spawn 10 `claude` subprocesses simultaneously.
-- Dedup: two concept compiles targeting the same slug → second becomes an update candidate, not a collision.
-
-**UX:**
-- Upload dialog dropdown reflects the selector default on page count.
-- Status badge on source card shows strategy.
-- Compile-log-card (F136) renders chunk / concept events live.
-
-## Implementation steps
+## Implementation Steps
 
 1. **Migration** — add columns, run boot-time default-init for existing rows.
 2. **Per-page extraction** — refactor pipelines to emit `pages[]`; persist at upload time.
@@ -278,24 +329,23 @@ None.
 - F98 orphan-lint awareness — continues to work; per-chunk candidates flow through the same queue.
 - F92 tag vocabulary injection — used by all three strategy prompts.
 
-## Unlocks
-
-- Sanne can upload a 120-page clinical textbook. Today impossible; post-F137 it ingests in ~90 minutes with every page accounted for.
-- User chooses strategy at upload based on document shape (or lets auto pick).
-- Curator can set a KB-wide default so Sanne's clinical-book KB always uses chained, and a future reference-manual KB defaults to parallel.
-- F136's progress log becomes genuinely informative with chunk-level events.
-- Future F137.x (hybrids, cross-source chaining, per-chunk models, summary compression) all plug in.
-
-## Open decisions
+## Open Questions
 
 1. **Chunk granularity beyond per-page**: aggregate 3 pages per chunk when slides are sparse? V1 is one-page-one-chunk.
 2. **Parallel concurrency cap**: 3 feels right (CPU + LLM subprocess memory); tune if LLM provider rate-limits bite.
 3. **Strategy change mid-document**: if a chained ingest fails halfway, should `/reingest` retry chained from the crash point, or can the curator switch to monolith for the remaining pages? V1 is retry-same-strategy. Follow-up for hybrid.
 4. **KB default vs. upload override precedence**: upload always wins. No conflict, documented for clarity.
 
-## Effort estimate
+## Related Features
 
-**Medium — 3 days focused.** Breakdown:
+- **F136** — Compile log card (per-chunk event rendering)
+- **F98** — Orphan lint (per-chunk candidates flow through same queue)
+- **F92** — Tag vocabulary injection (used in all strategy prompts)
+- **F143** — Persistent ingest queue (queues at document level, not chunk level)
+
+## Effort Estimate
+
+**Medium** — 3 days focused.
 - 0.5 day: migration + per-page extraction refactor.
 - 0.5 day: selector + dispatcher.
 - 0.75 day: chained orchestrator (prompt, state, resume).
@@ -304,11 +354,3 @@ None.
 - 0.25 day: F136 integration + test plan walkthrough + i18n.
 
 Parallel is cheaper to build than chained because it has no cross-call state merge; chained's state-propagation is the most subtle part.
-
-## Effort if we ship sequentially instead of all-at-once
-
-1. Chained + selector (mandatory for > 15-page ingests) = ~1.75 days.
-2. Parallel alternative = ~0.75 days added.
-3. Monolith-preservation (just dispatcher routing, no new code) = free.
-
-Sequential shipping lets us learn from real Sanne ingests before finalising parallel's outline prompt.

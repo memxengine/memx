@@ -1,6 +1,6 @@
 # F143 — Persistent ingest queue across server restarts
 
-> Today's ingest scheduler lives in two in-memory Maps inside `services/ingest.ts` — `activeIngests` (one-per-KB lock) + `ingestQueue` (waiting jobs). Any server restart loses the whole queue. A curator who uploads 65 sources and steps away for coffee comes back to a server that may have crashed, rebooted, or redeployed — with half the queue silently dropped. Persist the queue in SQLite so the engine re-hydrates it at boot and resumes from where it left off.
+> Today's ingest scheduler lives in two in-memory Maps inside `services/ingest.ts` — `activeIngests` (one-per-KB lock) + `ingestQueue` (waiting jobs). Any server restart loses the whole queue. A curator who uploads 65 sources and steps away for coffee comes back to a server that may have crashed, rebooted, or redeployed — with half the queue silently dropped. Persist the queue in SQLite so the engine re-hydrates it at boot and resumes from where it left off. Tier: alle. Effort: 1-1.5 days.
 
 ## Problem
 
@@ -19,6 +19,12 @@ The existing `recoverZombieIngests` bootstrap partially mitigates: any source st
 2. **No auto-resume** — the curator has to find every `failed` row and click re-ingest manually. With a 65-file batch that's 65 clicks.
 3. **No visibility** — while queued, the UI doesn't show "waiting behind 12 others". The compile-log-card (F136) streams events for the ACTIVE ingest only.
 
+## Secondary Pain Points
+
+- No way to cancel a queued job
+- No queue-level progress indicator
+- No priority mechanism for urgent uploads
+
 ## Solution
 
 Move the queue from JS heap to SQLite. One new table, one new bootstrap, minimal changes to `triggerIngest()`.
@@ -28,8 +34,6 @@ Move the queue from JS heap to SQLite. One new table, one new bootstrap, minimal
 - **Boot recovery** = at server start, re-hydrate the scheduler by reading all `running` jobs (zombies from last run → back to `queued`) + existing `queued` jobs. Scheduler restarts from the first job per KB.
 
 End state: hard-kill the server mid-55-file batch → reboot → the remaining 10 jobs are still there, scheduler picks them up, curator sees the progress bar continue.
-
-## Scope
 
 ### v1 (this feature)
 
@@ -99,7 +103,14 @@ interface Scheduler {
 - **Distributed scheduler.** Phase 2 multi-tenant SaaS with multiple engine replicas will need a leader-election + lock table on top of this. F40.2 territory.
 - **Retry-with-backoff on failed jobs.** For now one attempt → done or failed; curator retries manually. F143.3.
 
-## Technical design
+## Non-Goals
+
+- Distributed/clustered scheduler (v1)
+- Priority queue UI (v1 — column exists, no UI)
+- Retry-with-backoff on failed jobs (v1)
+- Cross-KB concurrency limits (v1)
+
+## Technical Design
 
 ### Queue semantics
 
@@ -155,15 +166,48 @@ interface Scheduler {
 ...
 ```
 
-## Impact analysis
+## Interface
 
-### Files affected
+### API Endpoints
 
-**New:**
-- `apps/server/src/services/ingest-scheduler.ts` — persistent scheduler API.
-- `packages/db/drizzle/0006_ingest_jobs.sql` + schema updates.
+| Method | Path | Description |
+|---|---|---|
+| GET | `/knowledge-bases/:kbId/ingest-queue` | Flat queue for a KB |
+| GET | `/knowledge-bases/:kbId/documents` | Extended with `ingestJobStatus` + `queuePosition` |
 
-**Modified:**
+### DB Table
+
+`ingest_jobs` — persistent queue with status, priority, attempt tracking.
+
+## Rollout
+
+**Single-phase deploy:**
+1. Migration + schema
+2. Scheduler module
+3. Upload/reingest call-site swaps
+4. Bootstrap recovery
+5. Queue endpoint
+6. Admin sources panel queue-position display
+7. i18n pass
+8. Manual soak test
+
+## Success Criteria
+
+- Enqueue 5 jobs for one KB → scheduler runs them sequentially → all land `done`.
+- Kill server after job #2 finishes, mid-job #3 → reboot → `recoverIngestQueue` picks up job #3 (zombie, moves to queued, reruns) and continues through #4, #5.
+- Enqueue 3 jobs each to 2 different KBs → both KBs' jobs run in parallel (one per KB); within each KB serial.
+- Upload 65 text sources in rapid succession → queue fills with 65 entries → UI shows "Queued N/65" per row → all complete over ~90 minutes at ~90 s per job (Haiku compile).
+- Retry on a `failed` source → re-enqueues with `attempt=2`.
+- Typecheck green across workspaces.
+- `recoverZombieIngests` + `recoverIngestQueue` both run at boot, no interference.
+
+## Impact Analysis
+
+### Files created (new)
+- `apps/server/src/services/ingest-scheduler.ts`
+- `packages/db/drizzle/migrations/0006_ingest_jobs.sql`
+
+### Files modified
 - `packages/db/src/schema.ts` — add `ingestJobs` table.
 - `apps/server/src/services/ingest.ts` — `triggerIngest` delegates to scheduler instead of in-memory Map; `runIngest` remains the actual compile worker.
 - `apps/server/src/index.ts` — wire `recoverIngestQueue` bootstrap.
@@ -175,14 +219,18 @@ interface Scheduler {
 - `apps/admin/src/panels/sources.tsx` — queue-position indicator on queued rows.
 - i18n `queue.position` + `queue.waiting` keys.
 
-**Unchanged:**
-- The LLM compile logic (`runIngest`'s prompt, `spawnClaude`, candidate creation). We only change where the work is queued + tracked.
-- MCP server, admin graph, chat. Nothing touches the LLM path.
-
 ### Downstream dependents
+`apps/server/src/services/ingest.ts` is imported by 7 files:
+- `apps/server/src/routes/uploads.ts` (1 ref) — calls triggerIngest, will delegate to scheduler
+- `apps/server/src/routes/documents.ts` (1 ref) — calls triggerIngest for reingest, will delegate to scheduler
+- `apps/server/src/routes/ingest.ts` (1 ref) — calls triggerIngest, will delegate to scheduler
+- `apps/server/src/app.ts` (1 ref) — mounts ingest routes, unaffected
+- `apps/server/src/index.ts` (2 refs) — imports recoverIngestJobs + zombie-ingest, will add recoverIngestQueue
+- `docs/features/F26-html-web-clipper-ingest.md` (1 ref) — documentation, no code impact
 
-- F136 (compile-log-card): unchanged — still streams events for the currently-running job. Could later show "job 3 of 12" header from the queue endpoint.
-- F142 (chunked ingest): per-chunk dispatch stays inside `runIngest`. F143 queues at the *document* level, not the chunk level. A chunked job appears as one queue entry, its chunks as inner compile steps.
+`apps/server/src/routes/uploads.ts` is imported by 2 files:
+- `apps/server/src/app.ts` (1 ref) — mounts route, unaffected
+- `apps/server/src/bootstrap/recover-pending-sources.ts` (1 ref) — imports processPdfAsync/processDocxAsync, unaffected
 
 ### Blast radius
 
@@ -197,15 +245,17 @@ None to API contracts. The documents endpoint gains optional `ingestJobStatus` +
 
 ### Test plan
 
-- Enqueue 5 jobs for one KB → scheduler runs them sequentially → all land `done`.
-- Kill server after job #2 finishes, mid-job #3 → reboot → `recoverIngestQueue` picks up job #3 (zombie, moves to queued, reruns) and continues through #4, #5.
-- Enqueue 3 jobs each to 2 different KBs → both KBs' jobs run in parallel (one per KB); within each KB serial.
-- Upload 65 text sources in rapid succession → queue fills with 65 entries → UI shows "Queued N/65" per row → all complete over ~90 minutes at ~90 s per job (Haiku compile).
-- Retry on a `failed` source → re-enqueues with `attempt=2`.
-- Typecheck green across workspaces.
-- `recoverZombieIngests` + `recoverIngestQueue` both run at boot, no interference.
+- [ ] TypeScript compiles: `pnpm typecheck`
+- [ ] Enqueue 5 jobs → sequential execution → all done
+- [ ] Kill server mid-job #3 → reboot → recovery picks up #3, continues through #5
+- [ ] 3 jobs each to 2 KBs → parallel across KBs, serial within
+- [ ] Upload 65 sources → queue fills → UI shows "Queued N/65" → all complete
+- [ ] Retry on failed source → re-enqueues with attempt=2
+- [ ] `recoverZombieIngests` + `recoverIngestQueue` both run at boot, no interference
+- [ ] F136 compile-log-card: unchanged for running job
+- [ ] F142 chunked ingest: per-chunk dispatch stays inside runIngest, queue at document level
 
-## Implementation steps
+## Implementation Steps
 
 1. Migration: add `ingest_jobs` table + indices.
 2. Drizzle schema declarations.
@@ -224,23 +274,25 @@ None to API contracts. The documents endpoint gains optional `ingestJobStatus` +
 - F136 compile-log-card (in flight — integrates with per-job events).
 - Existing `recoverZombieIngests` (done — coexists until sunset).
 
-## Unlocks
+## Open Questions
 
-- Robust batch uploads (65 Karpathy md files, 120-page books with F142 chunks, onboarding kits with attached PDFs).
-- Per-source "your compile is N-th in line" UX affordance.
-- Foundation for future F143.x: priorities, retry-with-backoff, distributed scheduler.
+1. **`cancelled` status** — worth adding for curator-cancel-queued-job UX, or start with DELETE-only? V1: DELETE. Promote to `cancelled` when we add bulk-queue-management UI.
+2. **Scheduler coupling to KB** — we keep per-KB serialisation. F40.2 may want global-per-tenant concurrency limits; leave a clean seam (pass kbId explicitly to the scheduler's tick path).
+3. **Priority queue API** — expose to curators or keep internal for now? V1 is internal with `priority=0` default.
 
-## Effort estimate
+## Related Features
 
-**Medium — 1-1.5 days.**
+- **F136** — Compile log card (per-job event streaming)
+- **F142** — Chunked ingest (queues at document level, not chunk level)
+- **F15** — Document references (candidate invariants)
+- **F17** — Curation Queue API (write-path invariant)
+- **F40** — Multi-tenancy (future distributed scheduler)
+
+## Effort Estimate
+
+**Medium** — 1-1.5 days.
 - 0.25 day: migration + Drizzle schema.
 - 0.5 day: scheduler + recovery bootstrap + state-machine tests.
 - 0.25 day: upload / reingest / reprocess call-site swaps.
 - 0.25 day: sources-panel queue-position UI + i18n.
 - 0.25 day: soak + test plan walkthrough.
-
-## Open decisions
-
-1. **`cancelled` status** — worth adding for curator-cancel-queued-job UX, or start with DELETE-only? V1: DELETE. Promote to `cancelled` when we add bulk-queue-management UI.
-2. **Scheduler coupling to KB** — we keep per-KB serialisation. F40.2 may want global-per-tenant concurrency limits; leave a clean seam (pass kbId explicitly to the scheduler's tick path).
-3. **Priority queue API** — expose to curators or keep internal for now? V1 is internal with `priority=0` default.

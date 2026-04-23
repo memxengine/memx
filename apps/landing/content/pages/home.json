@@ -53,7 +53,7 @@
           {
             "icon": "cube",
             "title": "Extensible Ingestion",
-            "description": "Connectors roadmap: Slack, Discord, Notion, GitHub, Linear. Today: Markdown and PDF upload, plus native MCP for Claude Code and Cursor."
+            "description": "Connectors roadmap: Slack, Discord, Notion, GitHub, Linear. Today: Markdown, Web-Clipper, DOCX and PDF upload, plus native MCP for Claude Code and Cursor."
           },
           {
             "icon": "lock",
@@ -68,10 +68,10 @@
       "userId": "fb4eda6a-bc5c-4dec-8cb6-c77c9fb74cd9",
       "name": "Christian Broberg",
       "email": "cb@webhouse.dk",
-      "at": "2026-04-15T08:44:21.092Z"
+      "at": "2026-04-22T16:46:52.848Z"
     }
   },
   "id": "home",
   "_fieldMeta": {},
-  "updatedAt": "2026-04-15T08:44:21.093Z"
+  "updatedAt": "2026-04-22T16:46:52.848Z"
 }
