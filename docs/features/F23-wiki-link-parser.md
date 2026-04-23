@@ -315,9 +315,10 @@ a.wiki-link:hover {
 
 ### Downstream dependents for modified files
 
-**`apps/server/src/services/ingest.ts`** — adding link processing is additive. Existing compile flow unchanged, just adds reference building step.
+**`apps/server/src/services/ingest.ts`** is imported by 9 files (see F21 analysis). Adding link parsing is additive — existing callers get document_references populated automatically.
 
-**`apps/admin/src/lib/markdown-renderer.ts`** — used by all admin pages rendering markdown. Adding wiki link resolution changes output for content with `[[...]]` patterns — existing content without wiki links is unaffected.
+**`apps/admin/src/panels/neuron-editor.tsx`** is imported by 1 file (1 ref):
+- `apps/admin/src/app.tsx` (1 ref) — renders editor panel, unaffected by link rendering
 
 ### Blast radius
 - Wiki links are opt-in — content without `[[...]]` patterns is unaffected

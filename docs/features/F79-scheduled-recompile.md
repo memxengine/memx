@@ -148,7 +148,9 @@ lastRecompileAt: text('last_recompile_at'),
 
 ### Downstream dependents for modified files
 
-All modifications are additive.
+**`apps/server/src/app.ts`** is imported by 4 files (see F20 analysis). Adding recompile scheduler start is additive.
+
+**`packages/core/src/ingest/trigger.ts`** — internal module called by `apps/server/src/services/ingest.ts`. Adding `forceRecompile` flag is additive — existing callers don't pass it.
 
 ### Blast radius
 - Recompile triggers ingest for ALL stale neurons — can be expensive for large KBs

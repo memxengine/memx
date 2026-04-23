@@ -165,7 +165,9 @@ configCommands
 
 ### Downstream dependents for modified files
 
-All new files — no downstream impact.
+**`pnpm-workspace.yaml`** — adding CLI package is additive. No existing packages depend on it.
+
+**`packages/mcp/src/tools.ts`** — MCP tools are called by CLI via MCP protocol. No direct imports — CLI uses MCP client to call tools. Existing tools unchanged.
 
 ### Blast radius
 - CLI is a new package — no impact on existing code

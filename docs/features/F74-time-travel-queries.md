@@ -177,7 +177,10 @@ export function VersionTimeline({ docId }: { docId: string }) {
 
 ### Downstream dependents for modified files
 
-All modifications are additive.
+**`apps/server/src/app.ts`** is imported by 4 files (see F20 analysis). Adding time-travel routes is additive.
+
+**`apps/admin/src/panels/neuron-editor.tsx`** is imported by 1 file (1 ref):
+- `apps/admin/src/app.tsx` (1 ref) — renders editor panel, unaffected by adding version timeline tab
 
 ### Blast radius
 - Time-travel queries read from `wiki_events` — no impact on write path

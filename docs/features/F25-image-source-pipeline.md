@@ -257,7 +257,7 @@ export function ImageRenderer({ content, fileType, docId }: ImageRendererProps) 
 
 ### Downstream dependents for modified files
 
-**`apps/server/src/routes/uploads.ts`** — no downstream dependents. Adding image processing is additive.
+**`apps/server/src/routes/uploads.ts`** is imported by 7 files (see F24 analysis). Adding image processing is additive — no consumer changes needed.
 
 ### Blast radius
 - Image files already land with `status: 'pending'` — this makes them actually process

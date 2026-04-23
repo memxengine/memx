@@ -172,7 +172,10 @@ export async function getClaimProvenance(
 
 ### Downstream dependents for modified files
 
-**`apps/server/src/services/ingest.ts`** — adding claim extraction is additive.
+**`apps/server/src/services/ingest.ts`** is imported by 9 files (see F21 analysis). Adding claim extraction is additive — existing callers get claims populated automatically.
+
+**`apps/admin/src/panels/neuron-editor.tsx`** is imported by 1 file (1 ref):
+- `apps/admin/src/app.tsx` (1 ref) — renders editor panel, unaffected by adding trust score display
 
 ### Blast radius
 - Claims table grows with each compile — needs indexing on neuronId, anchorId

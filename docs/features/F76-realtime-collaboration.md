@@ -147,7 +147,10 @@ const provider.awareness.on('change', () => {
 
 ### Downstream dependents for modified files
 
-All modifications are additive.
+**`apps/server/src/app.ts`** is imported by 4 files (see F20 analysis). Adding collab relay start is additive.
+
+**`apps/admin/src/panels/neuron-editor.tsx`** is imported by 1 file (1 ref):
+- `apps/admin/src/app.tsx` (1 ref) — renders editor panel, unaffected by adding optional collab mode
 
 ### Blast radius
 - WebSocket relay is a separate server — adds operational complexity
@@ -183,9 +186,10 @@ None. Collab is opt-in per editor session.
 
 ## Effort Estimate
 
-**Medium** — 3-4 days
+**Large** — 4-5 days
 
 - Day 1: Yjs setup + WebSocket relay
 - Day 2: Editor integration + sync plugins
 - Day 3: Cursor presence + awareness
-- Day 4: Testing + polish
+- Day 4: Conflict resolution edge cases + testing
+- Day 5: Polish + documentation

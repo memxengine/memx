@@ -114,7 +114,9 @@ export async function migrate(db: TrailDatabase): Promise<void> {
 
 ### Downstream dependents for modified files
 
-**`apps/server/src/bootstrap/database.ts`** — changing to factory pattern is internal. All consumers use `c.get('trail')` unchanged.
+**`apps/server/src/bootstrap/database.ts`** — this file creates the TrailDatabase instance. Changing to factory pattern is internal — all consumers use `c.get('trail')` unchanged. The file is imported by:
+- `apps/server/src/index.ts` (1 ref) — boot sequence, unaffected
+- `apps/server/src/app.ts` (via index.ts) — unaffected
 
 ### Blast radius
 - Postgres adapter is opt-in via env var — existing libSQL unchanged
@@ -149,8 +151,9 @@ None.
 
 ## Effort Estimate
 
-**Medium** — 2-3 days
+**Large** — 3-4 days
 
 - Day 1: Postgres adapter + factory + migrations
-- Day 2: FTS5 alternative + integration testing
-- Day 3: Data migration tools + documentation
+- Day 2: FTS5 alternative (pg_trgm/tsvector) + integration testing
+- Day 3: Data migration tools + schema drift handling
+- Day 4: Documentation + performance testing

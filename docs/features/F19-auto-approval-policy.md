@@ -251,11 +251,16 @@ export async function autoDismissLintFindings(
 
 ### Downstream dependents for modified files
 
-**`apps/server/src/routes/queue.ts`** — imported by `app.ts` only. Adding auto-approval check is additive — existing manual approve/reject flow unchanged.
+**`apps/server/src/routes/queue.ts`** is imported by 1 file (1 ref):
+- `apps/server/src/app.ts` — mounts route via `app.route('/api/v1', queueRoutes)`. Adding auto-approval check is additive — existing manual approve/reject flow unchanged.
 
-**`packages/db/src/schema.ts`** — imported by all DB consumers. Changing `lint_policy` from simple text to JSON is backward compatible if we handle legacy values (`trusting`/`strict`) in the policy parser.
-
-**`apps/admin/src/`** — KB settings page reads `lintPolicy`. Adding policy config UI is additive — existing display of trusting/strict still works.
+**`packages/db/src/schema.ts`** is imported by ~20 files via `@trail/db` barrel export, including:
+- `apps/server/src/routes/queue.ts` (6 refs) — reads/writes queue_candidates, unaffected by lint_policy change
+- `apps/server/src/routes/documents.ts` (4 refs) — unaffected, reads documents table
+- `apps/server/src/services/ingest.ts` (5 refs) — unaffected, reads documents/knowledge_bases
+- `packages/core/src/queue/candidates.ts` (8 refs) — unaffected, reads queue_candidates
+- `apps/server/src/middleware/auth.ts` (3 refs) — unaffected, reads sessions/users/tenants/api_keys
+- All other consumers read specific tables, not lint_policy column
 
 ### Blast radius
 - Auto-approval is opt-in (default: `enabled: false`) — no change for existing KBs

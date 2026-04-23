@@ -178,7 +178,12 @@ export function EditorWarnings({ warnings }: { warnings: LintWarning[] }) {
 
 ### Downstream dependents for modified files
 
-**`apps/server/src/routes/queue.ts`** — adding pre-approve lint is additive. Existing approve flow gets an extra check.
+**`apps/server/src/routes/queue.ts`** is imported by 8 files (see F31 analysis). Adding pre-approve lint check is additive — existing approve flow gets an extra validation step.
+
+**`apps/server/src/routes/uploads.ts`** is imported by 7 files (see F24 analysis). Adding post-upload lint check is additive.
+
+**`apps/admin/src/panels/neuron-editor.tsx`** is imported by 1 file (1 ref):
+- `apps/admin/src/app.tsx` (1 ref) — renders editor panel, unaffected by adding warnings display
 
 ### Blast radius
 - Real-time lint adds latency to approve/upload operations — should be async where possible

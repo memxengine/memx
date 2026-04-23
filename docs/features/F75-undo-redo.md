@@ -240,7 +240,10 @@ h('div', { class: 'event-actions' }, [
 
 ### Downstream dependents for modified files
 
-All modifications are additive.
+**`apps/server/src/app.ts`** is imported by 4 files (see F20 analysis). Adding undo routes is additive.
+
+**`apps/admin/src/panels/neuron-editor.tsx`** is imported by 1 file (1 ref):
+- `apps/admin/src/app.tsx` (1 ref) — renders editor panel, unaffected by adding undo/redo buttons
 
 ### Blast radius
 - Undo creates a new event — history is never mutated

@@ -155,7 +155,9 @@ if (link.type === 'external') {
 
 ### Downstream dependents for modified files
 
-**`apps/server/src/app.ts`** — public routes are no-auth. Must be carefully scoped.
+**`apps/server/src/app.ts`** is imported by 4 files (see F20 analysis). Adding public routes (no auth) is additive.
+
+**`packages/core/src/links/resolver.ts`** — internal module called by `apps/server/src/services/ingest.ts` and admin panels. Adding external link handling is additive — existing intra/cross-kb links resolve unchanged.
 
 ### Blast radius
 - Public endpoint exposes wiki content — only KBs marked public are accessible

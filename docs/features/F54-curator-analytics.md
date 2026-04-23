@@ -218,9 +218,9 @@ export function AnalyticsDashboard() {
 
 ### Downstream dependents for modified files
 
-**`apps/server/src/app.ts`** — no downstream dependents.
+**`apps/server/src/app.ts`** is imported by 4 files (see F20 analysis). Adding analytics routes is additive.
 
-**`apps/admin/src/router.ts`** — adding route is additive.
+**`apps/admin/src/app.tsx`** — root admin component. Adding /analytics route is additive — existing routes unchanged.
 
 ### Blast radius
 - Analytics queries aggregate over large tables — may need indexes on `createdAt`, `tenantId`, `status`

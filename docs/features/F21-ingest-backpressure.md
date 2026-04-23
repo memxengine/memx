@@ -228,11 +228,19 @@ const STATUS_TOOLTIPS = {
 
 ### Downstream dependents for modified files
 
-**`apps/server/src/services/ingest.ts`** — imported by `routes/uploads.ts` and `routes/documents.ts`. Adding backpressure check is additive — existing callers don't need changes.
+**`apps/server/src/services/ingest.ts`** is imported by 9 files (refs across):
+- `apps/server/src/app.ts` (1 ref) — starts ingest scheduler on boot, unaffected by backpressure check
+- `apps/server/src/routes/uploads.ts` (1 ref) — calls `triggerIngest()`, gets backpressure behavior automatically
+- `apps/server/src/routes/documents.ts` (1 ref) — calls `triggerIngest()` for reprocess/reingest, gets backpressure behavior
+- `apps/server/src/routes/lint.ts` (1 ref) — calls `triggerIngest()` for lint-triggered recompiles, unaffected
+- `apps/server/src/routes/queue.ts` (1 ref) — calls `triggerIngest()` on candidate approve, unaffected
+- `apps/server/src/index.ts` (1 ref) — boot sequence, unaffected
+- `apps/server/src/services/glossary-seed.ts` (1 ref) — seed script, unaffected
+- `apps/server/src/services/glossary-backfill.ts` (1 ref) — backfill script, unaffected
+- `apps/server/src/middleware/auth.ts` (1 ref) — references for type, unaffected
 
-**`packages/db/src/schema.ts`** — adding status value is additive. All existing queries using `eq(documents.status, 'processing')` etc. are unaffected.
-
-**`apps/admin/src/components/document-status.tsx`** — used by document listing. Adding new status is additive.
+**`packages/db/src/schema.ts`** is imported by ~20 files via `@trail/db` barrel:
+- All consumers read specific tables; adding `pending_ingestion` to status enum is additive
 
 ### Blast radius
 - Documents in `pending_ingestion` state are visible in admin UI with clear messaging

@@ -188,9 +188,9 @@ export function SignupPage() {
 
 ### Downstream dependents for modified files
 
-**`apps/server/src/app.ts`** — no downstream dependents.
+**`apps/server/src/app.ts`** is imported by 4 files (see F20 analysis). Adding signup routes (no auth required) is additive.
 
-**`apps/server/src/middleware/auth.ts`** — adding signup to public paths is additive. Existing auth flow unchanged.
+**`apps/server/src/middleware/auth.ts`** is imported by 16 route files (see grep results above). Adding signup to public paths is additive — all 16 routes continue to use auth unchanged.
 
 ### Blast radius
 - Signup is public — rate limiting needed to prevent abuse

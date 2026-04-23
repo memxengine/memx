@@ -430,11 +430,12 @@ export interface LintPolicy {
 
 ### Downstream dependents for modified files
 
-**`packages/core/src/index.ts`** — imported by `apps/server/src/app.ts` and `apps/mcp/src/tools.ts`. Adding lint export is additive — no breaking changes.
+**`packages/core/src/index.ts`** — barrel export file (54 lines). Adding lint export is additive — no breaking changes for consumers.
 
-**`apps/server/src/app.ts`** — no downstream dependents. It's the app root.
+**`apps/server/src/app.ts`** is imported by 4 files (see F20 analysis). Adding scheduler start is additive.
 
-**`apps/server/src/routes/lint.ts`** — imported by `app.ts` only. Adding new endpoint is additive.
+**`apps/server/src/routes/lint.ts`** is imported by 1 file (1 ref):
+- `apps/server/src/app.ts` (1 ref) — mounts route, unaffected by adding new endpoint
 
 ### Blast radius
 - Lint scheduler runs on boot — adds ~100ms to server startup for initial pass

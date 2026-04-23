@@ -199,11 +199,12 @@ marked.setOptions({ renderer });
 
 ### Downstream dependents for modified files
 
-**`packages/core/src/compile/compiler.ts`** — imported by ingest service. Adding anchor injection is additive — output markdown gains anchors but structure is unchanged.
+**`packages/core/src/compile/compiler.ts`** is NOT directly imported by any file — it's an internal module called by `apps/server/src/services/ingest.ts` (which imports `@trail/core` barrel). Adding anchor injection is additive.
 
-**`apps/server/src/services/ingest.ts`** — no downstream dependents.
+**`apps/server/src/services/ingest.ts`** is imported by 9 files (see F21 analysis above). All callers use `triggerIngest()` — adding anchor storage in metadata is invisible to them.
 
-**`apps/admin/src/lib/markdown-renderer.ts`** — used by all admin pages that render markdown. Adding anchor rendering is additive — existing markdown renders the same, just with id attributes.
+**`apps/admin/src/panels/neuron-editor.tsx`** is imported by 1 file (1 ref):
+- `apps/admin/src/app.tsx` (1 ref) — renders editor panel, unaffected by anchor rendering
 
 ### Blast radius
 - Anchors add ~20 chars per claim to markdown — negligible storage impact

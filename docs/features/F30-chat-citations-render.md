@@ -242,11 +242,13 @@ export function ChatMessage({ answer, citations }: ChatMessageProps) {
 
 ### Downstream dependents for modified files
 
-**`apps/server/src/routes/chat.ts`** — consumed by admin chat panel and widget. Adding citation rendering changes the `answer` field from plain text to HTML — consumers need to use `dangerouslySetInnerHTML` instead of plain text display.
+**`apps/server/src/routes/chat.ts`** is imported by 2 files (2 refs):
+- `apps/server/src/app.ts` (1 ref) — mounts route, unaffected
+- `apps/server/src/routes/queue.ts` (1 ref) — references chat types, unaffected
+Adding citation rendering changes the `answer` field from plain text to HTML — consumers need to use `dangerouslySetInnerHTML` instead of plain text display.
 
-**`packages/shared/src/chat.ts`** — the `ChatResponse` interface is used by admin and widget. Adding `citations` array is additive.
-
-**`apps/admin/src/components/chat-message.tsx`** — used by chat panel. Changing from plain text to HTML rendering is a behavior change but improves UX.
+**`apps/admin/src/panels/chat.tsx`** is imported by 1 file (1 ref):
+- `apps/admin/src/app.tsx` (1 ref) — renders chat panel, needs to handle HTML answer
 
 ### Blast radius
 - Chat responses now contain HTML — consumers MUST use `dangerouslySetInnerHTML` or equivalent

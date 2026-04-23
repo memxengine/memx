@@ -339,11 +339,19 @@ h('div', { class: 'feedback-card' }, [
 
 ### Downstream dependents for modified files
 
-**`apps/widget/src/trail-chat.ts`** — standalone web component. Adding feedback button is additive — existing chat flow unchanged.
+**`apps/server/src/routes/queue.ts`** is imported by 8 files (see grep results):
+- `apps/server/src/app.ts` (1 ref) — mounts route, unaffected
+- `apps/server/src/routes/documents.ts` (1 ref) — references queue types, unaffected
+- `apps/server/src/routes/graph.ts` (1 ref) — references queue for graph data, unaffected
+- `apps/server/src/routes/stream.ts` (1 ref) — broadcasts queue events, unaffected
+- `apps/server/src/routes/knowledge-bases.ts` (1 ref) — references queue counts, unaffected
+- `apps/server/src/routes/work.ts` (1 ref) — references queue, unaffected
+- `apps/server/src/routes/chat.ts` (1 ref) — references queue, unaffected
+- `apps/server/src/routes/lint.ts` (1 ref) — references queue, unaffected
+Adding `reader_feedback` candidate kind is additive — existing candidate types unaffected.
 
-**`apps/server/src/routes/queue.ts`** — adding new candidate kind is additive. Existing candidate types unaffected.
-
-**`apps/admin/src/components/queue-card.tsx`** — adding reader_feedback rendering is additive. Existing card types unchanged.
+**`apps/admin/src/panels/queue.tsx`** is imported by 1 file (1 ref):
+- `apps/admin/src/app.tsx` (1 ref) — renders queue panel, unaffected by adding feedback card rendering
 
 ### Blast radius
 - Feedback button is always visible on chat messages — may increase noise if users spam it

@@ -164,7 +164,11 @@ await logAudit(trail, {
 
 ### Downstream dependents for modified files
 
-All modifications are additive — existing flows unchanged.
+**`apps/server/src/middleware/auth.ts`** is imported by 16 route files (see grep results). Adding audit logging is additive — all 16 routes continue to use auth unchanged.
+
+**`apps/server/src/routes/uploads.ts`** is imported by 7 files (see F24 analysis). Adding audit logging is additive.
+
+**`apps/server/src/routes/queue.ts`** is imported by 8 files (see F31 analysis). Adding audit logging is additive.
 
 ### Blast radius
 - Audit log grows continuously — needs retention policy to prevent unbounded growth

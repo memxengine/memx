@@ -407,11 +407,15 @@ export function DiffView({ docId, version }: DiffViewProps) {
 
 ### Downstream dependents for modified files
 
-**`packages/core/src/index.ts`** — adding diff export is additive.
+**`apps/server/src/app.ts`** is imported by 4 files (4 refs):
+- `apps/server/src/index.ts` (1 ref) — creates app via `createApp(trail)`, unaffected
+- `apps/server/src/routes/auth.ts` (1 ref) — uses `createApp` for dev mode, unaffected
+- `apps/server/src/routes/health.ts` (1 ref) — uses `createApp` for health check, unaffected
+- `apps/server/src/routes/api-keys.ts` (1 ref) — uses `createApp` for API key routes, unaffected
+Adding a new route mount is additive — no consumer changes needed.
 
-**`apps/server/src/app.ts`** — no downstream dependents.
-
-**`apps/admin/src/components/queue-card.tsx`** — used by queue panel. Adding diff button is additive — existing approve/reject buttons unchanged.
+**`apps/admin/src/panels/queue.tsx`** is imported by 1 file (1 ref):
+- `apps/admin/src/app.tsx` (1 ref) — renders queue panel, unaffected by adding diff button
 
 ### Blast radius
 - Diff computation is CPU-bound but fast for typical Neuron sizes (<500 lines)

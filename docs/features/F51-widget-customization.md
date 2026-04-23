@@ -137,9 +137,9 @@ brandConfig: text('brand_config'), // JSON: { primaryColor, accentColor, borderR
 
 ### Downstream dependents for modified files
 
-**`apps/widget/src/trail-chat.ts`** — adding attributes is additive. Existing embeds without customization attributes work unchanged.
+**`apps/widget/src/trail-chat.ts`** — standalone Lit web component. No other files import it directly. Adding customization attributes is additive — existing embeds without customization attributes work unchanged.
 
-**`packages/db/src/schema.ts`** — adding brandConfig column is additive.
+**`packages/db/src/schema.ts`** is imported by ~20 files via `@trail/db` barrel (see F19 analysis). Adding `brandConfig` column to tenants table is additive — all existing consumers read specific columns, not the full row.
 
 ### Blast radius
 - Config endpoint is public (no auth) — only returns brand colors, no sensitive data

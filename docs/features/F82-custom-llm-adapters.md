@@ -177,7 +177,7 @@ export function createLLMBackend(config: LLMConfig): LLMAdapter {
 
 ### Downstream dependents for modified files
 
-**`packages/llm/src/factory.ts`** — used by all LLM consumers. Adding providers is additive.
+**`packages/llm/src/factory.ts`** — used by `apps/server/src/services/claude.ts` and any other LLM consumer. Adding providers is additive — existing `claude-cli` and `anthropic` providers work unchanged.
 
 ### Blast radius
 - New providers are opt-in via env vars — existing Anthropic/claude-cli unchanged

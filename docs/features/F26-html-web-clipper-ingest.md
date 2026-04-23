@@ -223,9 +223,7 @@ export async function storeAndIngest(
 
 ### Downstream dependents for modified files
 
-**`app.ts`** — no downstream dependents. It's the app root.
-
-**`package.json`** — adding dependencies has no downstream impact.
+**`apps/server/src/app.ts`** is imported by 4 files (see F20 analysis). Adding a new route mount is additive — no consumer changes needed.
 
 ### Blast radius
 - New endpoint is additive — doesn't affect existing upload flow

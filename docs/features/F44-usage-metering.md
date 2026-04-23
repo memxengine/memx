@@ -235,9 +235,9 @@ usageRoutes.get('/usage', async (c) => {
 
 ### Downstream dependents for modified files
 
-**`apps/server/src/routes/uploads.ts`** — adding usage logging is additive. Existing upload flow unchanged.
+**`apps/server/src/routes/uploads.ts`** is imported by 7 files (see F24 analysis). Adding usage logging is additive — existing upload flow unchanged.
 
-**`apps/server/src/routes/chat.ts`** — adding usage logging is additive. Existing chat flow unchanged.
+**`apps/server/src/routes/chat.ts`** is imported by 2 files (see F30 analysis). Adding usage logging is additive — existing chat flow unchanged.
 
 ### Blast radius
 - Usage logging is fire-and-forget — doesn't block operations if DB write fails

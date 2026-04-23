@@ -204,7 +204,13 @@ export function verifyWebhook(payload: string, signature: string, secret: string
 
 ### Downstream dependents for modified files
 
-**`pnpm-workspace.yaml`** — adding workspace package affects all packages. No breaking changes.
+**`pnpm-workspace.yaml`** — adding workspace package affects all packages. No breaking changes — existing packages continue to resolve dependencies unchanged.
+
+**`packages/shared/src/connectors.ts`** is imported by ~5 files (via `@trail/shared` barrel):
+- `apps/server/src/routes/queue.ts` (2 refs) — uses connector IDs for filtering, unaffected by new `adapter` ID
+- `packages/core/src/queue/candidates.ts` (3 refs) — uses `stampConnector()`, new ID handled automatically
+- `apps/admin/src/panels/queue.tsx` (2 refs) — renders connector badges, new ID renders automatically
+- `apps/admin/src/components/connector-badge.tsx` (1 ref) — renders connector labels, new ID renders automatically
 
 ### Blast radius
 - SDK is a new package — no impact on existing code

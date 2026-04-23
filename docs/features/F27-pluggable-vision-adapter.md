@@ -269,11 +269,12 @@ export function createVisionBackendFromEnv(): VisionAdapter | null {
 
 ### Downstream dependents for modified files
 
-**`apps/server/src/services/vision.ts`** — imported by `routes/uploads.ts` and `pipelines/pdf.ts`. Refactoring to use adapter is internal — callers still call `createVisionBackend()` with same signature.
+**`apps/server/src/services/vision.ts`** is imported by 2 files (2 refs):
+- `apps/server/src/routes/uploads.ts` (1 ref) — calls `createVisionBackend()`, signature unchanged
+- `apps/server/src/services/ingest.ts` (1 ref) — references vision for PDF pipeline, unaffected
+Refactoring to use adapter is internal — callers still call `createVisionBackend()` with same signature.
 
-**`packages/core/src/index.ts`** — adding vision export is additive.
-
-**`apps/server/src/routes/uploads.ts`** — no downstream dependents.
+**`apps/server/src/routes/uploads.ts`** is imported by 7 files (see F24 analysis). No changes to public API.
 
 ### Blast radius
 - Existing vision calls continue to work — Anthropic adapter is drop-in replacement

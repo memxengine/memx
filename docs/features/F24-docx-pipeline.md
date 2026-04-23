@@ -169,7 +169,15 @@ const result = await mammoth.convertToMarkdown({ buffer: options.docxBytes }, {
 
 ### Downstream dependents for modified files
 
-**`apps/server/src/routes/uploads.ts`** — no downstream dependents. Adding docx processing is additive.
+**`apps/server/src/routes/uploads.ts`** is imported by 7 files (see grep results above):
+- `apps/server/src/app.ts` (1 ref) — mounts route, unaffected
+- `apps/server/src/routes/documents.ts` (1 ref) — references upload types, unaffected
+- `apps/server/src/routes/auth.ts` (1 ref) — references for types, unaffected
+- `apps/server/src/services/reference-extractor.ts` (1 ref) — references upload logic, unaffected
+- `apps/server/src/lib/storage.ts` (1 ref) — references storage paths, unaffected
+- `apps/server/src/bootstrap/recover-pending-sources.ts` (1 ref) — recovery script, unaffected
+- `apps/server/src/index.ts` (1 ref) — boot sequence, unaffected
+Adding DOCX processing is additive — no consumer changes needed.
 
 ### Blast radius
 - DOCX files already land with `status: 'pending'` — this change makes them actually process
