@@ -1,4 +1,4 @@
-import { documents, knowledgeBases, ingestJobs, documentReferences, tenants, DATA_DIR, type TrailDatabase } from '@trail/db';
+import { documents, knowledgeBases, ingestJobs, documentReferences, tenants, tenantSecrets, DATA_DIR, type TrailDatabase } from '@trail/db';
 import { and, asc, eq } from 'drizzle-orm';
 import {
   parseSchemaNeuron,
@@ -9,6 +9,7 @@ import {
 } from '@trail/core';
 import { broadcaster } from './broadcast.js';
 import { ensureMcpConfig, writeIngestMcpConfig, cleanupIngestMcpConfig } from '../lib/mcp-config.js';
+import { unsealSecret } from '../lib/tenant-secrets.js';
 import { listKbTags } from './tag-aggregate.js';
 import { listKbEntities } from './entity-aggregate.js';
 import { resolveIngestChain } from './ingest/chain.js';
@@ -490,6 +491,14 @@ GENERAL
     defaultKbId: job.kbId,
   });
 
+  // F149 Phase 2e — resolve tenant-scoped API keys. Check
+  // tenant_secrets first; fall back to process env. Keys are only
+  // decrypted here, never logged or returned via any HTTP path.
+  // Failure to decrypt (wrong master key, malformed blob) is logged
+  // and we fall through to env — the ingest proceeds if env has a
+  // key, fails cleanly if neither source has one.
+  const tenantKeys = await resolveTenantKeys(trail, job.tenantId);
+
   try {
     const runnerResult = await runWithFallback(chain, {
       prompt,
@@ -504,6 +513,11 @@ GENERAL
         TRAIL_DATA_DIR: DATA_DIR,
         TRAIL_CONNECTOR: sourceConnector,
         TRAIL_INGEST_JOB_ID: jobId,
+        // F149 Phase 2e — populated when tenant has an encrypted key
+        // in tenant_secrets; absent otherwise (backends fall back to
+        // process.env).
+        ...(tenantKeys.openrouter ? { OPENROUTER_API_KEY: tenantKeys.openrouter } : {}),
+        ...(tenantKeys.anthropic ? { ANTHROPIC_API_KEY: tenantKeys.anthropic } : {}),
       },
       candidateApi,
     });
@@ -672,6 +686,54 @@ async function loadSchemaNeurons(
   for (const r of rows) {
     const parsed = parseSchemaNeuron(r.path, r.content ?? '');
     if (parsed) out.push(parsed);
+  }
+  return out;
+}
+
+/**
+ * F149 Phase 2e — look up tenant's encrypted API keys, decrypt them,
+ * return plaintext for use in this ingest's backend env. NULL when
+ * tenant has no row, or the row's columns are NULL, or decryption
+ * fails (e.g. master key rotated without re-encrypting rows).
+ *
+ * Decryption failures are logged but not thrown — the caller falls
+ * through to process env. Ingest still succeeds if env has a key;
+ * fails cleanly if neither source is available.
+ */
+async function resolveTenantKeys(
+  trail: TrailDatabase,
+  tenantId: string,
+): Promise<{ openrouter?: string; anthropic?: string }> {
+  const row = await trail.db
+    .select({
+      openrouter: tenantSecrets.openrouterApiKeyEncrypted,
+      anthropic: tenantSecrets.anthropicApiKeyEncrypted,
+    })
+    .from(tenantSecrets)
+    .where(eq(tenantSecrets.tenantId, tenantId))
+    .get();
+  if (!row) return {};
+
+  const out: { openrouter?: string; anthropic?: string } = {};
+  if (row.openrouter) {
+    try {
+      out.openrouter = unsealSecret(row.openrouter);
+    } catch (err) {
+      console.warn(
+        `[ingest] tenant_secrets OpenRouter key decrypt failed for ${tenantId}:`,
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+  if (row.anthropic) {
+    try {
+      out.anthropic = unsealSecret(row.anthropic);
+    } catch (err) {
+      console.warn(
+        `[ingest] tenant_secrets Anthropic key decrypt failed for ${tenantId}:`,
+        err instanceof Error ? err.message : err,
+      );
+    }
   }
   return out;
 }

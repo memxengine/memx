@@ -66,9 +66,12 @@ export class OpenRouterBackend implements IngestBackend {
     if (!input.candidateApi) {
       throw new Error('OpenRouterBackend requires candidateApi in input (runner must pass it)');
     }
-    const apiKey = process.env.OPENROUTER_API_KEY;
+    // F149 Phase 2e — prefer tenant-scoped key resolved by the runner,
+    // fall back to process env (Christian's personal key on Max-Plan
+    // tier). Throws only when neither source has a key.
+    const apiKey = input.env.OPENROUTER_API_KEY || process.env.OPENROUTER_API_KEY;
     if (!apiKey) {
-      throw new Error('OPENROUTER_API_KEY not set in environment');
+      throw new Error('OPENROUTER_API_KEY not configured for this tenant or in process env');
     }
 
     const t0 = Date.now();

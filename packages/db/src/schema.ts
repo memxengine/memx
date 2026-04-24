@@ -435,6 +435,30 @@ export const ingestJobs = sqliteTable(
   ],
 );
 
+// ── F149 Phase 2e — Per-tenant encrypted API keys ──────────────────────────
+//
+// One row per tenant. Each provider's API key is stored as an
+// AES-256-GCM sealed blob in the shape `nonce:ciphertext:tag` (all
+// base64). The master key lives in TRAIL_SECRETS_MASTER_KEY env at
+// server boot; rotation via apps/server/scripts/rotate-secrets-key.ts.
+//
+// Read-path: ingest runner checks here FIRST when resolving the
+// OpenRouter/Anthropic API key for a tenant's run. Falls back to
+// process env (Christian's personal key) when NULL. Never exposed
+// verbatim in any HTTP response — only the F152 status endpoint
+// surfaces a boolean "is configured".
+
+export const tenantSecrets = sqliteTable(
+  'tenant_secrets',
+  {
+    tenantId: text('tenant_id').primaryKey().references(() => tenants.id, { onDelete: 'cascade' }),
+    openrouterApiKeyEncrypted: text('openrouter_api_key_encrypted'),
+    anthropicApiKeyEncrypted: text('anthropic_api_key_encrypted'),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+    updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+  },
+);
+
 // ── F111 — API Keys (bearer auth for extensions + external clients) ──────────
 
 export const apiKeys = sqliteTable(
