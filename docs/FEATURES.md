@@ -242,6 +242,14 @@ Tre-lags-forsvar mod broken wiki-links: ingest-prompten lærer LLM'en slug-konve
 |---|---------|--------|-------|------|
 | F148 | [Link Integrity](features/F148-link-integrity.md) | Planned | 1 | [plan](features/F148-link-integrity.md) |
 
+### F149 — Pluggable Ingest Backends
+
+Factor `apps/server/src/services/ingest.ts` bag et `IngestBackend`-interface med to live implementeringer — `ClaudeCLIBackend` (claude-CLI-subprocess, nuværende default) og `OpenRouterBackend` (Gemini 2.5 Flash / GLM 4.6 / Qwen 3.6 Plus / Anthropic API). **Live runtime fallback-chain**: når en model fejler (rate-limit, context-limit, refusal) skifter runneren til næste model i chain'en mid-job mens allerede skrevne Neuroner bevares. Per-KB model-valg + per-tenant billing-keys (encrypted `tenant_secrets`-tabel). Migration `0014` tilføjer `ingest_jobs.cost_cents` + `knowledge_bases.ingest_backend/ingest_model/ingest_fallback_chain`. Runtime-UI-switch er out of v1 — plan-doc'en lægger pure-function-chain-resolution klar til UI-followup. Christian kører fortsat claude-cli (Max Plan) som default indtil han eksplicit flipper.
+
+| # | Feature | Status | Phase | Plan |
+|---|---------|--------|-------|------|
+| F149 | [Pluggable Ingest Backends](features/F149-pluggable-ingest-backends.md) | Planned | 1/2 | [plan](features/F149-pluggable-ingest-backends.md) |
+
 ---
 
 ## Descriptions
@@ -520,6 +528,9 @@ Orphan-Neuron detection now skips Neurons whose originating candidate came from 
 
 ### F147 — Share Extension (iOS + Android)
 Native share targets for iOS og Android der lader brugeren sende tekst, links og billeder direkte fra andre apps til Trail. iOS Share Extension (Swift/SwiftUI) dukker op i share sheet som "Trail Clipper" og deler credentials med hoved-appen via App Group. Android Share Extension (Kotlin) gør det samme. Billeder sendes gennem den eksisterende vision backend for beskrivelse + OCR. Connector: `share-extension`.
+
+### F149 — Pluggable Ingest Backends
+Ingest-pipelinen factoreret bag et `IngestBackend`-interface. To implementeringer: `ClaudeCLIBackend` (nuværende `spawnClaude`-subprocess, Max Plan, default) og `OpenRouterBackend` (Gemini 2.5 Flash, GLM 4.6, Qwen 3.6 Plus, Claude Sonnet via API). **Live runtime fallback-chain** — på model-fejl skifter runneren til næste model i chain'en mid-job og bevarer allerede-skrevne Neuroner; chain stoppes kun når jobbet lykkes eller listen tømmes. Default chains: claude-cli → Flash → GLM → Qwen, eller openrouter → Flash → GLM → Qwen → Claude-API. Per-KB kolonne `ingest_backend`/`ingest_model`/`ingest_fallback_chain` overstyrer env. Per-tenant encrypted API-keys i `tenant_secrets` (libsodium seal, master-key fra `TRAIL_SECRETS_MASTER_KEY`). Cost-tracking pr. job via ny `ingest_jobs.cost_cents`-kolonne (migration 0014); `model_trail` JSON-kolonne logger hvilke modeller der faktisk kørte hvilke turns. Model-lab's OpenRouter-kode (`apps/model-lab/src/server/{openrouter,runner,two-pass,tools}.ts`) løftes ind i server-lag og bindes til Trail's MCP-write-tool så F111.2-stamping, F137 edge-types, F140 schemas og F148 link-checker virker identisk uanset backend. Runtime-UI-switch er separat F-feature (ikke v1); F149's chain-resolution er pure function klar til det kald. Christian kører fortsat claude-cli (Max Plan) som default indtil han eksplicit flipper.
 
 ### F148 — Link Integrity
 Tre-lags-forsvar mod 404-fejl i en trail-brain. **Lag 1 (prompt):** `ingest.ts`-prompten udvides med `kb.language`-direktiv, en ENTITY VOCABULARY-blok (ny `listKbEntities()` aggregator), eksplicitte slug-konsistens-regler med eksempler (`yin-og-yang.md` ✓ / `yin-and-yang.md` ✗), og krav om at alle navngivne personer/organisationer/tools wrappes i `[[...]]`. **Lag 2 (URL-fallback):** ny `normalizedSlug(slug, language)` + `foldBilingual()` i `packages/shared/` folder bilingual-drift (`og↔and`, `i↔of`, `til↔to`, `med↔with`, `æøå↔ae/oe/aa`) og fjerner parens-kvalifikatorer. Anvendt symmetrisk i `wiki-reader.tsx` URL matcher, `backlink-extractor.ts resolveLink()`, og `wiki-links.ts`. **Lag 3 (link-checker):** ny `broken_links`-tabel (migration `0013`) + `link-checker.ts`-service spejler `contradiction-lint.ts`-mønsteret. Subscriber på `candidate_approved` + daglig sweep via `lint-scheduler`. Auto-fix ved entydig fold-match; flertydighed eller uløselige mismatches lander som `queue_candidates` med `kind='broken-link-alert'`. Ingen LLM i checkeren — ren text-parsing + in-memory pool + Levenshtein ≤ 2 for forslag. Hard rule Christian 2026-04-24: **der må være 0,0000000 404-fejl i en hjerne**.

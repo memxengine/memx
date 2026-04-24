@@ -123,6 +123,7 @@ The remaining Phase 1 scope, ordered by leverage and dependency.
 | F23 | Wiki-Link Parser (`[[]]`, `[[kb:]]`, `[[ext:]]`) | F07 | Small |
 | F30 | Chat Citations Render | F12, F23 | Small |
 | F148 | Link Integrity (ingen 404 i hjernen — 3 lag: prompt + URL-fold + link-checker) | F06, F32, F140 | Medium |
+| F149 | Pluggable Ingest Backends (Claude CLI + OpenRouter, live fallback chain, per-tenant billing, per-KB model) | F06, F111.2, F137, F140, F143, F148 | Large |
 
 ### Pipelines + Adapters — widen the ingest surface
 
