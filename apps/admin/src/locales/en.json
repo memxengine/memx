@@ -151,7 +151,7 @@
       "pending": "Waiting for the curator's decision.",
       "approved": "The curator accepted this candidate — its change is committed.",
       "rejected": "The curator discarded this candidate. Nothing changed.",
-      "ingested": "The candidate's content has landed in the wiki.",
+      "ingested": "The candidate's content has landed as a Neuron.",
       "autoApproved": "Trusted pipeline — the approval policy auto-committed this. No human click needed."
     },
     "op": {
@@ -495,7 +495,7 @@
   },
   "work": {
     "title": "Work",
-    "subtitle": "Tasks, bugs, milestones and decisions living alongside the knowledge on this Trail — with context automatically inherited from related Neurons via [[wiki-links]].",
+    "subtitle": "Tasks, bugs, milestones and decisions living alongside the knowledge on this Trail — with context automatically inherited from related Neurons via [[neuron-links]].",
     "new": "+ NEW",
     "create": "Create",
     "createTitle": "New work item",

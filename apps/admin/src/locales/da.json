@@ -151,7 +151,7 @@
       "pending": "Venter på kuratorens beslutning.",
       "approved": "Kuratoren godkendte denne kandidat — ændringen er commit'et.",
       "rejected": "Kuratoren afviste kandidaten. Intet ændret.",
-      "ingested": "Kandidatens indhold er landet i wikien.",
+      "ingested": "Kandidatens indhold er landet som en Neuron.",
       "autoApproved": "Tillidsfuld pipeline — godkendelsespolitikken auto-committede den. Intet manuelt klik nødvendigt."
     },
     "op": {
@@ -495,7 +495,7 @@
   },
   "work": {
     "title": "Arbejde",
-    "subtitle": "Tasks, bugs, milestones og beslutninger der lever på samme Trail som din viden — med automatisk kontekst fra relaterede Neuroner via [[wiki-links]].",
+    "subtitle": "Opgaver, fejl, milepæle og beslutninger der lever på samme Trail som din viden — med automatisk kontekst fra relaterede Neuroner via [[neuron-links]].",
     "new": "+ NYT",
     "create": "Opret",
     "createTitle": "Nyt arbejds-item",
