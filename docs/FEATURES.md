@@ -43,7 +43,7 @@ Status reflects the engine (this repo). Landing-site and CMS-adapter work lives 
 | F22 | [Stable `{#claim-xx}` Anchors](#f22-claim-anchors) | Planned | 1 | [plan](features/F22-stable-claim-anchors.md) |
 | F23 | [Wiki-Link Parser (`[[]]`, `[[kb:]]`, `[[ext:]]`)](#f23-wiki-link-parser) | Done | 1 | [plan](features/F23-wiki-link-parser.md) |
 | F24 | [DOCX Pipeline](#f24-docx-pipeline) | Planned | 1 | [plan](features/F24-docx-pipeline.md) |
-| F25 | [Image Source Pipeline (Standalone Images + SVG Passthrough)](#f25-image-pipeline) | Planned | 1 | [plan](features/F25-image-source-pipeline.md) |
+| F25 | [Image Source Pipeline (Standalone Images + SVG Passthrough)](#f25-image-pipeline) | Done | 1 | [plan](features/F25-image-source-pipeline.md) |
 | F26 | [HTML / Web Clipper Ingest](#f26-web-clipper) | Planned | 1 | [plan](features/F26-html-web-clipper-ingest.md) |
 | F27 | [Pluggable Vision Adapter](#f27-vision-adapter) | Planned | 1 | [plan](features/F27-pluggable-vision-adapter.md) |
 | F28 | [Pluggable Pipeline Interface](#f28-pipeline-interface) | Done | 1 | [features/F28-pipeline-interface.md](features/F28-pipeline-interface.md) |

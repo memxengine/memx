@@ -1,0 +1,17 @@
+-- F25 + F47 prep — extract_cost_cents på documents.
+--
+-- Tracker cost for PRE-INGEST extraction-fasen (vision-call på et
+-- billede, Whisper-transcription på en lyd-fil, kommende OCR for
+-- scans). Komplementerer ingest_jobs.cost_cents (F149) som tracker
+-- compile-fasen. Hver tenant's totale LLM-cost = sum af begge:
+--
+--   tenant_total_cost = SUM(documents.extract_cost_cents)
+--                     + SUM(ingest_jobs.cost_cents)
+--                     filter: tenant_id = ?
+--
+-- F156 Credits-Based Metering vil deducere på begge når den lander.
+--
+-- NOT NULL DEFAULT 0 så pre-F25 rækker satisfier schema'et — de havde
+-- ingen extract-fase (text-only sources og PDF-pipeline talte aldrig
+-- per-image vision-cost separat).
+ALTER TABLE `documents` ADD COLUMN `extract_cost_cents` integer NOT NULL DEFAULT 0;

@@ -1,5 +1,7 @@
 # F25 — Image Source Pipeline (Standalone Images + SVG Passthrough)
 
+> **Status: Shipped 2026-04-25.** Image-pipeline drop-in via F28 registry (`packages/pipelines/src/image/pipeline.ts`). Raster (PNG/JPG/WebP/GIF) sendes til vision-LLM (Anthropic native når `ANTHROPIC_API_KEY` er sat, ellers OpenRouter fallback med `usage.cost`); SVG passes through som inline XML-markup. Cost stamped på ny `documents.extract_cost_cents`-kolonne (migration 0018) — F156 Credits-Based Metering vil deducere på det. Verification: `apps/server/scripts/verify-f25-image-pipeline.ts` — 12 asserts grønne med live OpenRouter call (Trail logo: 1¢ cost, 1912 chars markdown; tree-vs-graph SVG: 0¢ passthrough). uploads.ts + recover-pending-sources.ts berørt 0 — F28's win.
+>
 > Accepter standalone billeder (.png, .jpg, .webp, .gif, .svg) som sources. Billeder sendes gennem vision AI for beskrivelse → wiki page. SVG filer pass-through deres markup så diagrammer forbliver stylable og accessible.
 
 ## Problem

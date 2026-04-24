@@ -133,7 +133,7 @@ The remaining Phase 1 scope, ordered by leverage and dependency.
 
 | # | Feature | Depends On | Effort |
 |---|---------|------------|--------|
-| F25 | Image Pipeline (Standalone + SVG Passthrough) | F28, F27 | Small |
+| F25 | ~~Image Pipeline (Standalone + SVG Passthrough)~~ — **Done 2026-04-25** (drop-in via F28 registry, OpenRouter vision fallback når Anthropic-key mangler, cost stamped on `documents.extract_cost_cents` for F156 credits) | F28, F27 | Small |
 | ~~F26~~ | ~~HTML / Web Clipper Ingest~~ — covered by F111 | — | — |
 | F27 | Pluggable Vision Adapter | F08 | Small |
 | F28 | ~~Pluggable Pipeline Interface~~ — **Done 2026-04-25** (`@trail/pipelines` registry + dispatch, 4 built-ins wrapped, uploads.ts + recover-pending-sources.ts unified to one call) | F06 | Medium |

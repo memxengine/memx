@@ -38,6 +38,19 @@ export interface PipelineInput {
   imageUrlPrefix?: string;
   /** F27 Vision adapter callback — adds alt-text to extracted images. */
   describeImage?: DescribeImage;
+  /**
+   * F25 — describe a standalone image as a self-contained markdown
+   * source. Different shape from `describeImage` (which is per-image-
+   * inside-a-PDF, returns a 1-2 sentence blurb): this returns a fuller
+   * description (300-500 words) AND the USD-cents cost of the call,
+   * so the orchestrator can stamp it on `documents.extract_cost_cents`
+   * for F156 credits-deduction.
+   */
+  describeImageAsSource?: (
+    bytes: Buffer,
+    mediaType: 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif',
+    filename: string,
+  ) => Promise<{ markdown: string; costCents: number; model: string } | null>;
 }
 
 export interface ExtractedImage {
@@ -62,6 +75,15 @@ export interface PipelineResult {
   sheetCount?: number;
   /** Extracted images, written through `input.storage`. */
   images?: ExtractedImage[];
+  /**
+   * F25/F156 — USD-cents spent on extract-time LLM calls (vision for
+   * images, future Whisper for audio, future OCR for scans). 0 for
+   * pipelines that don't call out (markdown/SVG passthrough). The
+   * orchestrator stamps this on `documents.extract_cost_cents`.
+   */
+  extractCostCents?: number;
+  /** Model identifier used for the extract LLM call, if any. */
+  extractModel?: string;
 }
 
 export interface Pipeline {

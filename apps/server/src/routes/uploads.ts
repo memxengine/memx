@@ -6,7 +6,7 @@ import { processPdf, processDocx, processPptx, processXlsx, dispatch, pickPipeli
 import { storage, sourcePath } from '../lib/storage.js';
 import { chunkText, storeChunks } from '../services/chunker.js';
 import { triggerIngest } from '../services/ingest.js';
-import { createVisionBackend } from '../services/vision.js';
+import { createVisionBackend, describeImageAsSource } from '../services/vision.js';
 import { resolveKbId } from '@trail/core';
 
 const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
@@ -19,6 +19,7 @@ const PDF_TIMEOUT_MS = Number(process.env.TRAIL_PDF_TIMEOUT_MS ?? 120_000);
 const DOCX_TIMEOUT_MS = Number(process.env.TRAIL_DOCX_TIMEOUT_MS ?? 60_000);
 const PPTX_TIMEOUT_MS = Number(process.env.TRAIL_PPTX_TIMEOUT_MS ?? 90_000);
 const XLSX_TIMEOUT_MS = Number(process.env.TRAIL_XLSX_TIMEOUT_MS ?? 60_000);
+const IMAGE_TIMEOUT_MS = Number(process.env.TRAIL_IMAGE_TIMEOUT_MS ?? 30_000);
 
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -41,7 +42,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
 
 const ALLOWED_EXTENSIONS = new Set([
   'pdf', 'docx', 'pptx', 'doc', 'ppt',
-  'png', 'jpg', 'jpeg', 'webp', 'gif',
+  'png', 'jpg', 'jpeg', 'webp', 'gif', 'svg',
   'html', 'htm', 'xlsx', 'xls', 'csv',
   'md', 'txt',
 ]);
@@ -197,7 +198,8 @@ export async function processFileAsync(
     .where(eq(documents.id, docId))
     .run();
 
-  // PDF needs storage + describe; other formats ignore those fields.
+  // PDF needs storage + describe; image-pipeline needs describeImageAsSource;
+  // other formats ignore those fields.
   const ext = filename.split('.').pop()?.toLowerCase() ?? '';
   const timeoutMs = ext === 'pdf'
     ? PDF_TIMEOUT_MS
@@ -205,7 +207,9 @@ export async function processFileAsync(
       ? PPTX_TIMEOUT_MS
       : ext === 'xlsx'
         ? XLSX_TIMEOUT_MS
-        : DOCX_TIMEOUT_MS;
+        : ext === 'png' || ext === 'jpg' || ext === 'jpeg' || ext === 'webp' || ext === 'gif' || ext === 'svg'
+          ? IMAGE_TIMEOUT_MS
+          : DOCX_TIMEOUT_MS;
 
   const { pipeline, result } = await withTimeout(
     dispatch({
@@ -215,6 +219,7 @@ export async function processFileAsync(
       imagePrefix: `${tenantId}/${kbId}/${docId}/images`,
       imageUrlPrefix: `/api/v1/documents/${docId}/images`,
       describeImage: createVisionBackend() ?? undefined,
+      describeImageAsSource,
     }),
     timeoutMs,
     `${ext} extract "${filename}"`,
@@ -236,6 +241,12 @@ export async function processFileAsync(
     console.log(`[pptx] ${filename}: ${result.slideCount} slide${result.slideCount === 1 ? '' : 's'} extracted`);
   } else if (pipeline.name === 'xlsx') {
     console.log(`[xlsx] ${filename}: ${result.sheetCount} sheet${result.sheetCount === 1 ? '' : 's'} extracted`);
+  } else if (pipeline.name === 'image') {
+    const cost = result.extractCostCents ?? 0;
+    console.log(
+      `[image] ${filename}: ${result.markdown.length} chars described, cost=${cost}¢` +
+        (result.extractModel ? ` (${result.extractModel})` : ''),
+    );
   }
 
   // Title — pipeline result first, then strip extension from filename.
@@ -243,6 +254,8 @@ export async function processFileAsync(
   const title = result.title ?? stem;
   // pageCount column doubles as slideCount/sheetCount for non-PDF.
   const pageCount = result.pageCount ?? result.slideCount ?? result.sheetCount ?? null;
+  // F25/F156 — stamp extract cost so credits-tracking can sum it later.
+  const extractCostCents = result.extractCostCents ?? 0;
 
   await trail.db
     .update(documents)
@@ -250,6 +263,7 @@ export async function processFileAsync(
       content: result.markdown,
       title,
       ...(pageCount !== null ? { pageCount } : {}),
+      ...(extractCostCents > 0 ? { extractCostCents } : {}),
       status: 'ready',
       version: 1,
       updatedAt: new Date().toISOString(),

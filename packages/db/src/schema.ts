@@ -133,6 +133,12 @@ export const documents = sqliteTable(
     // F111.2 — stamped by the ingest subprocess via the MCP write tool so
     // wireSourceRefs can identify all docs touched by a specific job.
     ingestJobId: text('ingest_job_id'),
+    // F25/F47 prep — pre-ingest extraction cost (vision-call for image
+    // sources, Whisper-transcription for audio, future OCR for scans).
+    // Complements ingest_jobs.cost_cents (F149) which tracks compile-fasen.
+    // 0 for sources where extraction is free (text/markdown/SVG passthrough).
+    // F156 Credits-Based Metering will deduct on this column when it lands.
+    extractCostCents: integer('extract_cost_cents').notNull().default(0),
     createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
     updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
   },
