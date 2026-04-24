@@ -36,8 +36,14 @@ export function ThinkingAnimation({
   const timeStr = `${minutes}:${String(seconds).padStart(2, '0')}`;
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-      <div style={{ position: 'relative', width: '28px', height: '28px' }}>
+    // paddingInline: the 28x28 animation box contains a pulse ring with
+    // `inset: -2px` (32x32 base) that scales to 1.1 → 35.2x35.2 at peak.
+    // That overflows the 28x28 container by 3.6px on each side, which
+    // gets clipped when the parent (chat column, modal body, etc.) has
+    // overflow:hidden. 6px of inline padding gives the ring room to
+    // breathe without changing its visual size.
+    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', paddingInline: '6px' }}>
+      <div style={{ position: 'relative', width: '28px', height: '28px', flexShrink: 0 }}>
         <style>{`
           @keyframes chat-orbit {
             0%   { transform: rotate(0deg)   translateX(9px) rotate(0deg);   opacity: 1; }
