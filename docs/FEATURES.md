@@ -274,6 +274,14 @@ Admin-dropdown pr. KB der lader curator flippe `ingest_backend` + `ingest_model`
 |---|---------|--------|-------|------|
 | F152 | [Runtime Model Switcher UI](features/F152-runtime-model-switcher-ui.md) | Planned | 1/2 | [plan](features/F152-runtime-model-switcher-ui.md) |
 
+### F153 — Continuous online backup of `trail.db` to Cloudflare R2
+
+Scheduled WAL-safe online snapshots of the master Trail SQLite DB, compressed and uploaded to a self-hosted R2 bucket (`trail-backups`) while the engine keeps running. Uses SQLite's `VACUUM INTO` primitive via the existing libSQL client — produces a single self-contained `.db` file with no `-wal`/`-shm` companions, safe to take while writers are active. Gzip → `@aws-sdk/client-s3` multipart upload. Manifest at `data/backups/manifest.json` tracks status + retention. New `backup-scheduler` service (pattern-matches `lint-scheduler`) fires every `TRAIL_BACKUP_INTERVAL_HOURS` (default 6h). 5 admin-only routes at `/api/admin/backups` (list / manual-trigger / download / delete / test-connection) + a Settings tab in `apps/admin`. Restore is a stopped-server CLI (`scripts/restore-backup.ts`) — one-click restore is an explicit non-goal. Reuses `BackupProvider` interface shape from `@webhouse/cms/packages/cms-admin/src/lib/backup/providers/*`. Depends on: none (F40.1 compatible). Extends: F40.2 (per-tenant DBs → loop scheduler), F33 (Fly deploy relies on off-site backup before Sanne onboarding). Small effort (1.5–2 days). Status: Planned.
+
+| # | Feature | Status | Phase | Plan |
+|---|---------|--------|-------|------|
+| F153 | [Continuous DB backup to R2](features/F153-continuous-db-backup-to-r2.md) | Planned | 1 | [plan](features/F153-continuous-db-backup-to-r2.md) |
+
 ---
 
 **Se også:** [`NON-GOALS.md`](./NON-GOALS.md) — kuratert register over bevidst fravalg pr. F-plan (parked / declined / promoted / covered-by).

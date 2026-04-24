@@ -127,6 +127,7 @@ The remaining Phase 1 scope, ordered by leverage and dependency.
 | F150 | Admin Link-Report Panel (UI for F148 broken_links + accept/dismiss/reopen + SSE live-update) | F148, F87, F17, F18 | Small |
 | F151 | Cost & Quality Dashboard (cost-tab + side-by-side ingest-compare for F149 data) | F149, F143, F148 | Medium |
 | F152 | Runtime Model Switcher UI (per-KB model-dropdown, chain-preview, F151 recommendation-badge) | F149, F151, F18 | Small |
+| F153 | Continuous online backup of `trail.db` to Cloudflare R2 (VACUUM INTO + gzip + R2 multipart upload, `backup-scheduler` service, admin panel, stopped-server restore CLI) | — | Small |
 
 ### Pipelines + Adapters — widen the ingest surface
 
