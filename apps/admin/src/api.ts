@@ -786,7 +786,7 @@ export interface CostSummary {
 }
 
 export function getCostSummary(kbId: string, windowDays = 30): Promise<CostSummary> {
-  return api<CostSummary>(`/knowledge-bases/${encodeURIComponent(kbId)}/cost?window=${windowDays}`);
+  return api<CostSummary>(`/api/v1/knowledge-bases/${encodeURIComponent(kbId)}/cost?window=${windowDays}`);
 }
 
 export function costCsvUrl(kbId: string, windowDays = 30): string {
@@ -820,5 +820,5 @@ export interface QualityComparison {
 }
 
 export function getQualityRuns(sourceId: string): Promise<QualityComparison> {
-  return api<QualityComparison>(`/sources/${encodeURIComponent(sourceId)}/ingests`);
+  return api<QualityComparison>(`/api/v1/sources/${encodeURIComponent(sourceId)}/ingests`);
 }
