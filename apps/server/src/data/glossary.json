@@ -215,7 +215,16 @@
         "en": "The inverse of a Neuron-link. If Neuron A contains [[B]], then B has a backlink FROM A. Shown on the Neuron reader as \"N Neurons link here\" — lets the Curator see how interconnected a Neuron is.",
         "da": "Det omvendte af et Neuron-link. Hvis Neuron A indeholder [[B]], så har B et baglink FRA A. Vist på Neuron-læseren som \"N Neuroner linker hertil\" — lader Kuratoren se hvor forbundet en Neuron er."
       },
-      "relatedTerms": ["neuron", "neuron-link", "reference"]
+      "relatedTerms": ["neuron", "neuron-link", "typed-edge", "reference"]
+    },
+    {
+      "id": "typed-edge",
+      "label": { "en": "Typed Edge", "da": "Typet kant" },
+      "definition": {
+        "en": "A Neuron-link that carries a named semantic relation, so the graph isn't just \"A links to B\" but \"A *is-a* B\" or \"A *contradicts* B\". Authored as `[[target|edge-type]]`. Seven recognised types (F137, `wiki_backlinks.edge_type`): **cites** — bare mention, weakest relation, the default for every plain `[[link]]` and every pre-F137 row; **is-a** — hierarchical specialisation (Labrador is-a Dog); **part-of** — composition (Keyboard part-of Laptop); **contradicts** — an explicit disagreement between two claims, feeds the contradiction-lint detector directly; **supersedes** — versioning (Constitution-1953 supersedes Constitution-1849); **example-of** — a concrete instance of an abstract concept (Pythagoras example-of Mathematician); **caused-by** — causal dependency (Flood caused-by Dam-break). The compile-prompt teaches the LLM when each type applies; the backlink extractor records the type in the DB on save; the Graph view colours edges by type with a legend-chip row, and the relationships API exposes a `?type=` filter for targeted queries (\"show me everything this Neuron contradicts\"). Turning a bare `[[link]]` into a typed one is a drop-in edit — no schema migration, the default stays `cites` for anything un-typed.",
+        "da": "Et Neuron-link der bærer en navngiven semantisk relation, så grafen ikke bare siger \"A linker til B\" men \"A *is-a* B\" eller \"A *modsiger* B\". Skrives som `[[mål|edge-type]]`. Syv genkendte typer (F137, `wiki_backlinks.edge_type`): **cites** — simpel omtale, svageste relation, standard for ethvert bart `[[link]]` og alle rækker fra før F137; **is-a** — hierarkisk specialisering (Labrador is-a Hund); **part-of** — komposition (Tastatur part-of Laptop); **contradicts** — eksplicit uenighed mellem to påstande, føder contradiction-lint-detektoren direkte; **supersedes** — versionering (Grundloven-1953 supersedes Grundloven-1849); **example-of** — et konkret eksempel på et abstrakt koncept (Pythagoras example-of Matematiker); **caused-by** — kausal afhængighed (Oversvømmelse caused-by Dæmningsbrud). Kompilerings-prompten lærer LLM'en hvornår hver type gælder; baglink-extractoren registrerer typen i DB'en ved gemning; Graf-visningen farver kanter efter type med en legend-chip-række, og relationships-API'et har en `?type=`-filter til målrettede forespørgsler (\"vis mig alt denne Neuron modsiger\"). At forvandle et bart `[[link]]` til et typet er en drop-in-ændring — ingen schema-migration, standarden forbliver `cites` for alt uden type."
+      },
+      "relatedTerms": ["neuron-link", "backlink", "contradiction", "reference"]
     },
     {
       "id": "effect",
