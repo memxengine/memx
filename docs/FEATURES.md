@@ -282,6 +282,14 @@ Scheduled WAL-safe online snapshots of the master Trail SQLite DB, compressed an
 |---|---------|--------|-------|------|
 | F153 | [Continuous DB backup to R2](features/F153-continuous-db-backup-to-r2.md) | Planned | 1 | [plan](features/F153-continuous-db-backup-to-r2.md) |
 
+### F154 — Trail Control Plane (remote management & deployment center)
+
+Separate admin app (`ops.trailmem.com`) der styrer hele Trail-produktionsfleeten uden Fly CLI. Fleet-dashboard (alle Fly-apps, Machines, tenant-placering pr. pool), tenant-provisioning-wizard (form → Fly API + Cloudflare DNS + engine endpoint), Pro→Business cutover-wizard (DB-snapshot + SCP-transfer + DNS flip med rollback-vindue), alert-inbox (engine emitter kapacitets/cost/health-alerts via POST /alerts), cost-view (Fly GraphQL daily spend sammenlignet med Stripe MRR), impersonate-read-only til support, GDPR-export, audit-log (append-only, alle mutations logges). Kritisk ved Stadig 2 (10-20 tenants), operationelt nødvendig ved Stadig 3 (200-500). Læs [DEPLOYMENT-STAGES.md](./DEPLOYMENT-STAGES.md) for stadig-oversigten, [SAAS-SCALING-PLAN.md](./SAAS-SCALING-PLAN.md) for arkitektur-baggrund. Depends on F33, F40, F41, F42, F43, F44, F151, F153. Enables F155 (auto-scaling policy lever i Control Plane UI). Large effort (10-14 dage fordelt over 4 phases). Status: Planned.
+
+| # | Feature | Status | Phase | Plan |
+|---|---------|--------|-------|------|
+| F154 | [Trail Control Plane](features/F154-trail-control-plane.md) | Planned | 2 | [plan](features/F154-trail-control-plane.md) |
+
 ---
 
 **Se også:** [`NON-GOALS.md`](./NON-GOALS.md) — kuratert register over bevidst fravalg pr. F-plan (parked / declined / promoted / covered-by).
