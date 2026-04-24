@@ -52,3 +52,31 @@ export type { SchemaProfile, SchemaNeuronRow } from './schema-inheritance.js';
 // Utilities
 export { slugify, uniqueSlug } from './slug.js';
 export { resolveKbId, looksLikeUuid } from './kb/resolve.js';
+
+// F149 — CandidateQueueAPI: shared in-process surface the MCP server
+// and OpenRouterBackend both use for search/read/write/guide against a
+// KB. Returns structured data; callers (MCP stdio, OpenAI tool-call
+// dispatch) format it into their own wire shape.
+export {
+  createCandidateQueueAPI,
+  guide as ingestGuide,
+  search as ingestSearch,
+  read as ingestRead,
+  write as ingestWrite,
+} from './ingest/candidate-api.js';
+export type {
+  CandidateQueueAPI,
+  CandidateQueueContext,
+  GuideResult,
+  GuideKb,
+  SearchArgs,
+  SearchResult,
+  SearchDocListHit,
+  SearchDocFtsHit,
+  SearchChunk,
+  ReadArgs,
+  ReadResult,
+  ReadDocHit,
+  WriteArgs,
+  WriteResult,
+} from './ingest/candidate-api.js';
