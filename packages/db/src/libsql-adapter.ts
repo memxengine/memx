@@ -38,6 +38,19 @@ export class LibsqlTrailDatabase implements TrailDatabase {
     this.path = config.path;
   }
 
+  /**
+   * F153 — escape hatch for the backup primitive (`snapshotDb`) and any
+   * other code that legitimately needs the underlying libSQL client
+   * (e.g. `VACUUM INTO`, which has no Drizzle equivalent). Callers must
+   * narrow to `LibsqlTrailDatabase` explicitly so the interface contract
+   * stays clean — generic `TrailDatabase` consumers still cannot reach
+   * the driver through the interface.
+   */
+  get sqliteClient(): LibSqlClient {
+    this.assertOpen();
+    return this.client;
+  }
+
   async execute(sql: string, args: ReadonlyArray<SqlArg> = []): Promise<ExecuteResult> {
     this.assertOpen();
     const result = await this.client.execute({ sql, args: args as SqlArg[] });

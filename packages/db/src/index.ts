@@ -36,6 +36,10 @@ export type {
 // ── Factory ────────────────────────────────────────────────────────
 export { createLibsqlDatabase, LibsqlTrailDatabase } from './libsql-adapter.js';
 
+// ── F153 Backup primitive ──────────────────────────────────────────
+export { snapshotDb } from './backup.js';
+export type { SnapshotResult, SnapshotOptions } from './backup.js';
+
 // ── Schema (re-exports — tables, enums, relations) ─────────────────
 export * from './schema.js';
 import * as schema from './schema.js';

@@ -177,6 +177,22 @@ Interface (`types.ts`) mirrors the CMS pattern exactly so other S3-compatible ba
 
 Pattern mirrors `startLintScheduler` (see `apps/server/src/services/lint-scheduler.ts:85-172`). Returns a `stop()` function. Bootstraps in `apps/server/src/index.ts` next to the other scheduled services.
 
+**Gotcha discovered in Phase 1 verification:** `VACUUM INTO` on the *same* libSQL connection that the engine is actively writing to **hangs indefinitely**. The scheduler therefore MUST open a distinct libSQL client pointed at the same DB file for each backup pass, take the snapshot through that client, and close it. `trail.sqliteClient` (the engine's writer connection) is off-limits for snapshots. The extra client is cheap — libSQL handles per-file concurrency via WAL — but the snapshot path is physically separate from the engine's write path:
+
+```typescript
+import { createClient } from '@libsql/client';
+// inside runBackupPass:
+const backupClient = createClient({ url: `file:${trail.path}` });
+try {
+  const snap = await snapshotDb(backupClient, stagingDir);
+  // …upload snap.path to R2, update manifest, prune…
+} finally {
+  backupClient.close();
+}
+```
+
+This means `LibsqlTrailDatabase.sqliteClient` is kept as an accessor for completeness but **unused by the scheduler itself**. It remains useful for future in-process operations that don't race with writers (e.g. ad-hoc diagnostics).
+
 ```typescript
 export function startBackupScheduler(trail: TrailDatabase): () => void {
   const hours = Number(process.env.TRAIL_BACKUP_INTERVAL_HOURS ?? '6');
@@ -302,7 +318,7 @@ export function snapshotDb(source: LibSqlClient, outDir: string): Promise<Snapsh
 
 ## Rollout
 
-**Phase 1 (half-day)** — Merge the snapshot primitive + a `scripts/snapshot-dry-run.ts` that writes to `/tmp/` and asserts integrity. No R2, no scheduler, no admin UI. Ship behind a no-op: feature is invisible unless someone runs the script. This is the verifiable building block the rest of the feature depends on.
+**Phase 1 (half-day) — ✅ LANDED** — Snapshot primitive (`packages/db/src/backup.ts`) + `LibsqlTrailDatabase.sqliteClient` typed accessor + `apps/server/scripts/snapshot-dry-run.ts` that asserts end-to-end integrity. 13 assertions pass: file-size match, sha256 reproducible, gunzip + `integrity_check = ok`, row counts preserved, logical content stable across repeat snapshots, mutation correctly reflected in a subsequent snapshot. Feature is otherwise invisible (no env-var side effects, no routes, no scheduler). Caught the "same-connection VACUUM INTO hangs" gotcha above.
 
 **Phase 2 (half-day)** — Wire the R2 provider + manual `POST /api/admin/backups` route. No scheduler yet. Christian provisions the R2 bucket and API tokens, drops them in `.env`, clicks the admin button, verifies the upload lands.
 
