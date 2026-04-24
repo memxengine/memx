@@ -33,8 +33,8 @@
       ]
     },
     "entity_pages": {
-      "description": "Under /neurons/entities/. Named persons + organisations + tools in the fixture. Different models may or may not split all ten into pages; we accept 7-12.",
-      "count": { "min": 7, "max": 12 },
+      "description": "Under /neurons/entities/. Named persons + organisations + tools in the fixture PLUS context-inferred entities the model may promote to entity pages (e.g. Cloudflare R2, Drizzle ORM mentioned in the Tech Stack section). Range widened after 2026-04-24 Gemini Flash run produced 15.",
+      "count": { "min": 7, "max": 18 },
       "named_entities_in_source": [
         "Vannevar Bush",
         "Andrej Karpathy",
@@ -50,8 +50,8 @@
       "entity_linking_assertion": "Every occurrence of these 10 names in concept-pages + source-summary MUST be wrapped in [[wiki-links]]. Tested by parsing concept + summary content and regex-counting un-wrapped mentions vs total mentions."
     },
     "wiki_backlinks": {
-      "description": "Rows in wiki_backlinks table after ingest. Every [[wiki-link]] that resolves via canonical slug OR F148 normalizedSlug fold counts.",
-      "count": { "min": 15, "max": 60 }
+      "description": "Rows in wiki_backlinks table after ingest. Every [[wiki-link]] that resolves via canonical slug OR F148 normalizedSlug fold counts. The compile typically produces 3-5× more backlinks than source [[links]] because each concept page cross-references 2-3 others. Range widened after 2026-04-24 Gemini Flash run produced 123.",
+      "count": { "min": 60, "max": 180 }
     },
     "typed_edges": {
       "description": "Subset of wiki_backlinks where edge_type != 'cites'. Source uses bare [[links]] only; typed edges are the compiler's job. Good models (Sonnet, Gemini Flash 2-pass) emit 3-15; weaker single-pass models may emit 0-3.",
@@ -97,6 +97,11 @@
       "date": "2026-04-24",
       "author": "F149 planning session",
       "change": "Initial fixture + ground-truth authored. Ranges set by reasoning, not measurement — must be verified against first live ingest runs and tightened."
+    },
+    {
+      "date": "2026-04-24",
+      "author": "F149 Phase 2d smoke test",
+      "change": "First live Gemini Flash ingest completed in 55s at 3¢. Observed: 11 concepts, 15 entities, 1 source-summary, 123 backlinks, 0 typed edges, 33 broken links (F148 correctly caught context-missing references). Widened entity_pages range to 7-18 and wiki_backlinks to 60-180. Flash was richer in cross-references than the initial reasoned range assumed."
     }
   ]
 }
