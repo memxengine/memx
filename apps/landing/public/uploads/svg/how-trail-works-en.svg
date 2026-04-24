@@ -1,0 +1,99 @@
+<svg viewBox="0 0 840 420" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="How Trail works: four steps — source, compile, curate, query — each producing a persistent artifact that the next step consumes.">
+  <!-- Header punch-card strip (notched corner + holes + title) -->
+  <g fill="none" stroke="currentColor" stroke-width="0.9" opacity="0.65">
+    <polyline points="20,50 45,25 820,25 820,60 20,60 20,50"/>
+  </g>
+  <g fill="currentColor" opacity="0.55">
+    <rect x="75"  y="36" width="10" height="14"/>
+    <rect x="105" y="36" width="10" height="14"/>
+    <rect x="135" y="36" width="10" height="14"/>
+    <rect x="165" y="36" width="10" height="14"/>
+    <rect x="195" y="36" width="10" height="14"/>
+    <rect x="225" y="36" width="10" height="14"/>
+    <rect x="255" y="36" width="10" height="14"/>
+    <rect x="285" y="36" width="10" height="14"/>
+    <rect x="315" y="36" width="10" height="14"/>
+    <rect x="345" y="36" width="10" height="14"/>
+    <rect x="375" y="36" width="10" height="14"/>
+    <rect x="405" y="36" width="10" height="14"/>
+    <rect x="435" y="36" width="10" height="14"/>
+  </g>
+  <text x="780" y="47" font-family="monospace" font-size="11" fill="currentColor" text-anchor="end" opacity="0.7" letter-spacing="1">TRAIL · HOW IT WORKS</text>
+
+  <!-- Section subtitle -->
+  <text x="420" y="88" font-family="monospace" font-size="13" fill="currentColor" text-anchor="middle" opacity="0.55" letter-spacing="1.5">FOUR STEPS · ONE TRAIL</text>
+
+  <!-- Four boxes (170 wide, 130 tall, gap 40) -->
+  <g fill="none" stroke="currentColor" stroke-width="1.2">
+    <rect x="20"  y="130" width="170" height="130"/>
+    <rect x="230" y="130" width="170" height="130"/>
+    <rect x="440" y="130" width="170" height="130"/>
+    <rect x="650" y="130" width="170" height="130"/>
+  </g>
+
+  <!-- Step numbers (top-left of each box, muted) -->
+  <g font-family="monospace" font-size="14" fill="currentColor" opacity="0.5">
+    <text x="34"  y="154">01</text>
+    <text x="244" y="154">02</text>
+    <text x="454" y="154">03</text>
+    <text x="664" y="154">04</text>
+  </g>
+
+  <!-- Verb labels (centered, monospace, large) -->
+  <g font-family="monospace" font-size="22" fill="currentColor" text-anchor="middle" letter-spacing="2">
+    <text x="105" y="208">SOURCE</text>
+    <text x="315" y="208">COMPILE</text>
+    <text x="525" y="208">CURATE</text>
+    <text x="735" y="208">QUERY</text>
+  </g>
+
+  <!-- Parenthetical descriptions -->
+  <g font-family="monospace" font-size="11" fill="currentColor" text-anchor="middle" opacity="0.6">
+    <text x="105" y="238">drop in a pdf,</text>
+    <text x="105" y="252">doc, link, note</text>
+    <text x="315" y="238">llm turns text</text>
+    <text x="315" y="252">into neurons</text>
+    <text x="525" y="238">you approve what</text>
+    <text x="525" y="252">lives in the trail</text>
+    <text x="735" y="238">chat, search —</text>
+    <text x="735" y="252">the trail answers</text>
+  </g>
+
+  <!-- Amber flow arrows between boxes (canonical happy-path) -->
+  <g stroke="#e8a87c" stroke-width="1.8" fill="none">
+    <line x1="191" y1="195" x2="226" y2="195"/>
+    <line x1="401" y1="195" x2="436" y2="195"/>
+    <line x1="611" y1="195" x2="646" y2="195"/>
+  </g>
+  <g fill="#e8a87c">
+    <polygon points="230,195 220,190 220,200"/>
+    <polygon points="440,195 430,190 430,200"/>
+    <polygon points="650,195 640,190 640,200"/>
+  </g>
+
+  <!-- Artifact strip (what each step produces) -->
+  <g font-family="monospace" font-size="11" fill="currentColor" text-anchor="middle" opacity="0.55" letter-spacing="0.5">
+    <text x="105" y="295">→ source file</text>
+    <text x="315" y="295">→ candidate</text>
+    <text x="525" y="295">→ neuron</text>
+    <text x="735" y="295">→ answer</text>
+  </g>
+  <g stroke="currentColor" stroke-width="0.6" stroke-dasharray="2,3" opacity="0.4">
+    <line x1="20" y1="310" x2="820" y2="310"/>
+  </g>
+
+  <!-- Footer hole strip + caption -->
+  <g fill="currentColor" opacity="0.35">
+    <rect x="75"  y="358" width="8" height="12"/>
+    <rect x="100" y="358" width="8" height="12"/>
+    <rect x="125" y="358" width="8" height="12"/>
+    <rect x="150" y="358" width="8" height="12"/>
+    <rect x="175" y="358" width="8" height="12"/>
+    <rect x="200" y="358" width="8" height="12"/>
+    <rect x="225" y="358" width="8" height="12"/>
+    <rect x="250" y="358" width="8" height="12"/>
+    <rect x="275" y="358" width="8" height="12"/>
+    <rect x="300" y="358" width="8" height="12"/>
+  </g>
+  <text x="420" y="400" font-family="monospace" font-size="12" fill="currentColor" text-anchor="middle" opacity="0.5" letter-spacing="0.5">each approval compounds the Trail · knowledge that stays written</text>
+</svg>
