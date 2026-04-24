@@ -1,5 +1,7 @@
 # F21 — Ingest Backpressure
 
+> **Status: Shipped 2026-04-25.** Implementation skifter fra plan-doc'ens originale design (skrevet før F143 Persistent Ingest Queue) til at bruge eksisterende `ingest_jobs.status='queued'` som backpressure-staging-area — ingen `pending_ingestion` enum-værdi, ingen schema-ændring. Tre lag: per-KB serialization (1 concurrent, F143-arven) + globalt loft (default 5 concurrent på tværs af alle KBer) + per-tenant hourly rate-cap (default 60/h). Periodisk 30s scheduler drainer queued jobs når kapacitet frigøres. Env-tunable via `TRAIL_INGEST_MAX_CONCURRENT`, `TRAIL_INGEST_MAX_PER_HOUR_PER_TENANT`, `TRAIL_INGEST_SCHEDULER_INTERVAL_MS`. Verification: `apps/server/scripts/verify-backpressure.ts` — 11 asserts grønne.
+>
 > Per-KB candidate-per-hour rate limit. Overskydende candidates enters `pending_ingestion` state og trickler ind som ældre ones resolves. Forhindrer panic når en 400-siders PDF eller 65-file batch lander.
 
 ## Problem

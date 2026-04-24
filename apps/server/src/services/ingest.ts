@@ -1,5 +1,5 @@
 import { documents, knowledgeBases, ingestJobs, documentReferences, tenants, tenantSecrets, DATA_DIR, type TrailDatabase } from '@trail/db';
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, eq, gte } from 'drizzle-orm';
 import {
   parseSchemaNeuron,
   renderSchemaForPrompt,
@@ -7,6 +7,7 @@ import {
   createCandidateQueueAPI,
   type SchemaNeuronRow,
 } from '@trail/core';
+import { backpressureFromEnv, type BackpressureConfig, type BackpressureDecision } from '@trail/shared';
 import { broadcaster } from './broadcast.js';
 import { ensureMcpConfig, writeIngestMcpConfig, cleanupIngestMcpConfig } from '../lib/mcp-config.js';
 import { unsealSecret } from '../lib/tenant-secrets.js';
@@ -14,6 +15,10 @@ import { listKbTags } from './tag-aggregate.js';
 import { listKbEntities } from './entity-aggregate.js';
 import { resolveIngestChain } from './ingest/chain.js';
 import { runWithFallback } from './ingest/runner.js';
+
+// F21 — backpressure config loaded once at module load. Tests can set
+// env vars before importing if they need different ceilings.
+const BACKPRESSURE: BackpressureConfig = backpressureFromEnv(process.env);
 
 /**
  * Collapse a raw spawnClaude error into a one-sentence reason the
@@ -75,6 +80,87 @@ export interface IngestJob {
 // in the DB column `status='running'`; this Set is purely an in-process
 // guard that survives a single poll cycle.
 const runningLocally = new Set<string>();
+
+// F21 — global counter mirroring `runningLocally.size`. Cheaper to read
+// than `.size` in hot paths and lets us reason about it independently
+// of the per-KB Set semantics.
+function globalConcurrentCount(): number {
+  return runningLocally.size;
+}
+
+/**
+ * F21 — pre-claim backpressure check. Per-KB serialization (kb-busy)
+ * is already enforced via `runningLocally.has(kbId)` in `tickScheduler`;
+ * this function is the cross-KB layer.
+ *
+ * Returns `{ allowed: false }` when either the global concurrency cap
+ * or the tenant's hourly rate cap is hit. Caller leaves the job in
+ * `status='queued'` and the periodic backpressure scheduler retries.
+ */
+async function checkBackpressure(
+  trail: TrailDatabase,
+  tenantId: string,
+): Promise<BackpressureDecision> {
+  if (globalConcurrentCount() >= BACKPRESSURE.maxConcurrentGlobal) {
+    return { allowed: false, reason: 'global-concurrency' };
+  }
+  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const rows = await trail.db
+    .select({ id: ingestJobs.id })
+    .from(ingestJobs)
+    .where(
+      and(
+        eq(ingestJobs.tenantId, tenantId),
+        gte(ingestJobs.startedAt, oneHourAgo),
+      ),
+    )
+    .all();
+  if (rows.length >= BACKPRESSURE.maxPerHourPerTenant) {
+    return { allowed: false, reason: 'tenant-rate' };
+  }
+  return { allowed: true };
+}
+
+/**
+ * F21 — periodic ticker. Without this, jobs blocked by capacity-cap
+ * stay queued forever (event-driven ticks only fire on enqueue +
+ * runJob completion). The interval is short enough that a 65-file
+ * batch with 5-job global cap drains within minutes, not hours.
+ */
+let backpressureTimer: ReturnType<typeof setInterval> | null = null;
+export function startBackpressureScheduler(trail: TrailDatabase): void {
+  if (backpressureTimer) return; // idempotent — boot calls this once
+  backpressureTimer = setInterval(async () => {
+    try {
+      // Find every (kbId, tenantId) pair with queued work. Tick each
+      // — `tickScheduler` is a no-op if the KB is already running.
+      const rows = await trail.db
+        .selectDistinct({
+          kbId: ingestJobs.knowledgeBaseId,
+          tenantId: ingestJobs.tenantId,
+        })
+        .from(ingestJobs)
+        .where(eq(ingestJobs.status, 'queued'))
+        .all();
+      for (const row of rows) {
+        tickScheduler(trail, row.kbId, row.tenantId, 'service-ingest');
+      }
+    } catch (err) {
+      console.error('[backpressure] scheduler tick failed:', err);
+    }
+  }, BACKPRESSURE.schedulerIntervalMs);
+  console.log(
+    `[backpressure] scheduler started — globalCap=${BACKPRESSURE.maxConcurrentGlobal} ` +
+      `tenantRate=${BACKPRESSURE.maxPerHourPerTenant}/h tick=${BACKPRESSURE.schedulerIntervalMs}ms`,
+  );
+}
+
+export function stopBackpressureScheduler(): void {
+  if (backpressureTimer) {
+    clearInterval(backpressureTimer);
+    backpressureTimer = null;
+  }
+}
 
 export function triggerIngest(job: IngestJob): void {
   // Fire-and-forget from the caller's point of view — same ergonomics as
@@ -141,6 +227,22 @@ async function claimAndRun(
       .get();
     if (!next) {
       runningLocally.delete(kbId);
+      return;
+    }
+    // F21 — backpressure check. If global concurrency cap or tenant
+    // hourly rate is hit, leave job queued and bail. Periodic scheduler
+    // re-ticks every 30s; current-job-completion also re-ticks via the
+    // tickScheduler call in claimAndRun's finally block. Note: we DO
+    // NOT decrement runningLocally here yet — that's done in finally.
+    // Set is freed before the function returns, so the next periodic
+    // tick can claim a job for this KB once capacity exists.
+    const decision = await checkBackpressure(trail, tenantId);
+    if (!decision.allowed) {
+      console.log(
+        `[backpressure] holding ${next.id} (kb=${kbId}, tenant=${tenantId}) — ${decision.reason}`,
+      );
+      // Leave queued; release this KB's runningLocally slot so the
+      // next tick can re-evaluate without false "kb-busy" rejection.
       return;
     }
     // Atomic claim — only one ticker can win the flip. A second concurrent

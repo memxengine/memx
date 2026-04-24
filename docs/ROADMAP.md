@@ -118,7 +118,7 @@ The remaining Phase 1 scope, ordered by leverage and dependency.
 | # | Feature | Depends On | Effort |
 |---|---------|------------|--------|
 | F20 | ~~Curator Diff UI~~ — **Done 2026-04-25** (side-by-side before/after diff on update-op candidates, shared `@trail/shared/diff` LCS algorithm) | F18, F16 | Small |
-| F21 | Ingest Backpressure | F17 | Small |
+| F21 | ~~Ingest Backpressure~~ — **Done 2026-04-25** (global cap=5 + per-tenant 60/h + 30s drain ticker, env-tunable, no schema change) | F17 | Small |
 | F22 | Stable `{#claim-xx}` Anchors | F07 | Small |
 | F23 | ~~Wiki-Link Parser (`[[]]`, `[[kb:]]`, `[[ext:]]`)~~ — **Done 2026-04-24** (shared `@trail/shared/wiki-links` package, intra + cross-kb resolved, ext placeholder) | F07 | Small |
 | F30 | ~~Chat Citations Render~~ — **Done 2026-04-24** (chat API returns `renderedAnswer` with server-side tenant-scoped cross-KB resolution) | F12, F23 | Small |

@@ -9,3 +9,4 @@ export * from './heuristic.js';
 export * from './ingest-models.js';
 export * from './wiki-links/index.js';
 export * from './diff/index.js';
+export * from './backpressure.js';

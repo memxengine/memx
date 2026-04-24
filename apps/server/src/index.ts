@@ -6,7 +6,7 @@ import { rewriteWikiToNeurons } from './bootstrap/rewrite-wiki-paths.js';
 import { cleanupExternalOrphans } from './bootstrap/F98-cleanup-external-orphans.js';
 import { seedMissingGlossaryNeurons } from './bootstrap/F102-seed-glossary-neurons.js';
 import { recoverPendingSources } from './bootstrap/recover-pending-sources.js';
-import { recoverIngestJobs } from './services/ingest.js';
+import { recoverIngestJobs, startBackpressureScheduler } from './services/ingest.js';
 import { startContradictionLint } from './services/contradiction-lint.js';
 import { backfillReferences, startReferenceExtractor } from './services/reference-extractor.js';
 import { backfillBacklinks, startBacklinkExtractor } from './services/backlink-extractor.js';
@@ -48,6 +48,10 @@ await recoverPendingSources(trail);
 // scheduler for each KB with work outstanding. Survives restarts without
 // dropping half a 65-file upload batch on the floor.
 await recoverIngestJobs(trail);
+// F21 — start the periodic backpressure scheduler. It re-ticks queued
+// work every 30s so jobs blocked by global concurrency cap or per-tenant
+// rate cap don't hang waiting for a new enqueue event.
+startBackpressureScheduler(trail);
 await backfillReferences(trail);
 await backfillBacklinks(trail);
 // F148 — populate broken_links table so the admin link-report panel
