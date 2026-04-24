@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { documents, type TrailDatabase } from '@trail/db';
 import { eq, sql } from 'drizzle-orm';
 import { requireAuth, getUser, getTenant, getTrail } from '../middleware/auth.js';
-import { processPdf, processDocx, processPptx, processXlsx } from '@trail/pipelines';
+import { processPdf, processDocx, processPptx, processXlsx, dispatch, pickPipeline } from '@trail/pipelines';
 import { storage, sourcePath } from '../lib/storage.js';
 import { chunkText, storeChunks } from '../services/chunker.js';
 import { triggerIngest } from '../services/ingest.js';
@@ -137,12 +137,14 @@ uploadRoutes.post('/knowledge-bases/:kbId/documents/upload', async (c) => {
     }
   }
 
-  // PDF → async pipeline: extract text, write page-N-img-N.png via storage,
-  // optionally annotate each image with vision. When the pipeline finishes,
-  // the document goes ready and ingest is triggered.
-  if (ext === 'pdf') {
-    processPdfAsync(trail, docId, tenant.id, kbId, user.id, file.name, buffer).catch(async (err) => {
-      console.error(`[pdf] pipeline failed for ${file.name}:`, err);
+  // F28 — single dispatch call replaces the previous 4 ext-specific
+  // if-blocks. Adding a new format (image, audio, video, email) is now
+  // "register a Pipeline in @trail/pipelines"; uploads.ts doesn't change.
+  // Legacy binary formats with no registered pipeline (xls, doc, raw
+  // images pre-F25) still land status='pending' until handled.
+  if (!isText && pickPipeline(file.name) !== null) {
+    processFileAsync(trail, docId, tenant.id, kbId, user.id, file.name, buffer).catch(async (err) => {
+      console.error(`[pipeline] failed for ${file.name}:`, err);
       await trail.db
         .update(documents)
         .set({
@@ -154,62 +156,6 @@ uploadRoutes.post('/knowledge-bases/:kbId/documents/upload', async (c) => {
         .run();
     });
   }
-
-  // .docx → async text extraction via mammoth. No images or page count.
-  // Converts Word's styled XML to markdown and flows through the same
-  // chunk-then-ingest path as PDFs.
-  if (ext === 'docx') {
-    processDocxAsync(trail, docId, tenant.id, kbId, user.id, file.name, buffer).catch(async (err) => {
-      console.error(`[docx] pipeline failed for ${file.name}:`, err);
-      await trail.db
-        .update(documents)
-        .set({
-          status: 'failed',
-          errorMessage: String(err).slice(0, 1000),
-          updatedAt: new Date().toISOString(),
-        })
-        .where(eq(documents.id, docId))
-        .run();
-    });
-  }
-
-  // .pptx → officeparser walks the OOXML slide tree, one markdown
-  // section per slide. Images dropped for v1.
-  if (ext === 'pptx') {
-    processPptxAsync(trail, docId, tenant.id, kbId, user.id, file.name, buffer).catch(async (err) => {
-      console.error(`[pptx] pipeline failed for ${file.name}:`, err);
-      await trail.db
-        .update(documents)
-        .set({
-          status: 'failed',
-          errorMessage: String(err).slice(0, 1000),
-          updatedAt: new Date().toISOString(),
-        })
-        .where(eq(documents.id, docId))
-        .run();
-    });
-  }
-
-  // .xlsx → SheetJS reads every sheet, converts to markdown tables.
-  // Multi-sheet workbooks emit one `## Sheet: <name>` block per sheet.
-  if (ext === 'xlsx') {
-    processXlsxAsync(trail, docId, tenant.id, kbId, user.id, file.name, buffer).catch(async (err) => {
-      console.error(`[xlsx] pipeline failed for ${file.name}:`, err);
-      await trail.db
-        .update(documents)
-        .set({
-          status: 'failed',
-          errorMessage: String(err).slice(0, 1000),
-          updatedAt: new Date().toISOString(),
-        })
-        .where(eq(documents.id, docId))
-        .run();
-    });
-  }
-
-  // Remaining binary types (doc/ppt legacy Office, xls, images, …)
-  // still land with status='pending'. Legacy formats need separate
-  // libraries; images need a vision pass that's not wired yet.
 
   const doc = await trail.db
     .select()
@@ -225,7 +171,18 @@ uploadRoutes.post('/knowledge-bases/:kbId/documents/upload', async (c) => {
   return c.json(doc, 201);
 });
 
-export async function processPdfAsync(
+/**
+ * F28 — unified file orchestrator. Replaces the per-format
+ * `processPdfAsync` / `processDocxAsync` / `processPptxAsync` /
+ * `processXlsxAsync` helpers — they all did the same status →
+ * extract → store-chunks → trigger-ingest dance, just with different
+ * extractors. Now the dispatch picks the right pipeline and the
+ * shared body handles the rest.
+ *
+ * Adding a new format (F24 image, F47 audio, F46 video) means
+ * registering a Pipeline in @trail/pipelines — no changes here.
+ */
+export async function processFileAsync(
   trail: TrailDatabase,
   docId: string,
   tenantId: string,
@@ -240,31 +197,59 @@ export async function processPdfAsync(
     .where(eq(documents.id, docId))
     .run();
 
-  console.log(`[pdf] processing ${filename}...`);
-  const result = await withTimeout(
-    processPdf({
-      pdfBytes: buffer,
+  // PDF needs storage + describe; other formats ignore those fields.
+  const ext = filename.split('.').pop()?.toLowerCase() ?? '';
+  const timeoutMs = ext === 'pdf'
+    ? PDF_TIMEOUT_MS
+    : ext === 'pptx'
+      ? PPTX_TIMEOUT_MS
+      : ext === 'xlsx'
+        ? XLSX_TIMEOUT_MS
+        : DOCX_TIMEOUT_MS;
+
+  const { pipeline, result } = await withTimeout(
+    dispatch({
+      buffer,
+      filename,
       storage,
       imagePrefix: `${tenantId}/${kbId}/${docId}/images`,
       imageUrlPrefix: `/api/v1/documents/${docId}/images`,
-      describe: createVisionBackend() ?? undefined,
+      describeImage: createVisionBackend() ?? undefined,
     }),
-    PDF_TIMEOUT_MS,
-    `pdf extract "${filename}"`,
-  );
-  const describedCount = result.images.filter((i) => i.description).length;
-  console.log(
-    `[pdf] ${filename}: ${result.pageCount} pages, ${result.images.length} images ` +
-      `(${describedCount} described)`,
+    timeoutMs,
+    `${ext} extract "${filename}"`,
   );
 
-  const title = filename.replace(/\.pdf$/i, '');
+  // Format-specific summary log. The pipeline.name lets us keep the
+  // format prefix consistent with pre-F28 logs ("[pdf] foo.pdf: ...").
+  if (pipeline.name === 'pdf' && result.images) {
+    const describedCount = result.images.filter((i) => i.description).length;
+    console.log(
+      `[pdf] ${filename}: ${result.pageCount} pages, ${result.images.length} images ` +
+        `(${describedCount} described)`,
+    );
+  } else if (pipeline.name === 'docx') {
+    if (result.warnings.length) {
+      console.log(`[docx] ${filename}: ${result.warnings.length} conversion warnings`);
+    }
+  } else if (pipeline.name === 'pptx') {
+    console.log(`[pptx] ${filename}: ${result.slideCount} slide${result.slideCount === 1 ? '' : 's'} extracted`);
+  } else if (pipeline.name === 'xlsx') {
+    console.log(`[xlsx] ${filename}: ${result.sheetCount} sheet${result.sheetCount === 1 ? '' : 's'} extracted`);
+  }
+
+  // Title — pipeline result first, then strip extension from filename.
+  const stem = filename.replace(/\.[a-z0-9]+$/i, '');
+  const title = result.title ?? stem;
+  // pageCount column doubles as slideCount/sheetCount for non-PDF.
+  const pageCount = result.pageCount ?? result.slideCount ?? result.sheetCount ?? null;
+
   await trail.db
     .update(documents)
     .set({
       content: result.markdown,
       title,
-      pageCount: result.pageCount,
+      ...(pageCount !== null ? { pageCount } : {}),
       status: 'ready',
       version: 1,
       updatedAt: new Date().toISOString(),
@@ -280,141 +265,15 @@ export async function processPdfAsync(
   triggerIngest({ trail, docId, kbId, tenantId, userId });
 }
 
-export async function processDocxAsync(
-  trail: TrailDatabase,
-  docId: string,
-  tenantId: string,
-  kbId: string,
-  userId: string,
-  filename: string,
-  buffer: Buffer,
-): Promise<void> {
-  await trail.db
-    .update(documents)
-    .set({ status: 'processing', updatedAt: new Date().toISOString() })
-    .where(eq(documents.id, docId))
-    .run();
+// ── Legacy shims (back-compat for recover-pending-sources.ts) ─────────
+// All four helpers now route through processFileAsync; kept under the
+// old names so existing callers don't break. Will be deleted once
+// recover-pending-sources.ts is updated to call processFileAsync.
 
-  console.log(`[docx] processing ${filename}...`);
-  const result = await withTimeout(
-    processDocx({ docxBytes: buffer }),
-    DOCX_TIMEOUT_MS,
-    `docx extract "${filename}"`,
-  );
-  if (result.warnings.length) {
-    console.log(`[docx] ${filename}: ${result.warnings.length} conversion warnings`);
-  }
-
-  const title = result.title ?? filename.replace(/\.docx$/i, '');
-  await trail.db
-    .update(documents)
-    .set({
-      content: result.markdown,
-      title,
-      status: 'ready',
-      version: 1,
-      updatedAt: new Date().toISOString(),
-    })
-    .where(eq(documents.id, docId))
-    .run();
-
-  if (result.markdown.trim()) {
-    const chunks = chunkText(result.markdown);
-    await storeChunks(trail, docId, tenantId, kbId, chunks);
-  }
-
-  triggerIngest({ trail, docId, kbId, tenantId, userId });
-}
-
-export async function processPptxAsync(
-  trail: TrailDatabase,
-  docId: string,
-  tenantId: string,
-  kbId: string,
-  userId: string,
-  filename: string,
-  buffer: Buffer,
-): Promise<void> {
-  await trail.db
-    .update(documents)
-    .set({ status: 'processing', updatedAt: new Date().toISOString() })
-    .where(eq(documents.id, docId))
-    .run();
-
-  console.log(`[pptx] processing ${filename}...`);
-  const result = await withTimeout(
-    processPptx({ pptxBytes: buffer }),
-    PPTX_TIMEOUT_MS,
-    `pptx extract "${filename}"`,
-  );
-  console.log(`[pptx] ${filename}: ${result.slideCount} slide${result.slideCount === 1 ? '' : 's'} extracted`);
-
-  const title = result.title ?? filename.replace(/\.pptx$/i, '');
-  await trail.db
-    .update(documents)
-    .set({
-      content: result.markdown,
-      title,
-      pageCount: result.slideCount,
-      status: 'ready',
-      version: 1,
-      updatedAt: new Date().toISOString(),
-    })
-    .where(eq(documents.id, docId))
-    .run();
-
-  if (result.markdown.trim()) {
-    const chunks = chunkText(result.markdown);
-    await storeChunks(trail, docId, tenantId, kbId, chunks);
-  }
-
-  triggerIngest({ trail, docId, kbId, tenantId, userId });
-}
-
-export async function processXlsxAsync(
-  trail: TrailDatabase,
-  docId: string,
-  tenantId: string,
-  kbId: string,
-  userId: string,
-  filename: string,
-  buffer: Buffer,
-): Promise<void> {
-  await trail.db
-    .update(documents)
-    .set({ status: 'processing', updatedAt: new Date().toISOString() })
-    .where(eq(documents.id, docId))
-    .run();
-
-  console.log(`[xlsx] processing ${filename}...`);
-  const result = await withTimeout(
-    processXlsx({ xlsxBytes: buffer, filename }),
-    XLSX_TIMEOUT_MS,
-    `xlsx extract "${filename}"`,
-  );
-  console.log(`[xlsx] ${filename}: ${result.sheetCount} sheet${result.sheetCount === 1 ? '' : 's'} extracted`);
-
-  const title = result.title ?? filename.replace(/\.xlsx$/i, '');
-  await trail.db
-    .update(documents)
-    .set({
-      content: result.markdown,
-      title,
-      pageCount: result.sheetCount,
-      status: 'ready',
-      version: 1,
-      updatedAt: new Date().toISOString(),
-    })
-    .where(eq(documents.id, docId))
-    .run();
-
-  if (result.markdown.trim()) {
-    const chunks = chunkText(result.markdown);
-    await storeChunks(trail, docId, tenantId, kbId, chunks);
-  }
-
-  triggerIngest({ trail, docId, kbId, tenantId, userId });
-}
+export const processPdfAsync = processFileAsync;
+export const processDocxAsync = processFileAsync;
+export const processPptxAsync = processFileAsync;
+export const processXlsxAsync = processFileAsync;
 
 function extractTitle(content: string): string | null {
   const match = content.match(/^#\s+(.+)$/m);

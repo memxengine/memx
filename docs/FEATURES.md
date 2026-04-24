@@ -46,7 +46,7 @@ Status reflects the engine (this repo). Landing-site and CMS-adapter work lives 
 | F25 | [Image Source Pipeline (Standalone Images + SVG Passthrough)](#f25-image-pipeline) | Planned | 1 | [plan](features/F25-image-source-pipeline.md) |
 | F26 | [HTML / Web Clipper Ingest](#f26-web-clipper) | Planned | 1 | [plan](features/F26-html-web-clipper-ingest.md) |
 | F27 | [Pluggable Vision Adapter](#f27-vision-adapter) | Planned | 1 | [plan](features/F27-pluggable-vision-adapter.md) |
-| F28 | [Pluggable Pipeline Interface](#f28-pipeline-interface) | Planned | 1 | [features/F28-pipeline-interface.md](features/F28-pipeline-interface.md) |
+| F28 | [Pluggable Pipeline Interface](#f28-pipeline-interface) | Done | 1 | [features/F28-pipeline-interface.md](features/F28-pipeline-interface.md) |
 | F29 | [`<trail-chat>` Embeddable Widget (Lit)](#f29-trail-chat-widget) | Planned | 1 | [features/F29-trail-chat-widget.md](features/F29-trail-chat-widget.md) |
 | F30 | [Chat Citations Render (`[[wiki-links]]` → `<a>`)](#f30-chat-citations) | Done | 1 | [plan](features/F30-chat-citations-render.md) |
 | F31 | [Reader Feedback Button → Queue](#f31-reader-feedback) | Planned | 1 | [plan](features/F31-reader-feedback.md) |

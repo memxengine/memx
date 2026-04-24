@@ -23,17 +23,15 @@
  */
 import { documents, type TrailDatabase } from '@trail/db';
 import { and, eq, inArray } from 'drizzle-orm';
-import {
-  processPdfAsync,
-  processDocxAsync,
-  processPptxAsync,
-  processXlsxAsync,
-} from '../routes/uploads.js';
+import { processFileAsync } from '../routes/uploads.js';
+import { pickPipeline, listPipelines } from '@trail/pipelines';
 import { storage, sourcePath } from '../lib/storage.js';
 
-// Extensions whose extraction helpers exist. Adding a new pipeline
-// means adding its ext here + the dispatcher branch below. Keep both
-// lists in sync.
+// F28 — extensions are derived from the registered pipelines, not a
+// hard-coded list. Adding a new format = registering a Pipeline; this
+// recovery helper picks it up automatically. The static list is kept
+// for the SQL `IN (...)` filter (libSQL doesn't accept dynamic arrays
+// of pipeline-derived extensions cheaply enough to be worth it).
 const RECOVERABLE_EXTENSIONS = ['pdf', 'docx', 'pptx', 'xlsx'] as const;
 
 export async function recoverPendingSources(trail: TrailDatabase): Promise<void> {
@@ -88,27 +86,22 @@ export async function recoverPendingSources(trail: TrailDatabase): Promise<void>
     // candidate-creation step doesn't choke on null. A real curator
     // UID isn't available at boot without guessing.
     const userId = r.userId ?? r.tenantId;
-    const args = [trail, r.id, r.tenantId, r.knowledgeBaseId, userId, r.filename, buffer] as const;
 
-    const dispatch = (): Promise<void> => {
-      switch (r.fileType) {
-        case 'pdf':
-          return processPdfAsync(...args);
-        case 'docx':
-          return processDocxAsync(...args);
-        case 'pptx':
-          return processPptxAsync(...args);
-        case 'xlsx':
-          return processXlsxAsync(...args);
-        default:
-          return Promise.resolve();
-      }
-    };
+    // F28 — single dispatch path. pickPipeline confirms a registered
+    // pipeline exists for the file (a row whose ext isn't yet in
+    // listPipelines() will be skipped, e.g. on a partial F25 rollout).
+    if (!pickPipeline(r.filename)) {
+      console.warn(
+        `  recover-pending-sources: no pipeline registered for ${r.filename} — skipping. ` +
+          `(known: ${listPipelines().map((p) => p.name).join(', ')})`,
+      );
+      continue;
+    }
 
-    // Fire-and-forget. Each helper already sets status='failed' with
-    // errorMessage on its own catch path. We just log here so a boot
-    // log sweep shows exactly what recovered.
-    dispatch().catch((err) => {
+    // Fire-and-forget. processFileAsync sets status='failed' on its
+    // own catch path; we just log here so a boot log sweep shows
+    // exactly what recovered.
+    processFileAsync(trail, r.id, r.tenantId, r.knowledgeBaseId, userId, r.filename, buffer).catch((err) => {
       console.error(
         `  recover-pending-sources: ${r.filename} failed during recovery:`,
         err instanceof Error ? err.message : err,

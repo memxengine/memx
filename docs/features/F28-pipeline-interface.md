@@ -1,5 +1,7 @@
 # F28 — Pluggable Pipeline Interface
 
+> **Status: Shipped 2026-04-25.** Pipeline interface + module-level registry i `packages/pipelines/src/{interface,registry}.ts`. Fire eksisterende extractors (pdf/docx/pptx/xlsx) wrappet som Pipeline-instances og auto-registreret ved import. `apps/server/src/routes/uploads.ts` reduceret fra 4 ext-specifikke if-blocks (~80 linjer) til én `pickPipeline + processFileAsync`-call (~15 linjer). De 4 `processXxxAsync`-helpers konsolideret til én unified `processFileAsync` der virker på tværs af formater. `bootstrap/recover-pending-sources.ts` switch erstattet med samme dispatch-call. Adding F24 image / F47 audio / F46 video kræver nu 0 ændringer i uploads.ts — bare `registerPipeline(myPipeline)`. Verification: `packages/pipelines/scripts/verify-registry.ts` — 17 asserts grønne, server boot clean.
+>
 > One narrow contract every ingest pipeline implements. Markdown, PDF, DOCX, HTML, image, SVG, audio, video all plug into the same orchestration layer.
 
 ## Problem
