@@ -22,6 +22,14 @@ import { slugify } from '@trail/shared';
  *
  * Path prefixes like `[[concepts/shen-men]]` are flattened to their
  * final segment — the reader resolves by slug globally per KB.
+ *
+ * F148 — rendering stays CANONICAL on purpose. The href emitted here is
+ * `slugify(rawTarget)` with no bilingual fold. The fold lives in the
+ * resolver (wiki-reader's URL matcher) so the hrefs in the rendered
+ * HTML remain stable under future filename renames: the URL works via
+ * canonical path when the filename matches, and via fold when it
+ * doesn't. Writing folded hrefs here would make them drift every time
+ * the fold table changes.
  */
 export function rewriteWikiLinks(markdown: string, kbId: string): string {
   return markdown.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_, rawTarget: string, rawDisplay?: string) => {

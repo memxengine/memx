@@ -122,6 +122,7 @@ The remaining Phase 1 scope, ordered by leverage and dependency.
 | F22 | Stable `{#claim-xx}` Anchors | F07 | Small |
 | F23 | Wiki-Link Parser (`[[]]`, `[[kb:]]`, `[[ext:]]`) | F07 | Small |
 | F30 | Chat Citations Render | F12, F23 | Small |
+| F148 | Link Integrity (ingen 404 i hjernen — 3 lag: prompt + URL-fold + link-checker) | F06, F32, F140 | Medium |
 
 ### Pipelines + Adapters — widen the ingest surface
 
@@ -276,6 +277,7 @@ Regulated industries, on-prem, compliance, advanced architecture.
 ✅ F144   Chat history persistence (sessions + turns, sidebar)
 ✅ F145   Per-KB seq IDs (cross-session canonical handles)
 
+⏭ F148   Link Integrity (3 lag — 0 × 404 i en brain, pre-launch blocker)
 ⏭ F34    Landing deploy (trailmem.com — DNS + Fly.io; page already built)
 ⏭ F33    Fly.io server deploy (arn, volumes, healthchecks)
 ⏭ F35    OAuth production credentials (for F33's first real login)

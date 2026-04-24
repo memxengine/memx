@@ -7,6 +7,7 @@ import { useKb } from '../lib/kb-cache';
 import { CopyId } from '../components/copy-id';
 import {
   slugify,
+  normalizedSlug,
   isHeuristicPath,
   isPinned,
   computeConfidence,
@@ -119,14 +120,30 @@ function ReaderView() {
     // still lands on `fmc.md` / `arc-farm-intelligence.md`. Falls
     // back to exact filename match for extra-safe round-tripping.
     const wanted = slugify(slug);
-    return (
-      pages.find((p) => {
-        const d = p as Document & { filename: string };
-        const fileSlug = slugify(d.filename.replace(/\.md$/i, ''));
-        return fileSlug === wanted || d.filename.replace(/\.md$/i, '') === slug;
-      }) ?? null
-    );
-  }, [pages, slug]);
+    const canonical = pages.find((p) => {
+      const d = p as Document & { filename: string };
+      const fileSlug = slugify(d.filename.replace(/\.md$/i, ''));
+      return fileSlug === wanted || d.filename.replace(/\.md$/i, '') === slug;
+    });
+    if (canonical) return canonical;
+
+    // F148 Lag 2 — bilingual fold fallback. When canonical slug match
+    // fails we fold both sides toward the KB's configured language and
+    // retry. Example: URL `/neurons/yin-og-yang` on a Danish KB finds
+    // filename `yin-and-yang.md` via `and→og` fold. Only accept entydig
+    // (exactly one) match; ambiguous folds fall through to 404 rather
+    // than guess. Uses `kb?.language` — `useKb` may still be loading,
+    // in which case we skip the fold (re-render picks it up when kb
+    // arrives).
+    if (!kb) return null;
+    const folded = normalizedSlug(wanted, kb.language);
+    const foldedMatches = pages.filter((p) => {
+      const d = p as Document & { filename: string };
+      const fileSlug = slugify(d.filename.replace(/\.md$/i, ''));
+      return normalizedSlug(fileSlug, kb.language) === folded;
+    });
+    return foldedMatches.length === 1 ? foldedMatches[0]! : null;
+  }, [pages, slug, kb?.language, kb]);
 
   useEffect(() => {
     if (!doc) {

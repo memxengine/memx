@@ -10,6 +10,7 @@ import { recoverIngestJobs } from './services/ingest.js';
 import { startContradictionLint } from './services/contradiction-lint.js';
 import { backfillReferences, startReferenceExtractor } from './services/reference-extractor.js';
 import { backfillBacklinks, startBacklinkExtractor } from './services/backlink-extractor.js';
+import { backfillLinkCheck, startLinkChecker } from './services/link-checker.js';
 import { startLintScheduler } from './services/lint-scheduler.js';
 import { startQueueBackfill } from './services/queue-backfill.js';
 import { startActionRecommender, backfillRecommendations } from './services/action-recommender.js';
@@ -49,6 +50,11 @@ await recoverPendingSources(trail);
 await recoverIngestJobs(trail);
 await backfillReferences(trail);
 await backfillBacklinks(trail);
+// F148 — populate broken_links table so the admin link-report panel
+// surfaces any unresolvable [[wiki-link]]s immediately on first deploy.
+// Idempotent; runs after backfillBacklinks so the fresh backlinks table
+// reflects the fold-enabled resolution.
+await backfillLinkCheck(trail);
 
 // F15 — reference extractor subscribes to candidate_approved.
 const stopReferenceExtractor = startReferenceExtractor(trail);
@@ -56,6 +62,11 @@ const stopReferenceExtractor = startReferenceExtractor(trail);
 // F15 iter 2 — wiki-wiki backlink extractor subscribes to the same event.
 // Graph of [[link]]s between Neurons, populated live + at boot.
 const stopBacklinkExtractor = startBacklinkExtractor(trail);
+
+// F148 — link-checker subscribes to candidate_approved too. Re-scans the
+// committed doc's [[wiki-link]]s against the KB pool; unresolved links
+// land in broken_links for the curator.
+const stopLinkChecker = startLinkChecker(trail);
 
 // F19 axis 3 — contradiction detection subscribes to candidate_approved.
 const stopContradictionLint = startContradictionLint(trail);
@@ -114,6 +125,7 @@ const shutdown = async () => {
   console.log('\nshutting down…');
   stopReferenceExtractor();
   stopBacklinkExtractor();
+  stopLinkChecker();
   stopContradictionLint();
   stopLintScheduler();
   stopQueueBackfill();

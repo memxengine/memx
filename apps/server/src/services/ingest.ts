@@ -10,6 +10,7 @@ import { broadcaster } from './broadcast.js';
 import { spawnClaude } from './claude.js';
 import { ensureMcpConfig, writeIngestMcpConfig, cleanupIngestMcpConfig } from '../lib/mcp-config.js';
 import { listKbTags } from './tag-aggregate.js';
+import { listKbEntities } from './entity-aggregate.js';
 
 /**
  * Collapse a raw spawnClaude error into a one-sentence reason the
@@ -284,6 +285,52 @@ async function runJob(
     ? `\n\nEXISTING TAG VOCABULARY IN THIS KB (prefer reusing over inventing new ones — exact spelling required):\n${existingTags.map((t) => `  - ${t}`).join('\n')}\n\nOnly propose a new tag when nothing in the list fits the concept.`
     : '\n\n(This KB has no tags yet — you are establishing the vocabulary. Keep tags short, lowercase, and specific.)';
 
+  // F148 — inject existing entity-Neurons so the LLM links named
+  // persons/organisations/tools to existing pages instead of creating
+  // duplicates. Mirror of the tag-vocabulary block above; fails
+  // silently (with a log) and lets the compile run without the hint if
+  // the aggregate query breaks. Max-200 cap inside listKbEntities; we
+  // don't paginate the prompt block further — 200 × ~40 chars ≈ 8k
+  // tokens, well within budget.
+  let existingEntities: Array<{ title: string; filename: string }> = [];
+  try {
+    existingEntities = await listKbEntities(trail, job.tenantId, job.kbId);
+  } catch (err) {
+    console.warn(
+      '[ingest] entity vocabulary fetch failed; compile will run without hint:',
+      err instanceof Error ? err.message : err,
+    );
+  }
+  const entityBlock = existingEntities.length > 0
+    ? `\n\nEXISTING ENTITY NEURONS IN THIS KB (link to these — do NOT create duplicates):\n${existingEntities.map((e) => `  - ${e.title}  →  /neurons/entities/${e.filename}`).join('\n')}\n\nEvery named person, organisation, or tool mentioned in the source MUST appear as a [[wiki-link]] in the summary and related concept pages. Resolve against this list first before creating a fresh entity page. When creating a new entity page, the filename MUST be slugify(title) — i.e. \`[[Grethe Schmidt]]\` → filename \`grethe-schmidt.md\`, title \`Grethe Schmidt\`.`
+    : '\n\n(This KB has no entity Neurons yet — create them under /neurons/entities/ as you encounter named persons, organisations, or tools. Filename MUST equal slugify(title).)';
+
+  // F148 — language directive. `knowledge_bases.language` is the
+  // authoritative source (default 'da'). Inject a human-readable name
+  // so the LLM can key off "DANISH"/"ENGLISH" rather than the ISO
+  // code, and tailor the slug-consistency examples to the active
+  // language.
+  const languageName = ({ da: 'DANISH', en: 'ENGLISH', de: 'GERMAN', sv: 'SWEDISH', no: 'NORWEGIAN' } as Record<string, string>)[kb.language] ?? kb.language.toUpperCase();
+  const slugExamples = kb.language === 'da'
+    ? [
+        '    ✓ yin-og-yang.md       ✗ yin-and-yang.md',
+        '    ✓ de-fem-elementer.md  ✗ five-elements-tcm.md',
+        '    ✓ organur.md           ✗ organ-clock.md',
+        '    ✓ qi-energi.md         ✗ qi-energy.md',
+        '    ✓ rab-registrering.md  ✗ rab-registration.md',
+      ].join('\n')
+    : kb.language === 'en'
+      ? [
+          '    ✓ yin-and-yang.md    ✗ yin-og-yang.md',
+          '    ✓ five-elements.md   ✗ de-fem-elementer.md',
+        ].join('\n')
+      : '    (use the KB language consistently across filename, title, and link-text)';
+  const connectiveRule = kb.language === 'da'
+    ? 'Use Danish connectives — "og" not "and", "i" not "of", "til" not "to", "med" not "with". Use Danish specialist terms not English ones.'
+    : kb.language === 'en'
+      ? 'Use English connectives — "and" not "og", "of" not "i". Use English specialist terms.'
+      : `All text must be in ${languageName.toLowerCase()} — matching the KB's configured language.`;
+
   // F140 — hierarchical schema inheritance. Load every `_schema.md`
   // under this KB, merge those whose scope covers the source's
   // destination path, render as a prompt-ready block. Empty when no
@@ -304,7 +351,7 @@ async function runJob(
     );
   }
 
-  const prompt = `You are the wiki compiler for knowledge base ${sKbName} (slug: ${sKbSlug}).${tagBlock}${schemaBlock}
+  const prompt = `You are the wiki compiler for knowledge base ${sKbName} (slug: ${sKbSlug}).${tagBlock}${entityBlock}${schemaBlock}
 
 A new source has been added: ${sFilename} at path ${sSourcePath}.
 
@@ -350,6 +397,20 @@ Your job is to ingest this source into the wiki. Follow these steps exactly:
    - Contradictions: (any found, or "None")
 
 IMPORTANT RULES:
+
+LANGUAGE & SLUG CONSISTENCY  (F148 — strict, violation causes 404s)
+- THIS KB'S LANGUAGE IS ${languageName}. All filenames, titles, and [[link-text]] MUST be in this language. ${connectiveRule} Examples of CORRECT vs WRONG filenames:
+${slugExamples}
+- BEFORE you write a new page, decide what [[link-text]] other Neurons will use to cite it. That link-text's slugified form IS the filename.
+  Example: link-text "Yin og Yang" → filename "yin-og-yang.md" → title frontmatter "Yin og Yang". These three MUST slugify to the same string. A drift here causes 404s and the ingest will be flagged by the link-checker.
+- Title-field in frontmatter MUST match the display form of the link-text that cites the page. Not the filename form, not a summary — the exact display text.
+
+ENTITY LINKING  (F148 — strict)
+- Every named person, organisation, certification body, or tool mentioned in the source MUST be wrapped in [[...]] at least at first mention in the summary page AND at every mention in concept pages.
+- Resolve each name against the ENTITY VOCABULARY block above first. If the entity exists there, use the EXACT title shown — "Sanne Andersen", not "S. Andersen" or "Sanne".
+- If the entity does NOT exist in the vocabulary, create a new entity page under /neurons/entities/ in the same write pass. Its filename MUST be slugify(title) + ".md".
+
+GENERAL
 - Be thorough but concise. Every claim should reference its source.
 - Use [[page-name]] for internal wiki cross-references. When the relation is stronger than a plain mention, annotate it via [[page-name|edge-type]] so the knowledge-graph can reason about it. Valid edge-types:
   * \`[[target|is-a]]\` — hierarchical specialisation (NADA is-a acupuncture-protocol)

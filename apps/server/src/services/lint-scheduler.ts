@@ -46,6 +46,7 @@ import {
   scanDocForContradictions,
 } from './contradiction-lint.js';
 import { rebuildAccessRollup, pruneOldAccessRows } from './access-rollup.js';
+import { runFullLinkCheck } from './link-checker.js';
 
 const SCHEDULE_HOURS = Number(process.env.TRAIL_LINT_SCHEDULE_HOURS ?? 24);
 const INITIAL_DELAY_MS =
@@ -119,6 +120,24 @@ async function runFullPass(trail: TrailDatabase): Promise<void> {
       // Orphans + stale — cheap, always runs
       const report = await runOrphansStale(trail, kb);
       totalFindings += report.totalEmitted;
+
+      // F148 — link-checker sweep. No LLM, cheap SQL + in-memory fold.
+      // Runs regardless of SKIP_CONTRADICTIONS because link integrity is
+      // the hard-rule "zero 404" guarantee, independent of the
+      // contradiction-detection LLM budget.
+      try {
+        const linkSummary = await runFullLinkCheck(trail, kb.tenantId, kb.id);
+        if (linkSummary.openRecorded > 0) {
+          console.log(
+            `[lint-scheduler] KB "${kb.name}" — link-check: ${linkSummary.openRecorded} broken / ${linkSummary.resolved} resolved across ${linkSummary.docsScanned} Neuron(s)`,
+          );
+        }
+      } catch (err) {
+        console.error(
+          `[lint-scheduler] link-check failed for KB "${kb.name}":`,
+          err instanceof Error ? err.message : err,
+        );
+      }
 
       // Contradictions — expensive, optional
       if (!SKIP_CONTRADICTIONS) {

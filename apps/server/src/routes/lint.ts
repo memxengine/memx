@@ -1,8 +1,11 @@
 import { Hono, type Context } from 'hono';
+import { and, desc, eq } from 'drizzle-orm';
+import { brokenLinks, documents } from '@trail/db';
 import { requireAuth, getTenant, getUser, getTrail } from '../middleware/auth.js';
 import { runLint, resolveKbId, type Actor } from '@trail/core';
 import { INGEST_USER_ID } from '../bootstrap/ingest-user.js';
 import { broadcaster } from '../services/broadcast.js';
+import { rescanDocLinks, runFullLinkCheck } from '../services/link-checker.js';
 
 /**
  * F32.1 — on-demand lint.
@@ -98,4 +101,108 @@ lintRoutes.post('/knowledge-bases/:kbId/lint', async (c) => {
   );
 
   return c.json(report);
+});
+
+// ── F148 — Link Integrity routes ─────────────────────────────────────────────
+
+/**
+ * List open broken-link findings for a KB. Joins through documents so the
+ * curator UI can render "in <Neuron title> → [[<broken link text>]]" rows
+ * without a per-finding lookup.
+ */
+lintRoutes.get('/knowledge-bases/:kbId/link-check', async (c) => {
+  const trail = getTrail(c);
+  const tenant = getTenant(c);
+  const kbId = await resolveKbId(trail, tenant.id, c.req.param('kbId'));
+  if (!kbId) return c.json({ error: 'Knowledge base not found' }, 404);
+
+  const rows = await trail.db
+    .select({
+      id: brokenLinks.id,
+      fromDocumentId: brokenLinks.fromDocumentId,
+      fromFilename: documents.filename,
+      fromTitle: documents.title,
+      linkText: brokenLinks.linkText,
+      suggestedFix: brokenLinks.suggestedFix,
+      status: brokenLinks.status,
+      reportedAt: brokenLinks.reportedAt,
+    })
+    .from(brokenLinks)
+    .innerJoin(documents, eq(documents.id, brokenLinks.fromDocumentId))
+    .where(
+      and(
+        eq(brokenLinks.tenantId, tenant.id),
+        eq(brokenLinks.knowledgeBaseId, kbId),
+        eq(brokenLinks.status, 'open'),
+      ),
+    )
+    .orderBy(desc(brokenLinks.reportedAt))
+    .all();
+
+  return c.json({ findings: rows });
+});
+
+/**
+ * Manually trigger a full KB sweep. Same work the scheduler does nightly,
+ * but lets the curator rebuild after bulk edits without waiting for the
+ * next scheduled pass.
+ */
+lintRoutes.post('/knowledge-bases/:kbId/link-check/rescan', async (c) => {
+  const trail = getTrail(c);
+  const tenant = getTenant(c);
+  const kbId = await resolveKbId(trail, tenant.id, c.req.param('kbId'));
+  if (!kbId) return c.json({ error: 'Knowledge base not found' }, 404);
+
+  const summary = await runFullLinkCheck(trail, tenant.id, kbId);
+  return c.json(summary);
+});
+
+/**
+ * Dismiss a broken-link finding — curator confirmed the dead link is
+ * intentional (target Neuron not yet created, or the [[link]] is a
+ * placeholder). The row stays in the table so a future scan doesn't
+ * re-open it; dismissing is a signal, not a delete.
+ */
+lintRoutes.post('/link-check/:id/dismiss', async (c) => {
+  const trail = getTrail(c);
+  const tenant = getTenant(c);
+  const id = c.req.param('id');
+
+  const row = await trail.db
+    .select({ id: brokenLinks.id, fromDocumentId: brokenLinks.fromDocumentId })
+    .from(brokenLinks)
+    .where(and(eq(brokenLinks.id, id), eq(brokenLinks.tenantId, tenant.id)))
+    .get();
+  if (!row) return c.json({ error: 'Finding not found' }, 404);
+
+  await trail.db
+    .update(brokenLinks)
+    .set({ status: 'dismissed', fixedAt: new Date().toISOString() })
+    .where(eq(brokenLinks.id, id))
+    .run();
+
+  return c.json({ dismissed: true });
+});
+
+/**
+ * Re-open a previously dismissed finding. Useful if the curator dismissed
+ * by mistake, or the target Neuron was finally created and they want the
+ * next scan to verify.
+ */
+lintRoutes.post('/link-check/:id/reopen', async (c) => {
+  const trail = getTrail(c);
+  const tenant = getTenant(c);
+  const id = c.req.param('id');
+
+  const row = await trail.db
+    .select({ id: brokenLinks.id, fromDocumentId: brokenLinks.fromDocumentId })
+    .from(brokenLinks)
+    .where(and(eq(brokenLinks.id, id), eq(brokenLinks.tenantId, tenant.id)))
+    .get();
+  if (!row) return c.json({ error: 'Finding not found' }, 404);
+
+  // Rescan the source doc rather than just flipping the flag — if the
+  // target now exists, the scan will clear the row automatically.
+  await rescanDocLinks(trail, row.fromDocumentId);
+  return c.json({ reopened: true });
 });

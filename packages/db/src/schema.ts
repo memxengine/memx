@@ -482,3 +482,42 @@ export const chatTurns = sqliteTable(
     index('idx_chat_turns_session').on(table.sessionId, table.createdAt),
   ],
 );
+
+// ── F148 — Link Integrity (broken-link findings) ────────────────────────────
+//
+// One row per [[wiki-link]] the link-checker service cannot resolve against
+// any Neuron in the KB — via canonical slug, title match, OR the F148 Lag 2
+// bilingual fold. Serves two purposes: (a) a durable record so the admin UI
+// can show "N broken links in this Trail" without re-parsing every body on
+// each request, and (b) idempotency for the checker's candidate_approved +
+// daily-sweep passes. UNIQUE (from_document_id, link_text) means a re-scan
+// that finds the same broken link is a no-op.
+//
+// status lifecycle: open → auto_fixed (content rewritten by checker) |
+// dismissed (curator confirmed intentional dead link) | open-stale (daily
+// sweep confirmed still broken after N days — surfaces for harder
+// attention).
+export const brokenLinks = sqliteTable(
+  'broken_links',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+    knowledgeBaseId: text('knowledge_base_id').notNull().references(() => knowledgeBases.id, { onDelete: 'cascade' }),
+    fromDocumentId: text('from_document_id').notNull().references(() => documents.id, { onDelete: 'cascade' }),
+    // Exact text inside [[...]] — preserves case + spaces for the admin UI
+    // so curator sees what the author wrote, not the slugified form.
+    linkText: text('link_text').notNull(),
+    // Filled when the checker found a single high-confidence candidate
+    // (fold-match with ties, or Levenshtein ≤ 2 to an existing title).
+    // Curator accepts via POST /link-check/:id/accept.
+    suggestedFix: text('suggested_fix'),
+    status: text('status', { enum: ['open', 'auto_fixed', 'dismissed'] }).notNull().default('open'),
+    reportedAt: text('reported_at').notNull().default(sql`(datetime('now'))`),
+    fixedAt: text('fixed_at'),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (table) => [
+    uniqueIndex('idx_broken_links_unique').on(table.fromDocumentId, table.linkText),
+    index('idx_broken_links_kb_status').on(table.knowledgeBaseId, table.status),
+  ],
+);

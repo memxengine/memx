@@ -234,6 +234,14 @@ Mobile share targets: "Del til Trail" fra Fotos, Safari, Instagram og alle andre
 |---|---------|--------|-------|------|
 | F147 | [Share Extension (iOS + Android)](features/F147-share-extension.md) | Idea | 2 | [plan](features/F147-share-extension.md) |
 
+### F148 — Link Integrity (ingen 404 i hjernen)
+
+Tre-lags-forsvar mod broken wiki-links: ingest-prompten lærer LLM'en slug-konventionen (filnavn = slugify(title) = slugify(link-tekst), KB-sprog-korrekt, entity-navne altid `[[wrapped]]`), URL-resolveren folder bilingual-drift (`og↔and`, `i↔of`, parens-strippes), og en ny link-checker-service + `broken_links`-tabel fanger mismatches der slipper igennem. Auto-fix ved entydig fold-match, ellers queue-finding til curator. Hard rule: 0 × 404 på enhver brain, fremadrettet.
+
+| # | Feature | Status | Phase | Plan |
+|---|---------|--------|-------|------|
+| F148 | [Link Integrity](features/F148-link-integrity.md) | Planned | 1 | [plan](features/F148-link-integrity.md) |
+
 ---
 
 ## Descriptions
@@ -512,3 +520,6 @@ Orphan-Neuron detection now skips Neurons whose originating candidate came from 
 
 ### F147 — Share Extension (iOS + Android)
 Native share targets for iOS og Android der lader brugeren sende tekst, links og billeder direkte fra andre apps til Trail. iOS Share Extension (Swift/SwiftUI) dukker op i share sheet som "Trail Clipper" og deler credentials med hoved-appen via App Group. Android Share Extension (Kotlin) gør det samme. Billeder sendes gennem den eksisterende vision backend for beskrivelse + OCR. Connector: `share-extension`.
+
+### F148 — Link Integrity
+Tre-lags-forsvar mod 404-fejl i en trail-brain. **Lag 1 (prompt):** `ingest.ts`-prompten udvides med `kb.language`-direktiv, en ENTITY VOCABULARY-blok (ny `listKbEntities()` aggregator), eksplicitte slug-konsistens-regler med eksempler (`yin-og-yang.md` ✓ / `yin-and-yang.md` ✗), og krav om at alle navngivne personer/organisationer/tools wrappes i `[[...]]`. **Lag 2 (URL-fallback):** ny `normalizedSlug(slug, language)` + `foldBilingual()` i `packages/shared/` folder bilingual-drift (`og↔and`, `i↔of`, `til↔to`, `med↔with`, `æøå↔ae/oe/aa`) og fjerner parens-kvalifikatorer. Anvendt symmetrisk i `wiki-reader.tsx` URL matcher, `backlink-extractor.ts resolveLink()`, og `wiki-links.ts`. **Lag 3 (link-checker):** ny `broken_links`-tabel (migration `0013`) + `link-checker.ts`-service spejler `contradiction-lint.ts`-mønsteret. Subscriber på `candidate_approved` + daglig sweep via `lint-scheduler`. Auto-fix ved entydig fold-match; flertydighed eller uløselige mismatches lander som `queue_candidates` med `kind='broken-link-alert'`. Ingen LLM i checkeren — ren text-parsing + in-memory pool + Levenshtein ≤ 2 for forslag. Hard rule Christian 2026-04-24: **der må være 0,0000000 404-fejl i en hjerne**.

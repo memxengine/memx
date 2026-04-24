@@ -20,9 +20,10 @@
  * Unresolved links are silently skipped — chat tools can later detect
  * "broken [[link]]" patterns for a follow-up lint, but that's not MVP.
  */
-import { documents, wikiBacklinks, type TrailDatabase } from '@trail/db';
+import { documents, knowledgeBases, wikiBacklinks, type TrailDatabase } from '@trail/db';
 import { and, eq } from 'drizzle-orm';
 import { slugify } from '@trail/core';
+import { normalizedSlug } from '@trail/shared';
 import type { CandidateApprovedEvent } from '@trail/shared';
 import { broadcaster } from './broadcast.js';
 
@@ -66,6 +67,24 @@ async function loadWikiPool(
       ),
     )
     .all();
+}
+
+/**
+ * F148 — look up the KB's configured language. Defaults to 'da' when the
+ * row is missing (matches the schema default). Cheap single-row query;
+ * callers with a batch (backfill) should cache per KB.
+ */
+async function loadKbLanguage(
+  trail: TrailDatabase,
+  tenantId: string,
+  kbId: string,
+): Promise<string> {
+  const row = await trail.db
+    .select({ language: knowledgeBases.language })
+    .from(knowledgeBases)
+    .where(and(eq(knowledgeBases.id, kbId), eq(knowledgeBases.tenantId, tenantId)))
+    .get();
+  return row?.language ?? 'da';
 }
 
 /**
@@ -127,11 +146,23 @@ function stripFrontmatter(content: string): string {
  * Resolve a link to a target Neuron in the same KB. Returns null if no
  * match is found via any strategy. Pure in-memory lookup against the
  * pool — callers hoist the KB wiki-list once per extraction pass.
+ *
+ * F148 adds strategy 4: bilingual slug fold. When neither canonical
+ * slugification nor full-title match resolves, fold both sides toward
+ * the KB's configured language and retry the slug comparison. Example:
+ * a Danish KB with filename `yin-and-yang.md` and a link `[[Yin og
+ * Yang]]` — canonical slugify gives `yin-og-yang` vs `yin-and-yang`,
+ * no match; folded to Danish canonical on both sides → `yin-og-yang`
+ * on each, match. Only accepts entydig (exactly one) match — multiple
+ * candidates folding to the same form means the content itself is
+ * ambiguous, and we'd rather surface that via the link-checker than
+ * guess at resolve-time.
  */
 function resolveLink(
   pool: WikiNeuronRef[],
   fromDocId: string,
   linkText: string,
+  language: string,
 ): { id: string } | null {
   const target = linkText.trim();
   if (!target) return null;
@@ -158,6 +189,16 @@ function resolveLink(
   const needle = target.toLowerCase();
   const byTitle = candidates.find((n) => (n.title ?? '').toLowerCase() === needle);
   if (byTitle) return { id: byTitle.id };
+
+  // Strategy 4 (F148): bilingual fold. Only consulted when the above
+  // three canonical strategies fail. Requires entydig match — if two
+  // candidates fold to the same canonical, we refuse to guess.
+  const foldedTarget = normalizedSlug(slug, language);
+  const foldedMatches = candidates.filter((n) => {
+    const fn = stripExt(n.filename).toLowerCase();
+    return normalizedSlug(fn, language) === foldedTarget;
+  });
+  if (foldedMatches.length === 1) return { id: foldedMatches[0]!.id };
 
   return null;
 }
@@ -211,6 +252,7 @@ export async function extractBacklinksForDoc(
   trail: TrailDatabase,
   docId: string,
   pool?: WikiNeuronRef[],
+  language?: string,
 ): Promise<number> {
   const doc = await trail.db
     .select({
@@ -231,11 +273,15 @@ export async function extractBacklinksForDoc(
 
   const links = parseWikiLinks(doc.content);
   const wikiPool = pool ?? (await loadWikiPool(trail, doc.tenantId, doc.knowledgeBaseId));
+  // F148: bilingual fold needs KB language. Batch callers pass it in to
+  // avoid the per-doc SELECT; single-doc callers (event subscriber) pay
+  // one cheap lookup here.
+  const kbLanguage = language ?? (await loadKbLanguage(trail, doc.tenantId, doc.knowledgeBaseId));
 
   // Resolve every link, keep only those that land on a real Neuron.
   const resolved: Array<{ targetId: string; linkText: string; edgeType: EdgeType }> = [];
   for (const link of links) {
-    const target = resolveLink(wikiPool, doc.id, link.target);
+    const target = resolveLink(wikiPool, doc.id, link.target, kbLanguage);
     if (target) resolved.push({ targetId: target.id, linkText: link.target, edgeType: link.edgeType });
   }
 
@@ -277,6 +323,10 @@ export async function backfillBacklinks(trail: TrailDatabase): Promise<void> {
   // instead of one per doc. Relies on the fact that `documents` isn't
   // mutated mid-backfill (we only insert/delete wiki_backlinks rows).
   const poolByKb = new Map<string, WikiNeuronRef[]>();
+  // F148: KB language cached alongside the pool — the fold needs it,
+  // and `knowledge_bases.language` is stable mid-backfill so one SELECT
+  // per KB is plenty.
+  const languageByKb = new Map<string, string>();
 
   let totalInserted = 0;
   let touched = 0;
@@ -287,7 +337,12 @@ export async function backfillBacklinks(trail: TrailDatabase): Promise<void> {
       pool = await loadWikiPool(trail, d.tenantId, d.knowledgeBaseId);
       poolByKb.set(key, pool);
     }
-    const n = await extractBacklinksForDoc(trail, d.id, pool);
+    let language = languageByKb.get(key);
+    if (language === undefined) {
+      language = await loadKbLanguage(trail, d.tenantId, d.knowledgeBaseId);
+      languageByKb.set(key, language);
+    }
+    const n = await extractBacklinksForDoc(trail, d.id, pool, language);
     if (n > 0) {
       totalInserted += n;
       touched += 1;
