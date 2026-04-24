@@ -33,7 +33,7 @@ export function App({ children }: { children: ComponentChildren }) {
   const [me, setMe] = useState<Me | null>(null);
   const [theme, setTheme] = useState<Theme>(getTheme());
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const { path } = useLocation();
+  const { path, route } = useLocation();
   const kbId = path.match(/^\/kb\/([^/]+)/)?.[1];
   const kb = useKb(kbId ?? '');
 
@@ -71,6 +71,23 @@ export function App({ children }: { children: ComponentChildren }) {
     if (!canvasRef.current) return;
     return mountConstellation(canvasRef.current);
   }, []);
+
+  // Global Cmd+K / Ctrl+K → jump to the current Trail's search panel.
+  // The search input has autoFocus so landing there focuses the field.
+  // Intercepts even from inside input/textarea because Cmd+K has no
+  // text-editing meaning — browsers bind it to the URL bar, which is what
+  // the shortcut is stealing here.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.shiftKey || e.altKey) return;
+      if (e.key !== 'k' && e.key !== 'K') return;
+      if (!kbId) return; // no Trail in scope → nothing to search
+      e.preventDefault();
+      route(`/kb/${kbId}/search`);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [kbId, route]);
 
   useEffect(() => {
     api<Me>('/api/v1/me')
