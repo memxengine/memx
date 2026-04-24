@@ -23,6 +23,7 @@ import { CenteredLoader } from '../components/centered-loader';
 import { NeuronLoader } from '../components/neuron-loader';
 import { ConnectorBadge } from '../components/connector-badge';
 import { ConfidencePill } from '../components/confidence-pill';
+import { DiffView } from '../components/diff-view';
 import {
   CONNECTORS,
   LIVE_CONNECTORS,
@@ -1397,6 +1398,13 @@ function ExpandedContent({
   // become real anchors here too, not just in the reader.
   const html = marked.parse(rewriteWikiLinks(content, kbId), { async: false }) as string;
 
+  // F20 — show diff for update-ops against an existing Neuron. Opt-in
+  // via toggle because fetching the target doc's full content isn't
+  // free on large Neurons and most curators only want the diff on
+  // substantive ingests, not routine auto-summaries.
+  const diffEligible = meta?.op === 'update' && Boolean(meta.targetDocumentId);
+  const [showDiff, setShowDiff] = useState(false);
+
   return (
     <div class="border-t border-[color:var(--color-border)] px-4 py-4 bg-[color:var(--color-bg)]">
       {meta ? (
@@ -1432,6 +1440,28 @@ function ExpandedContent({
             </>
           ) : null}
         </dl>
+      ) : null}
+      {diffEligible ? (
+        <div class="mb-4">
+          <button
+            onClick={() => setShowDiff(!showDiff)}
+            title={t('diff.hint')}
+            aria-pressed={showDiff}
+            class={
+              'px-2 py-1 text-xs font-mono rounded transition ' +
+              (showDiff
+                ? 'bg-[color:var(--color-accent)] text-[color:var(--color-accent-fg)]'
+                : 'text-[color:var(--color-fg-muted)] hover:text-[color:var(--color-fg)] border border-[color:var(--color-border)]')
+            }
+          >
+            {showDiff ? t('diff.toggleHide') : t('diff.toggleShow')}
+          </button>
+          {showDiff ? (
+            <div class="mt-3">
+              <DiffView targetDocumentId={meta!.targetDocumentId!} proposedContent={content} />
+            </div>
+          ) : null}
+        </div>
       ) : null}
       <div
         class="prose-body text-sm leading-relaxed"

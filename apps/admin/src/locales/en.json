@@ -119,6 +119,19 @@
       "week": "w"
     }
   },
+  "diff": {
+    "toggleShow": "Show diff",
+    "toggleHide": "Hide diff",
+    "hint": "See exactly which lines this candidate changes on the existing Neuron",
+    "before": "Before",
+    "after": "After",
+    "added": "added",
+    "removed": "removed",
+    "unchanged": "unchanged",
+    "identical": "The candidate changes no lines on the existing Neuron.",
+    "loading": "Loading current content…",
+    "loadError": "Could not load current content: {error}"
+  },
   "queue": {
     "kinds": {
       "chat-answer": "chat answer",

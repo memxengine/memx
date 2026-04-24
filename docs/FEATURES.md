@@ -38,7 +38,7 @@ Status reflects the engine (this repo). Landing-site and CMS-adapter work lives 
 | F17 | [Curation Queue — HTTP Endpoints](#f17-curation-queue-api) | Planned | 1 | [features/F17-curation-queue-api.md](features/F17-curation-queue-api.md) |
 | F18 | [Curator UI Shell (Vite + Preact + shadcn)](#f18-curator-ui) | Planned | 1 | [features/F18-curator-ui.md](features/F18-curator-ui.md) |
 | F19 | [Auto-Approval Policy Engine](#f19-auto-approval-policy) | Planned | 1 | [plan](features/F19-auto-approval-policy.md) |
-| F20 | [Curator Diff UI (Before/After)](#f20-diff-ui) | Planned | 1 | [plan](features/F20-curator-diff-ui.md) |
+| F20 | [Curator Diff UI (Before/After)](#f20-diff-ui) | Done | 1 | [plan](features/F20-curator-diff-ui.md) |
 | F21 | [Ingest Backpressure](#f21-ingest-backpressure) | Planned | 1 | [plan](features/F21-ingest-backpressure.md) |
 | F22 | [Stable `{#claim-xx}` Anchors](#f22-claim-anchors) | Planned | 1 | [plan](features/F22-stable-claim-anchors.md) |
 | F23 | [Wiki-Link Parser (`[[]]`, `[[kb:]]`, `[[ext:]]`)](#f23-wiki-link-parser) | Done | 1 | [plan](features/F23-wiki-link-parser.md) |

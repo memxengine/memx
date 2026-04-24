@@ -1,5 +1,7 @@
 # F20 — Curator Diff UI (Before/After)
 
+> **Status: Shipped 2026-04-25.** Side-by-side before/after diff for `op: update`-kandidater. BEFORE = target Neuron's nuværende `documents.content` (lazy-fetched via eksisterende `/api/v1/documents/:id/content`), AFTER = candidate's proposed content. Pure-function LCS-diff i `packages/shared/src/diff/line-diff.ts`, Preact-komponent i `apps/admin/src/components/diff-view.tsx`, Bauhaus-toggle integreret i queue-panel's ExpandedContent. Verification: `packages/shared/scripts/verify-line-diff.ts` — 17 asserts grønne. Wiki_events-baseret historical version-walking udskudt til fremtidig F — F20's kern-brugsscenarie er "hvad vil denne kandidat ændre" og det løses uden event-chain traversering.
+>
 > Tre-pane view i curator dashboard: gammel version, ny version, rendered preview. Curatorer godkender/afviser **diffen**, ikke hele siden. Wired ind i wiki_events (F16) som allerede gemmer full-payload events.
 
 ## Problem

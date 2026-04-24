@@ -117,7 +117,7 @@ The remaining Phase 1 scope, ordered by leverage and dependency.
 
 | # | Feature | Depends On | Effort |
 |---|---------|------------|--------|
-| F20 | Curator Diff UI | F18, F16 | Small |
+| F20 | ~~Curator Diff UI~~ — **Done 2026-04-25** (side-by-side before/after diff on update-op candidates, shared `@trail/shared/diff` LCS algorithm) | F18, F16 | Small |
 | F21 | Ingest Backpressure | F17 | Small |
 | F22 | Stable `{#claim-xx}` Anchors | F07 | Small |
 | F23 | ~~Wiki-Link Parser (`[[]]`, `[[kb:]]`, `[[ext:]]`)~~ — **Done 2026-04-24** (shared `@trail/shared/wiki-links` package, intra + cross-kb resolved, ext placeholder) | F07 | Small |

@@ -119,6 +119,19 @@
       "week": "u"
     }
   },
+  "diff": {
+    "toggleShow": "Vis diff",
+    "toggleHide": "Skjul diff",
+    "hint": "Se præcis hvilke linjer denne kandidat ændrer på den eksisterende Neuron",
+    "before": "Før",
+    "after": "Efter",
+    "added": "tilføjet",
+    "removed": "fjernet",
+    "unchanged": "uændret",
+    "identical": "Kandidaten ændrer ingen linjer på den eksisterende Neuron.",
+    "loading": "Henter nuværende indhold…",
+    "loadError": "Kunne ikke hente nuværende indhold: {error}"
+  },
   "queue": {
     "kinds": {
       "chat-answer": "chat-svar",
