@@ -120,8 +120,8 @@ The remaining Phase 1 scope, ordered by leverage and dependency.
 | F20 | Curator Diff UI | F18, F16 | Small |
 | F21 | Ingest Backpressure | F17 | Small |
 | F22 | Stable `{#claim-xx}` Anchors | F07 | Small |
-| F23 | Wiki-Link Parser (`[[]]`, `[[kb:]]`, `[[ext:]]`) | F07 | Small |
-| F30 | Chat Citations Render | F12, F23 | Small |
+| F23 | ~~Wiki-Link Parser (`[[]]`, `[[kb:]]`, `[[ext:]]`)~~ — **Done 2026-04-24** (shared `@trail/shared/wiki-links` package, intra + cross-kb resolved, ext placeholder) | F07 | Small |
+| F30 | ~~Chat Citations Render~~ — **Done 2026-04-24** (chat API returns `renderedAnswer` with server-side tenant-scoped cross-KB resolution) | F12, F23 | Small |
 | F148 | Link Integrity (ingen 404 i hjernen — 3 lag: prompt + URL-fold + link-checker) | F06, F32, F140 | Medium |
 | F149 | Pluggable Ingest Backends (Claude CLI + OpenRouter, live fallback chain, per-tenant billing, per-KB model) | F06, F111.2, F137, F140, F143, F148 | Large |
 | F150 | Admin Link-Report Panel (UI for F148 broken_links + accept/dismiss/reopen + SSE live-update) | F148, F87, F17, F18 | Small |

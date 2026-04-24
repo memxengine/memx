@@ -12,6 +12,16 @@ let inflight: Promise<KnowledgeBase[]> | null = null;
 let cache: KnowledgeBase[] | null = null;
 
 /**
+ * Synchronous peek at the module-level cache. Returns null until
+ * `ensureKbs()` has resolved at least once this session. Used by code
+ * paths that want the cache if it's warm but can't block on a fetch
+ * (e.g. markdown rendering during a synchronous render-pass).
+ */
+export function peekKbs(): KnowledgeBase[] | null {
+  return cache;
+}
+
+/**
  * Route params from /kb/:kbId/... can carry either a UUID or a slug
  * (F135 slug-based routing). Every panel that resolves a KB from the
  * URL param should match on BOTH so settings, nav, etc. don't freeze

@@ -23,9 +23,17 @@
 import { documents, knowledgeBases, wikiBacklinks, type TrailDatabase } from '@trail/db';
 import { and, eq } from 'drizzle-orm';
 import { slugify } from '@trail/core';
-import { normalizedSlug } from '@trail/shared';
+import {
+  normalizedSlug,
+  parseIntraKbLinks,
+  VALID_EDGE_TYPES,
+  type EdgeType,
+  type LegacyWikiLinkMatch as WikiLinkMatch,
+} from '@trail/shared';
 import type { CandidateApprovedEvent } from '@trail/shared';
 import { broadcaster } from './broadcast.js';
+
+export { VALID_EDGE_TYPES, type EdgeType, type WikiLinkMatch };
 
 type WikiDoc = {
   id: string;
@@ -88,59 +96,11 @@ async function loadKbLanguage(
 }
 
 /**
- * Closed set of edge types accepted from `[[target|edge-type]]` syntax.
- * Anything the LLM emits that isn't in this list falls back to 'cites'
- * — bad edge-type strings don't break extraction, they just lose the
- * semantic annotation.
+ * Wiki-link parsing moved to `@trail/shared/wiki-links` (F23). The
+ * intra-KB-only wrapper is re-exported for backward compatibility with
+ * existing call sites in this module.
  */
-export const VALID_EDGE_TYPES = [
-  'cites',
-  'is-a',
-  'part-of',
-  'contradicts',
-  'supersedes',
-  'example-of',
-  'caused-by',
-] as const;
-export type EdgeType = (typeof VALID_EDGE_TYPES)[number];
-const EDGE_TYPE_SET = new Set<string>(VALID_EDGE_TYPES);
-
-export interface WikiLinkMatch {
-  target: string;
-  edgeType: EdgeType;
-}
-
-/**
- * Extract every `[[...]]` string from a Neuron body. Ignores frontmatter
- * (between the first pair of `---` lines) — source refs live there, and we
- * don't want to double-count a [[link]] that happens to sit in YAML.
- *
- * F137 — when the link carries an `|edge-type` suffix (`[[target|is-a]]`),
- * parse it. Bare `[[link]]`s default to 'cites'. Unknown edge-types also
- * default to 'cites' so a malformed suffix stays useful as a reference.
- */
-export function parseWikiLinks(content: string): WikiLinkMatch[] {
-  const withoutFrontmatter = stripFrontmatter(content);
-  const matches = withoutFrontmatter.matchAll(/\[\[([^\[\]|\n]+?)(?:\|([^\]\n]*))?\]\]/g);
-  const seen = new Map<string, WikiLinkMatch>();
-  for (const m of matches) {
-    const target = m[1]!.trim();
-    if (!target) continue;
-    const suffix = (m[2] ?? '').trim().toLowerCase();
-    const edgeType: EdgeType = EDGE_TYPE_SET.has(suffix) ? (suffix as EdgeType) : 'cites';
-    // Dedup by target; first-write-wins on edge_type. A Neuron that
-    // writes `[[A|contradicts]]` and later `[[A]]` keeps contradicts.
-    // Matches how the old dedup-by-target worked, just with typed edge.
-    if (seen.has(target)) continue;
-    seen.set(target, { target, edgeType });
-  }
-  return Array.from(seen.values());
-}
-
-function stripFrontmatter(content: string): string {
-  const m = content.match(/^---\s*\n[\s\S]*?\n---\s*\n/);
-  return m ? content.slice(m[0].length) : content;
-}
+export const parseWikiLinks = parseIntraKbLinks;
 
 /**
  * Resolve a link to a target Neuron in the same KB. Returns null if no

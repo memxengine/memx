@@ -1,50 +1,26 @@
-import { slugify } from '@trail/shared';
+import { rewriteWikiLinks as rewriteCore } from '@trail/shared';
+import { matchKb, peekKbs } from './kb-cache';
 
 /**
- * Preprocess wiki `[[target]]` / `[[target|display]]` syntax into
- * standard markdown links before `marked.parse()` runs. Marked passes
- * the resulting `[label](href)` through its normal pipeline, so the
- * output HTML has real anchor tags with correct escaping + no risk of
- * mangling content inside code blocks.
+ * F23 + F30 — admin-side thin wrapper over the canonical renderer from
+ * `@trail/shared`. Resolves cross-KB references (`[[kb:other-slug/page]]`)
+ * via the module-level kb-cache so callers don't need to thread a
+ * kb-list through their render pipeline.
  *
- * Target resolution: `[[NADA-punkter]]` →
- * `[NADA-punkter](/kb/<kbId>/neurons/nada-punkter)`. The admin's
- * Neuron reader route matches on the slug, and ingest uses the same
- * `slugify()` to compute filenames — so the link and the file both
- * collapse to the same canonical form.
- *
- * Without slugify, `[[FMC]]` pointed at `/neurons/FMC` and the reader
- * couldn't find `fmc.md`; `[[ARC Farm Intelligence]]` pointed at
- * `/neurons/ARC%20Farm%20Intelligence` and couldn't find
- * `arc-farm-intelligence.md`. Both cases were common in
- * compile-generated Neurons that reference entities by their display
- * name.
- *
- * Path prefixes like `[[concepts/shen-men]]` are flattened to their
- * final segment — the reader resolves by slug globally per KB.
- *
- * F148 — rendering stays CANONICAL on purpose. The href emitted here is
- * `slugify(rawTarget)` with no bilingual fold. The fold lives in the
- * resolver (wiki-reader's URL matcher) so the hrefs in the rendered
- * HTML remain stable under future filename renames: the URL works via
- * canonical path when the filename matches, and via fold when it
- * doesn't. Writing folded hrefs here would make them drift every time
- * the fold table changes.
+ * Before F23 this module owned its own `[[...]]` regex — duplicated with
+ * the server's backlink-extractor and incapable of parsing `kb:` /
+ * `ext:` prefixes. Now it delegates to the shared parser + renderer so
+ * every place Trail renders markdown honors the same link grammar.
  */
 export function rewriteWikiLinks(markdown: string, kbId: string): string {
-  return markdown.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_, rawTarget: string, rawDisplay?: string) => {
-    const target = targetToSlug(rawTarget.trim());
-    const display = (rawDisplay ?? rawTarget).trim();
-    const href = `/kb/${encodeURIComponent(kbId)}/neurons/${encodeURIComponent(target)}`;
-    return `[${display}](${href})`;
+  const kbs = peekKbs();
+  return rewriteCore(markdown, {
+    currentKbId: kbId,
+    resolveKbSlug: kbs
+      ? (slug) => {
+          const hit = matchKb(kbs, slug);
+          return hit?.id ?? null;
+        }
+      : undefined,
   });
-}
-
-function targetToSlug(t: string): string {
-  const stripped = t
-    .replace(/\.md$/i, '')
-    .split('/')
-    .pop()!
-    .trim();
-  return slugify(stripped);
 }

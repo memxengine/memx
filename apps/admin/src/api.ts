@@ -585,6 +585,13 @@ export interface ChatCitation {
 
 export interface ChatResponse {
   answer: string;
+  /**
+   * F30 — server-side transform of `[[wiki-links]]` → `[display](href)`
+   * markdown. Ready for any markdown renderer without parsing.
+   * Admin's chat panel prefers this over `answer` when present, so
+   * cross-KB links and display labels render identically across consumers.
+   */
+  renderedAnswer?: string;
   citations?: ChatCitation[];
   sessionId?: string;
 }

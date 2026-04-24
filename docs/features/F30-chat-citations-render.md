@@ -1,5 +1,7 @@
 # F30 — Chat Citations Render (`[[wiki-links]]` → `<a>`)
 
+> **Status: Shipped 2026-04-24.** Chat-endpoint returnerer `renderedAnswer` felt — server kalder `rewriteWikiLinks` fra shared med tenant-scoped kb-slug map så cross-KB `[[kb:other/Page]]` resolves til sister-KB's URL inden svaret sendes. Admin bruger stadig sin client-side rewrite (idempotent second pass); widget + REST consumers kan bruge `renderedAnswer` direkte. Verificeret live mod Trail Research KB med message der blander intra + cross-KB + display-label.
+>
 > Konverterer `[[wiki-link]]` citations i chat-svar til klikbare `<a>` tags der peger på in-app wiki view. Server-side transform så det virker identisk i widget, admin, og API consumers.
 
 ## Problem

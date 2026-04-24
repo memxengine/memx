@@ -1,5 +1,7 @@
 # F23 — Wiki-Link Parser (`[[]]`, `[[kb:]]`, `[[ext:]]`)
 
+> **Status: Shipped 2026-04-24.** Canonical parser + renderer i `packages/shared/src/wiki-links/`, shared mellem server (backlink-extractor + link-checker + chat) og admin (wiki-reader, queue, neuron-editor, chat). Intra + cross-KB (tenant-scoped kb-slug resolver) + external placeholder. Display-label vs edge-type pipe disambigueres via closed-set check (F137 compat). Verification: `packages/shared/scripts/verify-wiki-links.ts` — 30+ asserts grønne.
+>
 > Parser der genkender tre wiki-link prefixes i markdown: `[[page]]` (intra-KB), `[[kb:other-kb/page]]` (cross-KB, same tenant), `[[ext:tenant/kb/page]]` (federated, Phase 3). Resolveres til klikbare links i admin UI og widget.
 
 ## Problem
