@@ -22,6 +22,7 @@ import { workRoutes } from './routes/work.js';
 import { apiKeyRoutes } from './routes/api-keys.js';
 import { backupRoutes } from './routes/backups.js';
 import { costRoutes } from './routes/cost.js';
+import { fxRoutes } from './routes/fx.js';
 
 /**
  * Hono context variables visible to every handler.
@@ -99,6 +100,8 @@ export function createApp(trail: TrailDatabase): Hono<AppBindings> {
   app.route('/api/v1', backupRoutes);
   // F151 — Cost & Quality Dashboard endpoints.
   app.route('/api/v1', costRoutes);
+  // F151 — USD→DKK rate proxy for currency-localised cost display.
+  app.route('/api/v1', fxRoutes);
 
   return app;
 }

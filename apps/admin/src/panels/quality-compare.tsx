@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'preact/hooks';
 import { useRoute } from 'preact-iso';
 import { useKb } from '../lib/kb-cache';
-import { getQualityRuns, ApiError, type QualityComparison } from '../api';
+import { useLocale } from '../lib/i18n';
+import { getQualityRuns, getFxRate, ApiError, type QualityComparison, type FxRate } from '../api';
+import { formatCostForLocale, maxPlanLabel } from '../lib/currency';
 import { CenteredLoader } from '../components/centered-loader';
 
 /**
@@ -14,12 +16,6 @@ import { CenteredLoader } from '../components/centered-loader';
  * entities · broken links. The "typical" curator-decision: "which
  * model is good enough for this kind of content?"
  */
-
-function formatCents(cents: number): string {
-  if (cents === 0) return '—';
-  if (cents < 100) return `${cents}¢`;
-  return `$${(cents / 100).toFixed(2)}`;
-}
 
 function formatDuration(ms: number | null): string {
   if (ms === null) return '—';
@@ -35,9 +31,11 @@ export function QualityComparePanel() {
   const kbId = route.params.kbId ?? '';
   const sourceId = route.params.sourceId ?? '';
   const kb = useKb(kbId);
+  const locale = useLocale();
   const [data, setData] = useState<QualityComparison | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [fxRate, setFxRate] = useState<FxRate | null>(null);
 
   useEffect(() => {
     if (!sourceId) return;
@@ -53,6 +51,18 @@ export function QualityComparePanel() {
         setLoading(false);
       });
   }, [sourceId]);
+
+  // FX rate for DKK display on Danish locale; silent failure → USD
+  useEffect(() => {
+    if (locale !== 'da') {
+      setFxRate(null);
+      return;
+    }
+    getFxRate('USD', 'DKK').then(setFxRate).catch(() => setFxRate(null));
+  }, [locale]);
+
+  const fmt = (cents: number) =>
+    cents === 0 ? '—' : formatCostForLocale(cents, locale, fxRate);
 
   if (loading || !data) return <CenteredLoader />;
   if (error) return <div class="page-shell text-red-500">Error: {error}</div>;
@@ -120,8 +130,8 @@ export function QualityComparePanel() {
                   </td>
                   <td class="py-2 pr-3 text-right font-mono">
                     {run.backend === 'claude-cli' && run.costCents === 0
-                      ? 'gratis (Max)'
-                      : formatCents(run.costCents)}
+                      ? maxPlanLabel(locale)
+                      : fmt(run.costCents)}
                   </td>
                   <td class="py-2 pr-3 text-right font-mono">{formatDuration(run.durationMs)}</td>
                   <td class="py-2 pr-3 text-right font-mono">{run.metrics.neuronsCreated}</td>

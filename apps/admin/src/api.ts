@@ -862,3 +862,17 @@ export interface QualityComparison {
 export function getQualityRuns(sourceId: string): Promise<QualityComparison> {
   return api<QualityComparison>(`/api/v1/sources/${encodeURIComponent(sourceId)}/ingests`);
 }
+
+// ── F151 — FX rate for locale-localised cost display ────────────────────
+
+export interface FxRate {
+  from: string;
+  to: string;
+  rate: number;
+  fetchedAt: string;
+  stale: boolean;
+}
+
+export function getFxRate(from: string, to: string): Promise<FxRate> {
+  return api<FxRate>(`/api/v1/fx/rate?from=${from}&to=${to}`);
+}

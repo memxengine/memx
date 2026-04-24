@@ -1,17 +1,20 @@
 import { useEffect, useState } from 'preact/hooks';
 import { useRoute } from 'preact-iso';
 import { useKb } from '../lib/kb-cache';
-import { t } from '../lib/i18n';
+import { t, useLocale } from '../lib/i18n';
 import {
   getCostSummary,
   costCsvUrl,
   getCostSources,
+  getFxRate,
   ApiError,
   type CostSummary,
   type CostSourcesPage,
   type CostSourceSort,
   type CostSortOrder,
+  type FxRate,
 } from '../api';
+import { formatCostForLocale } from '../lib/currency';
 import { CenteredLoader } from '../components/centered-loader';
 
 /**
@@ -33,12 +36,6 @@ const WINDOWS: Array<{ value: number; label: string }> = [
 
 const PAGE_SIZE = 25;
 
-function formatCents(cents: number): string {
-  if (cents === 0) return '0¢';
-  if (cents < 100) return `${cents}¢`;
-  return `$${(cents / 100).toFixed(2)}`;
-}
-
 function displayTitle(title: string | null, filename: string): string {
   // Strip trailing `.md` / `.pdf` / etc. extensions when we're falling
   // back to the filename — per Christian 2026-04-24: extension is noise
@@ -51,10 +48,12 @@ export function CostPanel() {
   const route = useRoute();
   const kbId = route.params.kbId ?? '';
   const kb = useKb(kbId);
+  const locale = useLocale();
   const [window, setWindow] = useState<number>(30);
   const [summary, setSummary] = useState<CostSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [fxRate, setFxRate] = useState<FxRate | null>(null);
 
   // Source-list pagination + sort state
   const [sort, setSort] = useState<CostSourceSort>('cost');
@@ -62,6 +61,23 @@ export function CostPanel() {
   const [offset, setOffset] = useState(0);
   const [sourcesPage, setSourcesPage] = useState<CostSourcesPage | null>(null);
   const [sourcesLoading, setSourcesLoading] = useState(false);
+
+  // Fetch USD→DKK rate when locale is Danish. Silent on failure —
+  // the formatter falls back to USD cents if fxRate stays null.
+  useEffect(() => {
+    if (locale !== 'da') {
+      setFxRate(null);
+      return;
+    }
+    getFxRate('USD', 'DKK')
+      .then(setFxRate)
+      .catch((err) => {
+        console.warn('[cost-panel] FX rate fetch failed, showing USD:', err);
+        setFxRate(null);
+      });
+  }, [locale]);
+
+  const fmt = (cents: number) => formatCostForLocale(cents, locale, fxRate);
 
   // Summary fetch (totals + chart). Separate from source list because
   // they have different cache + invalidation characteristics.
@@ -166,7 +182,7 @@ export function CostPanel() {
       <div class="grid grid-cols-3 gap-4">
         <div class="p-3 rounded border border-[color:var(--color-border)]">
           <div class="text-xs text-[color:var(--color-fg-muted)]">Total</div>
-          <div class="text-2xl font-mono">{formatCents(summary.totalCents)}</div>
+          <div class="text-2xl font-mono">{fmt(summary.totalCents)}</div>
           <div class="text-xs text-[color:var(--color-fg-muted)] mt-1">
             {summary.jobCount} ingest{summary.jobCount === 1 ? '' : 's'}
           </div>
@@ -174,7 +190,7 @@ export function CostPanel() {
         <div class="p-3 rounded border border-[color:var(--color-border)]">
           <div class="text-xs text-[color:var(--color-fg-muted)]">Pr. Neuron (snit)</div>
           <div class="text-2xl font-mono">
-            {summary.avgCentsPerNeuron === 0 ? '—' : `${summary.avgCentsPerNeuron.toFixed(2)}¢`}
+            {summary.avgCentsPerNeuron === 0 ? '—' : fmt(summary.avgCentsPerNeuron)}
           </div>
           <div class="text-xs text-[color:var(--color-fg-muted)] mt-1">
             {summary.avgCentsPerNeuron === 0 ? 'ingen cost-data' : 'estimat'}
@@ -205,7 +221,7 @@ export function CostPanel() {
               return (
                 <div
                   key={d.date}
-                  title={`${d.date}: ${formatCents(d.cents)} · ${d.jobs} job${d.jobs === 1 ? '' : 's'}`}
+                  title={`${d.date}: ${fmt(d.cents)} · ${d.jobs} job${d.jobs === 1 ? '' : 's'}`}
                   class={
                     'flex-1 min-w-0 rounded-sm transition ' +
                     (d.cents > 0
@@ -306,7 +322,7 @@ export function CostPanel() {
                       {displayTitle(s.title, s.filename)}
                     </a>
                   </td>
-                  <td class="py-2 pr-3 text-right font-mono">{formatCents(s.cents)}</td>
+                  <td class="py-2 pr-3 text-right font-mono">{fmt(s.cents)}</td>
                   <td class="py-2 pr-3 text-right font-mono text-[color:var(--color-fg-muted)]">
                     {s.jobCount}
                   </td>
