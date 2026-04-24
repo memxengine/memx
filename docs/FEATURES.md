@@ -258,6 +258,26 @@ Curator-facing UI for F148's `broken_links`-findings. Ny route `/kb/:kbId/link-c
 |---|---------|--------|-------|------|
 | F150 | [Admin Link-Report Panel](features/F150-admin-link-report-panel.md) | Planned | 1 | [plan](features/F150-admin-link-report-panel.md) |
 
+### F151 — Cost & Quality Dashboard
+
+Admin-panel der gør F149's `cost_cents` + `model_trail`-data synligt. **Cost-tab** (`/kb/:kbId/cost`): line-chart af running total over 30/90/365d + top-10 dyreste sources + per-Neuron avg. + CSV-eksport. **Quality-tab** (`/kb/:kbId/sources/:sourceId/compare`): tabel-view af alle ingest-runs mod en kilde (model, cost, turns, wall-clock, neurons-skabt, wiki-links, entity-refs) + full-wiki-preview pr. row. Max Plan-kørsler vises som "gratis (Max)"-badge, aldrig som estimat. Data-backend: SQL-aggregering over `ingest_jobs` + `documents` + `wiki_backlinks` + `broken_links`; ingen nye tabeller, kun migration `0015` med date-index. Leverer grundlag for F152-recommendations og F43/F44 pricing-modellering.
+
+| # | Feature | Status | Phase | Plan |
+|---|---------|--------|-------|------|
+| F151 | [Cost & Quality Dashboard](features/F151-cost-quality-dashboard.md) | Planned | 1/2 | [plan](features/F151-cost-quality-dashboard.md) |
+
+### F152 — Runtime Model Switcher UI
+
+Admin-dropdown pr. KB der lader curator flippe `ingest_backend` + `ingest_model` live uden env-ændring eller redeploy. Kalder F149's `resolveIngestChain`-pure-function og viser preview af hvilken fallback-chain der ville blive brugt. Bygger på F151's quality-data så recommendation-badge kan vises ("Baseret på dine 12 ingests anbefales `gemini-2.5-flash`"). Inkluderer key-warning hvis valgt backend kræver API-key der ikke er sat i tenant_secrets. Integreres i eksisterende `settings-trail.tsx`-panel. Ingen nye migrations; 2 små nye endpoints (`/tenant-secrets/status`, `/knowledge-bases/:kbId/model-recommendation`). Depends on F149, F151 (for recommendation).
+
+| # | Feature | Status | Phase | Plan |
+|---|---------|--------|-------|------|
+| F152 | [Runtime Model Switcher UI](features/F152-runtime-model-switcher-ui.md) | Planned | 1/2 | [plan](features/F152-runtime-model-switcher-ui.md) |
+
+---
+
+**Se også:** [`NON-GOALS.md`](./NON-GOALS.md) — kuratert register over bevidst fravalg pr. F-plan (parked / declined / promoted / covered-by).
+
 ---
 
 ## Descriptions
@@ -536,6 +556,12 @@ Orphan-Neuron detection now skips Neurons whose originating candidate came from 
 
 ### F147 — Share Extension (iOS + Android)
 Native share targets for iOS og Android der lader brugeren sende tekst, links og billeder direkte fra andre apps til Trail. iOS Share Extension (Swift/SwiftUI) dukker op i share sheet som "Trail Clipper" og deler credentials med hoved-appen via App Group. Android Share Extension (Kotlin) gør det samme. Billeder sendes gennem den eksisterende vision backend for beskrivelse + OCR. Connector: `share-extension`.
+
+### F152 — Runtime Model Switcher UI
+Admin-dropdown i eksisterende `settings-trail.tsx` pr. KB der lader curator flippe `ingest_backend` + `ingest_model` live uden env-ændring eller redeploy. Viser preview af fallback-chain som `resolveIngestChain` ville returnere (Flash → GLM → Qwen → Claude API osv.). Recommendation-badge baseret på F151's quality-data ("Baseret på dine 12 ingests anbefales `gemini-2.5-flash`") — kræver ≥3 runs + ≥20% kvalitets-delta. Key-warning hvis valgt backend kræver API-key der ikke er sat i tenant_secrets; save-knap disabled indtil key konfigureret. Chain-konstanter flyttes til `packages/shared/src/ingest-chains.ts` så client + server deler én sandhed. To nye read-only endpoints: `GET /tenant-secrets/status` (kun boolean, aldrig secrets) og `GET /knowledge-bases/:kbId/model-recommendation`. Lille feature (1-1.5 dage); ingen migrations, ingen nye tabeller.
+
+### F151 — Cost & Quality Dashboard
+Admin-panel der gør F149's `cost_cents` + `model_trail`-data synligt for curator og ejer. **Cost-tab** (`/kb/:kbId/cost`): line-chart af running total cost over 30/90/365 dage, top-10 dyreste sources, per-Neuron avg-estimat, CSV-eksport. **Quality-tab** (`/kb/:kbId/sources/:sourceId/compare`): tabel-view af alle ingest-runs mod en given kilde med kolonner: model, cost, turns, wall-clock, neurons-skabt, wiki-links, entity-refs, open broken_links. Klik en række → full-wiki-preview af netop det `ingest_job_id`'s compiled neurons (embedded WikiReaderPanel read-only). Max Plan-kørsler (`cost_cents=0 && backend='claude-cli'`) rendres som "gratis (Max)"-badge, aldrig som estimat. Aggregering via SQL over eksisterende `ingest_jobs` + `documents` + `wiki_backlinks` + `document_references` + `broken_links` — ingen nye tabeller, kun migration `0015` der tilføjer date-index på `ingest_jobs`. Cache 60s med bust på `candidate_approved`-event. Leverer data-grundlag for F152-recommendations og backtesting af F43 pricing-tier-thresholds. Medium effort (2-3 dage).
 
 ### F150 — Admin Link-Report Panel
 Curator-facing UI til F148's `broken_links`-findings. Route `/kb/:kbId/link-check` renderer åbne findings i en tabel (source-Neuron, link-text, suggested_fix, reported_at) med [Accept] / [Dismiss] / [Reopen]-knapper pr. række + "Kør scan nu"-footer-knap. Accept-action anvender `suggested_fix` på Neuron'ens content via `str_replace(oldLink, suggestedFix)` + version-bump + flipper `broken_links.status='auto_fixed'` + setter `fixed_at`. Server-route-tilføjelsen `POST /link-check/:id/accept` lukker hullet fra F148 (som havde dismiss/reopen men ikke accept). Panel subscriber på SSE `candidate_approved`-events for live re-fetch. Sidebar "Link Check"-nav-item viser badge med antal åbne findings for aktiv KB. Empty-state: stort tjek-ikon + "Ingen broken links — din brain er intakt."

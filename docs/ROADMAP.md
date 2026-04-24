@@ -125,6 +125,8 @@ The remaining Phase 1 scope, ordered by leverage and dependency.
 | F148 | Link Integrity (ingen 404 i hjernen — 3 lag: prompt + URL-fold + link-checker) | F06, F32, F140 | Medium |
 | F149 | Pluggable Ingest Backends (Claude CLI + OpenRouter, live fallback chain, per-tenant billing, per-KB model) | F06, F111.2, F137, F140, F143, F148 | Large |
 | F150 | Admin Link-Report Panel (UI for F148 broken_links + accept/dismiss/reopen + SSE live-update) | F148, F87, F17, F18 | Small |
+| F151 | Cost & Quality Dashboard (cost-tab + side-by-side ingest-compare for F149 data) | F149, F143, F148 | Medium |
+| F152 | Runtime Model Switcher UI (per-KB model-dropdown, chain-preview, F151 recommendation-badge) | F149, F151, F18 | Small |
 
 ### Pipelines + Adapters — widen the ingest surface
 
