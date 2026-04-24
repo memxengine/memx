@@ -2,18 +2,26 @@ import { useEffect, useState } from 'preact/hooks';
 import { useRoute } from 'preact-iso';
 import { useKb } from '../lib/kb-cache';
 import { t } from '../lib/i18n';
-import { getCostSummary, costCsvUrl, ApiError, type CostSummary } from '../api';
+import {
+  getCostSummary,
+  costCsvUrl,
+  getCostSources,
+  ApiError,
+  type CostSummary,
+  type CostSourcesPage,
+  type CostSourceSort,
+  type CostSortOrder,
+} from '../api';
 import { CenteredLoader } from '../components/centered-loader';
 
 /**
- * F151 — Cost tab. Shows running total, daily bar-chart (CSS-only),
- * top-10 most expensive sources, per-Neuron avg estimate, and CSV
- * export. Data source: GET /knowledge-bases/:kbId/cost.
+ * F151 — Cost tab. Shows running total, daily CSS-only bar-chart,
+ * top-line metrics, and a paginated + sortable source list.
  *
- * No chart library — a simple flex-box bar rendering keeps the
- * admin bundle small (F18 values). A cost curve doesn't need
- * 200KB of Recharts. If that changes (logarithmic scale, hover,
- * etc.), swap in shadcn's chart component later.
+ * The summary (totals, chart, window metrics) loads from
+ * GET /cost once per window-change; the source list is a separate
+ * paginated query so curators with 500-source KBs don't pay the
+ * cost of shipping everything up-front.
  */
 
 const WINDOWS: Array<{ value: number; label: string }> = [
@@ -23,10 +31,20 @@ const WINDOWS: Array<{ value: number; label: string }> = [
   { value: 365, label: '1y' },
 ];
 
+const PAGE_SIZE = 25;
+
 function formatCents(cents: number): string {
   if (cents === 0) return '0¢';
   if (cents < 100) return `${cents}¢`;
   return `$${(cents / 100).toFixed(2)}`;
+}
+
+function displayTitle(title: string | null, filename: string): string {
+  // Strip trailing `.md` / `.pdf` / etc. extensions when we're falling
+  // back to the filename — per Christian 2026-04-24: extension is noise
+  // in a source-list for non-technical curators.
+  if (title && title.trim().length > 0) return title;
+  return filename.replace(/\.[a-z0-9]+$/i, '');
 }
 
 export function CostPanel() {
@@ -38,6 +56,15 @@ export function CostPanel() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Source-list pagination + sort state
+  const [sort, setSort] = useState<CostSourceSort>('cost');
+  const [order, setOrder] = useState<CostSortOrder>('desc');
+  const [offset, setOffset] = useState(0);
+  const [sourcesPage, setSourcesPage] = useState<CostSourcesPage | null>(null);
+  const [sourcesLoading, setSourcesLoading] = useState(false);
+
+  // Summary fetch (totals + chart). Separate from source list because
+  // they have different cache + invalidation characteristics.
   useEffect(() => {
     if (!kbId) return;
     setLoading(true);
@@ -53,6 +80,42 @@ export function CostPanel() {
       });
   }, [kbId, window]);
 
+  // Source-list fetch. Refetches whenever window, sort, order, or
+  // offset changes.
+  useEffect(() => {
+    if (!kbId) return;
+    setSourcesLoading(true);
+    getCostSources(kbId, { windowDays: window, sort, order, offset, limit: PAGE_SIZE })
+      .then((p) => {
+        setSourcesPage(p);
+        setSourcesLoading(false);
+      })
+      .catch((err: ApiError) => {
+        setError(err.message);
+        setSourcesLoading(false);
+      });
+  }, [kbId, window, sort, order, offset]);
+
+  // Reset offset when the user changes window OR sort — landing on
+  // page 7 of a different sort is confusing.
+  useEffect(() => {
+    setOffset(0);
+  }, [window, sort, order]);
+
+  function toggleSort(key: CostSourceSort): void {
+    if (sort === key) {
+      setOrder(order === 'desc' ? 'asc' : 'desc');
+    } else {
+      setSort(key);
+      setOrder(key === 'filename' || key === 'title' ? 'asc' : 'desc');
+    }
+  }
+
+  function sortIndicator(key: CostSourceSort): string {
+    if (sort !== key) return '';
+    return order === 'desc' ? ' ↓' : ' ↑';
+  }
+
   if (loading || !summary) {
     return <CenteredLoader />;
   }
@@ -61,6 +124,11 @@ export function CostPanel() {
   }
 
   const maxDayCents = Math.max(...summary.byDay.map((d) => d.cents), 1);
+  const total = sourcesPage?.total ?? 0;
+  const pageStart = offset + 1;
+  const pageEnd = offset + (sourcesPage?.sources.length ?? 0);
+  const hasPrev = offset > 0;
+  const hasNext = sourcesPage !== null && pageEnd < total;
 
   return (
     <div class="page-shell space-y-6">
@@ -152,26 +220,80 @@ export function CostPanel() {
         )}
       </div>
 
-      {/* Top sources */}
+      {/* Paginated + sortable source list */}
       <div>
-        <h2 class="text-sm font-medium mb-2 text-[color:var(--color-fg-muted)]">
-          Dyreste kilder
-        </h2>
-        {summary.bySource.length === 0 ? (
+        <div class="flex items-baseline justify-between mb-2">
+          <h2 class="text-sm font-medium text-[color:var(--color-fg-muted)]">
+            Kilder
+            {sourcesPage && total > 0 ? (
+              <span class="ml-2 font-normal">
+                ({pageStart}–{pageEnd} af {total})
+              </span>
+            ) : null}
+          </h2>
+          <div class="flex items-center gap-1">
+            <button
+              disabled={!hasPrev || sourcesLoading}
+              onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
+              class={
+                'px-2 py-1 text-xs font-mono rounded transition ' +
+                (hasPrev && !sourcesLoading
+                  ? 'text-[color:var(--color-fg-muted)] hover:text-[color:var(--color-fg)]'
+                  : 'text-[color:var(--color-fg-subtle)] cursor-not-allowed')
+              }
+            >
+              ← forrige
+            </button>
+            <button
+              disabled={!hasNext || sourcesLoading}
+              onClick={() => setOffset(offset + PAGE_SIZE)}
+              class={
+                'px-2 py-1 text-xs font-mono rounded transition ' +
+                (hasNext && !sourcesLoading
+                  ? 'text-[color:var(--color-fg-muted)] hover:text-[color:var(--color-fg)]'
+                  : 'text-[color:var(--color-fg-subtle)] cursor-not-allowed')
+              }
+            >
+              næste →
+            </button>
+          </div>
+        </div>
+        {sourcesPage === null || sourcesPage.sources.length === 0 ? (
           <div class="p-4 text-sm text-[color:var(--color-fg-muted)] border border-dashed border-[color:var(--color-border)] rounded">
-            Ingen kilder med cost-data endnu.
+            Ingen kilder med ingest-historik i dette vindue endnu.
           </div>
         ) : (
           <table class="w-full text-sm">
             <thead class="text-xs text-[color:var(--color-fg-muted)] uppercase tracking-wide text-left">
               <tr class="border-b border-[color:var(--color-border)]">
-                <th class="py-2 pr-3">Kilde</th>
-                <th class="py-2 pr-3 text-right">Cost</th>
-                <th class="py-2 text-right">Ingests</th>
+                <th
+                  class="py-2 pr-3 cursor-pointer select-none hover:text-[color:var(--color-fg)]"
+                  onClick={() => toggleSort('title')}
+                >
+                  Kilde{sortIndicator('title')}
+                </th>
+                <th
+                  class="py-2 pr-3 text-right cursor-pointer select-none hover:text-[color:var(--color-fg)]"
+                  onClick={() => toggleSort('cost')}
+                >
+                  Cost{sortIndicator('cost')}
+                </th>
+                <th
+                  class="py-2 pr-3 text-right cursor-pointer select-none hover:text-[color:var(--color-fg)]"
+                  onClick={() => toggleSort('jobs')}
+                >
+                  Ingests{sortIndicator('jobs')}
+                </th>
+                <th
+                  class="py-2 text-right cursor-pointer select-none hover:text-[color:var(--color-fg)]"
+                  onClick={() => toggleSort('recent')}
+                >
+                  Senest{sortIndicator('recent')}
+                </th>
               </tr>
             </thead>
             <tbody>
-              {summary.bySource.map((s) => (
+              {sourcesPage.sources.map((s) => (
                 <tr
                   key={s.documentId}
                   class="border-b border-[color:var(--color-border)] hover:bg-[color:var(--color-bg-subtle)]"
@@ -181,15 +303,15 @@ export function CostPanel() {
                       href={`/kb/${kbId}/sources/${s.documentId}/compare`}
                       class="hover:underline"
                     >
-                      {s.title ?? s.filename}
+                      {displayTitle(s.title, s.filename)}
                     </a>
-                    <div class="text-xs text-[color:var(--color-fg-muted)] font-mono">
-                      {s.filename}
-                    </div>
                   </td>
                   <td class="py-2 pr-3 text-right font-mono">{formatCents(s.cents)}</td>
-                  <td class="py-2 text-right font-mono text-[color:var(--color-fg-muted)]">
+                  <td class="py-2 pr-3 text-right font-mono text-[color:var(--color-fg-muted)]">
                     {s.jobCount}
+                  </td>
+                  <td class="py-2 text-right font-mono text-xs text-[color:var(--color-fg-muted)]">
+                    {s.lastIngestedAt ? s.lastIngestedAt.slice(0, 10) : '—'}
                   </td>
                 </tr>
               ))}

@@ -793,6 +793,46 @@ export function costCsvUrl(kbId: string, windowDays = 30): string {
   return `/api/v1/knowledge-bases/${encodeURIComponent(kbId)}/cost.csv?window=${windowDays}`;
 }
 
+export type CostSourceSort = 'cost' | 'jobs' | 'filename' | 'title' | 'recent';
+export type CostSortOrder = 'asc' | 'desc';
+
+export interface CostSourcesPage {
+  sources: Array<{
+    documentId: string;
+    filename: string;
+    title: string | null;
+    cents: number;
+    jobCount: number;
+    lastIngestedAt: string | null;
+  }>;
+  total: number;
+  limit: number;
+  offset: number;
+  sort: CostSourceSort;
+  order: CostSortOrder;
+}
+
+export function getCostSources(
+  kbId: string,
+  opts: {
+    windowDays?: number;
+    sort?: CostSourceSort;
+    order?: CostSortOrder;
+    limit?: number;
+    offset?: number;
+  } = {},
+): Promise<CostSourcesPage> {
+  const qs = new URLSearchParams();
+  qs.set('window', String(opts.windowDays ?? 30));
+  qs.set('sort', opts.sort ?? 'cost');
+  qs.set('order', opts.order ?? 'desc');
+  qs.set('limit', String(opts.limit ?? 25));
+  qs.set('offset', String(opts.offset ?? 0));
+  return api<CostSourcesPage>(
+    `/api/v1/knowledge-bases/${encodeURIComponent(kbId)}/cost/sources?${qs.toString()}`,
+  );
+}
+
 export interface QualityRun {
   jobId: string;
   status: string;

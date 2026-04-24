@@ -19,7 +19,15 @@ import { documents } from '@trail/db';
 import { eq, and } from 'drizzle-orm';
 import { requireAuth, getTenant, getTrail } from '../middleware/auth.js';
 import { resolveKbId } from '@trail/core';
-import { getCostSummary, getCostCsvRows, renderCostCsv, getQualityRuns } from '../services/cost-aggregator.js';
+import {
+  getCostSummary,
+  getCostCsvRows,
+  renderCostCsv,
+  getQualityRuns,
+  getCostSourcesPage,
+  type SourceSortKey,
+  type SortOrder,
+} from '../services/cost-aggregator.js';
 
 export const costRoutes = new Hono();
 
@@ -42,6 +50,36 @@ costRoutes.get('/knowledge-bases/:kbId/cost', async (c) => {
   const window = parseWindow(c.req.query('window'));
   const summary = await getCostSummary(trail, tenant.id, kbId, window);
   return c.json(summary);
+});
+
+const SORT_KEYS = new Set(['cost', 'jobs', 'filename', 'title', 'recent']);
+
+/**
+ * Paginated + sortable source list. Separate from the summary so
+ * the top-line view stays snappy; the fuller "alle kilder"-tabel
+ * only hits this when the curator actually scrolls/sorts.
+ */
+costRoutes.get('/knowledge-bases/:kbId/cost/sources', async (c) => {
+  const trail = getTrail(c);
+  const tenant = getTenant(c);
+  const kbId = await resolveKbId(trail, tenant.id, c.req.param('kbId'));
+  if (!kbId) return c.json({ error: 'Knowledge base not found' }, 404);
+
+  const windowDays = parseWindow(c.req.query('window'));
+  const rawSort = (c.req.query('sort') ?? 'cost').toLowerCase();
+  const sort: SourceSortKey = (SORT_KEYS.has(rawSort) ? rawSort : 'cost') as SourceSortKey;
+  const order: SortOrder = c.req.query('order') === 'asc' ? 'asc' : 'desc';
+  const limit = Math.max(1, Math.min(parseInt(c.req.query('limit') ?? '25', 10) || 25, 200));
+  const offset = Math.max(0, parseInt(c.req.query('offset') ?? '0', 10) || 0);
+
+  const page = await getCostSourcesPage(trail, tenant.id, kbId, {
+    windowDays,
+    sort,
+    order,
+    limit,
+    offset,
+  });
+  return c.json(page);
 });
 
 costRoutes.get('/knowledge-bases/:kbId/cost.csv', async (c) => {

@@ -184,6 +184,119 @@ function padDays(
   return out;
 }
 
+// ── Paginated + sortable source list ───────────────────────────────────
+
+export type SourceSortKey = 'cost' | 'jobs' | 'filename' | 'title' | 'recent';
+export type SortOrder = 'asc' | 'desc';
+
+export interface SourcePage {
+  sources: Array<{
+    documentId: string;
+    filename: string;
+    title: string | null;
+    cents: number;
+    jobCount: number;
+    lastIngestedAt: string | null;
+  }>;
+  total: number;
+  limit: number;
+  offset: number;
+  sort: SourceSortKey;
+  order: SortOrder;
+}
+
+const SORT_COLUMN: Record<SourceSortKey, string> = {
+  cost: 'cents',
+  jobs: 'job_count',
+  filename: 'filename',
+  title: 'title',
+  recent: 'last_ingested_at',
+};
+
+/**
+ * Full paginated + sortable source list for the Cost panel's
+ * "alle kilder" table. Separate from getCostSummary's top-10 so the
+ * summary endpoint stays snappy; curator pays the fan-out query cost
+ * only when they actively page/sort.
+ *
+ * Serves cached when the cache contains a fresh match with the same
+ * params; otherwise queries + caches.
+ */
+export async function getCostSourcesPage(
+  trail: TrailDatabase,
+  tenantId: string,
+  kbId: string,
+  opts: {
+    windowDays: number;
+    sort: SourceSortKey;
+    order: SortOrder;
+    limit: number;
+    offset: number;
+  },
+): Promise<SourcePage> {
+  const windowCutoff = `date('now', '-${Math.max(1, Math.floor(opts.windowDays))} days')`;
+  const limit = Math.max(1, Math.min(opts.limit, 200));
+  const offset = Math.max(0, opts.offset);
+  const column = SORT_COLUMN[opts.sort];
+  const order = opts.order === 'asc' ? 'ASC' : 'DESC';
+  // Stable secondary sort so pagination doesn't reshuffle ties.
+  const orderClause = `${column} ${order} NULLS LAST, d.id ASC`;
+
+  const totalRow = (await trail.execute(
+    `SELECT COUNT(DISTINCT d.id) AS total
+     FROM ingest_jobs j
+     JOIN documents d ON d.id = j.document_id
+     WHERE j.tenant_id = ?
+       AND j.knowledge_base_id = ?
+       AND j.status = 'done'
+       AND j.started_at >= ${windowCutoff}`,
+    [tenantId, kbId],
+  )).rows[0] as { total: number };
+
+  const rows = (await trail.execute(
+    `SELECT
+       d.id AS document_id,
+       d.filename,
+       d.title,
+       COALESCE(SUM(j.cost_cents), 0) AS cents,
+       COUNT(*) AS job_count,
+       MAX(j.completed_at) AS last_ingested_at
+     FROM ingest_jobs j
+     JOIN documents d ON d.id = j.document_id
+     WHERE j.tenant_id = ?
+       AND j.knowledge_base_id = ?
+       AND j.status = 'done'
+       AND j.started_at >= ${windowCutoff}
+     GROUP BY d.id
+     ORDER BY ${orderClause}
+     LIMIT ? OFFSET ?`,
+    [tenantId, kbId, limit, offset],
+  )).rows as Array<{
+    document_id: string;
+    filename: string;
+    title: string | null;
+    cents: number;
+    job_count: number;
+    last_ingested_at: string | null;
+  }>;
+
+  return {
+    sources: rows.map((r) => ({
+      documentId: r.document_id,
+      filename: r.filename,
+      title: r.title,
+      cents: r.cents,
+      jobCount: r.job_count,
+      lastIngestedAt: r.last_ingested_at,
+    })),
+    total: totalRow.total,
+    limit,
+    offset,
+    sort: opts.sort,
+    order: opts.order,
+  };
+}
+
 // ── CSV export ──────────────────────────────────────────────────────────
 
 export interface CostCsvRow {
