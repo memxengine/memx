@@ -4,7 +4,7 @@
 
 ## Problem
 
-`SAAS-SCALING-PLAN.md` beskriver en fleet på op til 45-50 Fly Machines ved Stadig 3 (200-500 tenants). Den fleet kan **ikke** drives fra terminalen. Christian skal:
+`SAAS-SCALING-PLAN.md` beskriver en fleet på op til 45-50 Fly Machines ved Stadie 3 (200-500 tenants). Den fleet kan **ikke** drives fra terminalen. Christian skal:
 
 - Se hvilke Machines der kører, i hvilke regions, med hvilke tenants
 - Spawne ny tenant uden at skrive `fly machines run` manuelt
@@ -46,7 +46,7 @@ Og skriver til:
 ## Non-Goals
 
 - **Ikke tenant-facing.** End-users logger på `app.trailmem.com` (engine), ikke Control Plane. Helt adskilte UI-kodebaser.
-- **Ikke erstatning for Fly Dashboard.** Fly's egen UI bruges stadig til root-ops (billing, org-settings, WireGuard, secrets-rotation). Control Plane er et *tenant-centered* lag ovenpå.
+- **Ikke erstatning for Fly Dashboard.** Fly's egen UI bruges stadie til root-ops (billing, org-settings, WireGuard, secrets-rotation). Control Plane er et *tenant-centered* lag ovenpå.
 - **Ikke automation af pool-provisioning.** F154 viser + udløser manuelle handlinger. Auto-scaling (policy-drevet automatisk spawn) er F155's scope.
 - **Ikke multi-org.** Control Plane kender kun broberg-ai Fly-org. Hvis vi får Reseller Partners der kører deres egen Fly-org, bygger vi en separat `ops-partner.trailmem.com` senere.
 - **Ikke mobile-first.** Desktop-first UI. Mobile notifications håndteres via F154's alerting, ikke et mobile-UI.
@@ -371,9 +371,9 @@ Ingen på tenant-facing flader. Det eneste der er additivt:
 - [ ] Integration: Operatør uden Fly CLI kan provisione via UI
 - [ ] Manual: Verify alert email ankommer <30s efter engine-emit
 - [ ] Manual: Cost-view viser >0 spend efter 24 timer
-- [ ] Regression: Engine tenant-ops (F40) stadig virker uændret
-- [ ] Regression: F153 R2-backup stadig kører på alle tenant-DB'er (inkl. Control Plane audit-db)
-- [ ] Regression: F143 persistent ingest queue stadig overlever engine-restart
+- [ ] Regression: Engine tenant-ops (F40) stadie virker uændret
+- [ ] Regression: F153 R2-backup stadie kører på alle tenant-DB'er (inkl. Control Plane audit-db)
+- [ ] Regression: F143 persistent ingest queue stadie overlever engine-restart
 
 ## Implementation Steps
 
@@ -424,4 +424,4 @@ Ingen på tenant-facing flader. Det eneste der er additivt:
 - Phase 3 (impersonate + export + decommission): 3-4 dage
 - Phase 4 (on-call handoff + runbooks): 1-2 dage
 
-Kritisk: Phase 1 skal lande **sammen med F33**, så første tenant-onboarding efter Sanne sker via Control Plane, ikke CLI. Phase 2-4 kan shippes iterativt over Stadig 2 → Stadig 3-overgangen.
+Kritisk: Phase 1 skal lande **sammen med F33**, så første tenant-onboarding efter Sanne sker via Control Plane, ikke CLI. Phase 2-4 kan shippes iterativt over Stadie 2 → Stadie 3-overgangen.

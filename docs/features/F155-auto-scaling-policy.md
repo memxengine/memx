@@ -4,7 +4,7 @@
 
 ## Problem
 
-F154 Control Plane giver Christian en UI til at spawn/resize Machines manuelt. Men ved Stadig 3 (200-500 tenants, 45-50 Machines) er manuelt ikke realistisk:
+F154 Control Plane giver Christian en UI til at spawn/resize Machines manuelt. Men ved Stadie 3 (200-500 tenants, 45-50 Machines) er manuelt ikke realistisk:
 
 - Pro-pool-1 rammer 13/15 tenant-kapacitet kl. 23:00 en søndag. Christian sover.
 - En Business-tenant starter et 500-PDF batch-ingest og CPU på deres dedicated Machine raser fra 40% til 95%. Christian er på ferie.
@@ -317,7 +317,7 @@ GET   /policy/history                → audit-samlet, filter by rule_id/tenant/
 - `apps/control-plane/src/app.tsx` — register auto-scale panel routes
 - `docs/FEATURES.md` — index row
 - `docs/ROADMAP.md` — Phase 2 entry
-- `docs/DEPLOYMENT-STAGES.md` — cross-reference F155 i Stadig 3-sektionen
+- `docs/DEPLOYMENT-STAGES.md` — cross-reference F155 i Stadie 3-sektionen
 
 ### Downstream dependents
 

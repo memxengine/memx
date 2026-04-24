@@ -8,11 +8,11 @@
 
 ## Hvorfor dette dokument
 
-`SAAS-SCALING-PLAN.md` svarer på *hvordan* vi bygger en multi-tenant SaaS. Det dokument her svarer på **hvordan den ser ud fra uden på hvert stadig**, så vi kan have en konkret mental model af:
+`SAAS-SCALING-PLAN.md` svarer på *hvordan* vi bygger en multi-tenant SaaS. Det dokument her svarer på **hvordan den ser ud fra uden på hvert stadie**, så vi kan have en konkret mental model af:
 
-- Hvad koster infrastruktur pr. måned ved stadig 1, 2, 3?
-- Hvad tjener vi pr. måned på hvert stadig?
-- Hvornår trigger stadig 1 → 2 → 3?
+- Hvad koster infrastruktur pr. måned ved stadie 1, 2, 3?
+- Hvad tjener vi pr. måned på hvert stadie?
+- Hvornår trigger stadie 1 → 2 → 3?
 - Hvem skal agere på hvilke signaler?
 
 Målet er ikke at gentage beslutningerne i `SAAS-SCALING-PLAN.md` (libSQL embedded per-tenant, Fly.io, Tigris+R2, EUR-priser). Målet er at gøre dem **navigerbare**.
@@ -35,11 +35,11 @@ Før stadiumsvisningen: fire ting der er låst, så vi ikke diskuterer dem hver 
 4. **Stockholm (`arn`) er default region.**
    EU-data-residency out-of-the-box. Global distribution er Business+ opt-in via F77.
 
-Disse fire beslutninger gør stadig-evolutionen **ren horisontal skalering** — vi tilføjer Fly-Machines, vi migrerer ikke mellem databaser, cloud-providers eller arkitekturer.
+Disse fire beslutninger gør stadie-evolutionen **ren horisontal skalering** — vi tilføjer Fly-Machines, vi migrerer ikke mellem databaser, cloud-providers eller arkitekturer.
 
 ---
 
-## Stadig 1 — Single-tenant Fly app (1-2 tenants)
+## Stadie 1 — Single-tenant Fly app (1-2 tenants)
 
 **Hvornår:** M1-M4. Sanne er customer #1, FysioDK Aalborg er kandidat #2. Måske 1-2 andre invites.
 **Revenue-mål:** €0-150/mo (Sanne er gratis dogfood; #2 er betalt Pro).
@@ -77,11 +77,11 @@ Total infrastructure: €51/mo
 - Volume fyldes op → Fly alerter, vi resize'r (no-downtime)
 - Single-point-of-failure ved Machine-crash → cold-start ~30s, acceptable
 
-**Trigger til Stadig 2:** Første betalte Pro-kunde kommer ind ELLER tenant-antal >5 ELLER Machine-CPU >70% gennemsnitligt over 24 timer.
+**Trigger til Stadie 2:** Første betalte Pro-kunde kommer ind ELLER tenant-antal >5 ELLER Machine-CPU >70% gennemsnitligt over 24 timer.
 
 ---
 
-## Stadig 2 — Shared Nodes + første dedicated (10-20 tenants)
+## Stadie 2 — Shared Nodes + første dedicated (10-20 tenants)
 
 **Hvornår:** M6-M10. Efter F40 multi-tenancy er live og F43 Stripe billing er aktiv.
 **Revenue-mål:** €500-3000 MRR.
@@ -131,11 +131,11 @@ Gross margin: (1679 − 326) / 1679 = 81%
 - Starter-pool får noisy neighbor der spammer ingest → F21 backpressure beskytter, F32 lint scheduler yielder
 - Hobby-pool rammer 200 tenants → spawn `trail-hobby-pool-2`
 
-**Trigger til Stadig 3:** >100 tenants eller >3 dedicerede Business-Machines eller første Enterprise-kunde.
+**Trigger til Stadie 3:** >100 tenants eller >3 dedicerede Business-Machines eller første Enterprise-kunde.
 
 ---
 
-## Stadig 3 — Multi-Node fleet (200-500 tenants)
+## Stadie 3 — Multi-Node fleet (200-500 tenants)
 
 **Hvornår:** M12-M18. Efter F77 multi-region (Business+ opt-in) og første Enterprise-kontrakt.
 **Revenue-mål:** €25-75K MRR.
@@ -188,15 +188,15 @@ Gross margin: (40280 − 7100) / 40280 = 82%
 - En enkelt Enterprise-tenant bliver for stor for single-Machine → evaluering af Postgres-migration (F84) eller Turso Cloud embedded replicas
 - DDoS → Cloudflare WAF foran Fly Anycast
 
-**Trigger til hypotetisk Stadig 4:** >1000 tenants ELLER single-tenant >1M Neurons ELLER multi-region-latency krav <50ms globalt. Her begynder vi for første gang at overveje Kubernetes eller Postgres — men det er **ikke** på roadmap nu.
+**Trigger til hypotetisk Stadie 4:** >1000 tenants ELLER single-tenant >1M Neurons ELLER multi-region-latency krav <50ms globalt. Her begynder vi for første gang at overveje Kubernetes eller Postgres — men det er **ikke** på roadmap nu.
 
 ---
 
-## Skaleringstriggere — hvornår går vi fra et stadig til det næste
+## Skaleringstriggere — hvornår går vi fra et stadie til det næste
 
 Control Plane overvåger disse signaler og alerter:
 
-| Signal | Stadig 1→2 | Stadig 2→3 |
+| Signal | Stadie 1→2 | Stadie 2→3 |
 |---|---|---|
 | Antal tenants totalt | >5 | >100 |
 | Antal betalte tenants | >1 | >25 |
@@ -211,9 +211,9 @@ Ingen af disse er automatiske upgrades — de er **alerts** til F154 Control Pla
 
 ---
 
-## Cost & indtjening — stadig-for-stadig
+## Cost & indtjening — stadie-for-stadie
 
-| Stadig | Tenants | Fly + storage + DNS | Revenue (typisk mix) | GM | Net |
+| Stadie | Tenants | Fly + storage + DNS | Revenue (typisk mix) | GM | Net |
 |---|---|---|---|---|---|
 | 1 | 1-2 | €51/mo | €0-150/mo | — | break-even ved tenant #2 |
 | 2 | 10-20 | €326/mo | €1-3K MRR | 80-83% | €1.3-2.7K profit/mo |
@@ -243,20 +243,20 @@ F155 (Auto-scaling Policy) automatiserer delmængden "pool-scaleup" og "performa
 
 - Ingen detaljeret tier-arkitektur (læs `SAAS-SCALING-PLAN.md`).
 - Ingen per-feature-plan (hver F-feature har sin egen plan-doc).
-- Ingen operations-runbook (F73 SOC 2 prep giver os det til Stadig 3).
+- Ingen operations-runbook (F73 SOC 2 prep giver os det til Stadie 3).
 - Ingen konkret tidsplan — datoerne ovenfor er vejledende, ikke committed.
 
 ---
 
 ## Cross-references
 
-- **F33** Fly.io server deploy — forudsætning for Stadig 1.
-- **F40** Multi-tenancy — forudsætning for Stadig 2.
-- **F41** Tenant provisioning + signup — drev for Stadig 2 growth.
+- **F33** Fly.io server deploy — forudsætning for Stadie 1.
+- **F40** Multi-tenancy — forudsætning for Stadie 2.
+- **F41** Tenant provisioning + signup — drev for Stadie 2 growth.
 - **F42** Pluggable storage (Tigris + R2) — baseline for alle stadier.
-- **F43** Stripe billing — nødvendigt for Stadig 2.
+- **F43** Stripe billing — nødvendigt for Stadie 2.
 - **F44** Usage metering — signalkilde for Control Plane alerts.
-- **F77** Multi-region — opt-in per tenant ved Stadig 3.
+- **F77** Multi-region — opt-in per tenant ved Stadie 3.
 - **F153** Continuous R2 backup — infrastruktur-primitiv, brug alle stadier.
-- **F154** Trail Control Plane — **operationelt nødvendig** ved Stadig 2, kritisk ved Stadig 3.
+- **F154** Trail Control Plane — **operationelt nødvendig** ved Stadie 2, kritisk ved Stadie 3.
 - **F155** [Auto-scaling Policy](./features/F155-auto-scaling-policy.md) — automatiserer delmængden af Control Plane-handlinger via yaml-policy med safety rails.
