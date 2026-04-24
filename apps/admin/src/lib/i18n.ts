@@ -118,13 +118,24 @@ function lookup(dict: Dict, path: string): string | null {
  * when the requested locale field is missing — the translation service
  * fills those in lazily, so the first view in Danish of a fresh candidate
  * renders English until the async translation lands.
+ *
+ * Accepts a plain string as an already-translated value. Many legacy
+ * candidates (436+ `ingest-page-update` rows as of 2026-04-25) persisted
+ * `{ label: "Approve" }` instead of the bilingual struct. Without
+ * string-tolerance here, those rows render blank labels — the curator
+ * sees empty option-buttons with only the "▼ Hvad betyder det her?"
+ * hint below, which looks broken.
  */
-export function bilingual(text: BilingualText | undefined, locale?: Locale): string {
-  if (!text) return '';
+export function bilingual(
+  text: BilingualText | string | undefined,
+  locale?: Locale,
+): string {
+  if (text === undefined || text === null) return '';
+  if (typeof text === 'string') return text;
   const loc = locale ?? currentLocale;
   const specific = (text as Record<string, unknown>)[loc];
   if (typeof specific === 'string' && specific.length > 0) return specific;
-  return text.en;
+  return text.en ?? '';
 }
 
 // Set the <html lang="..."> attribute once at startup so screen readers
