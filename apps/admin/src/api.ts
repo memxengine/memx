@@ -773,8 +773,9 @@ export async function uploadSource(
 export interface CostSummary {
   windowDays: number;
   totalCents: number;
+  totalEstimatedCents: number | null;
   jobCount: number;
-  byDay: Array<{ date: string; cents: number; jobs: number }>;
+  byDay: Array<{ date: string; cents: number; jobs: number; estimatedCents: number | null }>;
   bySource: Array<{
     documentId: string;
     filename: string;
@@ -783,10 +784,12 @@ export interface CostSummary {
     jobCount: number;
   }>;
   avgCentsPerNeuron: number;
+  includeShadow: boolean;
 }
 
-export function getCostSummary(kbId: string, windowDays = 30): Promise<CostSummary> {
-  return api<CostSummary>(`/api/v1/knowledge-bases/${encodeURIComponent(kbId)}/cost?window=${windowDays}`);
+export function getCostSummary(kbId: string, windowDays = 30, includeShadow = false): Promise<CostSummary> {
+  const shadowParam = includeShadow ? '&shadow=1' : '';
+  return api<CostSummary>(`/api/v1/knowledge-bases/${encodeURIComponent(kbId)}/cost?window=${windowDays}${shadowParam}`);
 }
 
 export function costCsvUrl(kbId: string, windowDays = 30): string {

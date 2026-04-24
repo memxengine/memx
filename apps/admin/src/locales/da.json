@@ -51,6 +51,12 @@
       "of": "af",
       "prev": "← forrige",
       "next": "næste →"
+    },
+    "shadow": {
+      "toggle": "Vis estimat for før-F149 ingester",
+      "hint": "Tilføj et groft Sonnet-API-estimat oven på reel cost for jobs der kørte før cost-tracking blev aktiveret. ±30–50%.",
+      "plus": "+ {amount} estimeret",
+      "realZeroNote": "Den faktiske out-of-pocket-omkostning for disse jobs var 0 (Max Plan)."
     }
   },
   "quality": {

@@ -50,6 +50,13 @@ export function CostPanel() {
   const kb = useKb(kbId);
   const locale = useLocale();
   const [window, setWindow] = useState<number>(30);
+  const [includeShadow, setIncludeShadow] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('trail.admin.cost.shadow') === '1';
+    } catch {
+      return false;
+    }
+  });
   const [summary, setSummary] = useState<CostSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -85,7 +92,7 @@ export function CostPanel() {
     if (!kbId) return;
     setLoading(true);
     setError(null);
-    getCostSummary(kbId, window)
+    getCostSummary(kbId, window, includeShadow)
       .then((s) => {
         setSummary(s);
         setLoading(false);
@@ -94,7 +101,16 @@ export function CostPanel() {
         setError(err.message);
         setLoading(false);
       });
-  }, [kbId, window]);
+  }, [kbId, window, includeShadow]);
+
+  // Persist shadow-toggle across page reloads.
+  useEffect(() => {
+    try {
+      localStorage.setItem('trail.admin.cost.shadow', includeShadow ? '1' : '0');
+    } catch {
+      /* no localStorage (SSR, sandboxed) — ignore */
+    }
+  }, [includeShadow]);
 
   // Source-list fetch. Refetches whenever window, sort, order, or
   // offset changes.
@@ -139,7 +155,13 @@ export function CostPanel() {
     return <div class="page-shell text-red-500">Error: {error}</div>;
   }
 
-  const maxDayCents = Math.max(...summary.byDay.map((d) => d.cents), 1);
+  // When shadow is active, use cents + estimatedCents for the chart
+  // height; gives curator a visual of the full cost picture.
+  const effectiveByDay = summary.byDay.map((d) => ({
+    ...d,
+    effectiveCents: d.cents + (includeShadow ? d.estimatedCents ?? 0 : 0),
+  }));
+  const maxDayCents = Math.max(...effectiveByDay.map((d) => d.effectiveCents), 1);
   const total = sourcesPage?.total ?? 0;
   const pageStart = offset + 1;
   const pageEnd = offset + (sourcesPage?.sources.length ?? 0);
@@ -178,11 +200,29 @@ export function CostPanel() {
         </div>
       </div>
 
+      {/* Shadow-estimate toggle */}
+      <label
+        class="flex items-center gap-2 text-xs text-[color:var(--color-fg-muted)] cursor-pointer select-none hover:text-[color:var(--color-fg)]"
+        title={t('cost.shadow.hint')}
+      >
+        <input
+          type="checkbox"
+          checked={includeShadow}
+          onChange={(e) => setIncludeShadow((e.currentTarget as HTMLInputElement).checked)}
+        />
+        <span>{t('cost.shadow.toggle')}</span>
+      </label>
+
       {/* Top-line metrics */}
       <div class="grid grid-cols-3 gap-4">
         <div class="p-3 rounded border border-[color:var(--color-border)]">
           <div class="text-xs text-[color:var(--color-fg-muted)]">{t('cost.total')}</div>
           <div class="text-2xl font-mono">{fmt(summary.totalCents)}</div>
+          {includeShadow && summary.totalEstimatedCents && summary.totalEstimatedCents > 0 ? (
+            <div class="text-xs text-[color:var(--color-fg-muted)] mt-1 italic">
+              {t('cost.shadow.plus', { amount: fmt(summary.totalEstimatedCents) })}
+            </div>
+          ) : null}
           <div class="text-xs text-[color:var(--color-fg-muted)] mt-1">
             {summary.jobCount}{' '}
             {t(summary.jobCount === 1 ? 'cost.ingest_one' : 'cost.ingest_other')}
@@ -217,18 +257,26 @@ export function CostPanel() {
           </div>
         ) : (
           <div class="flex items-end gap-px h-24 p-2 border border-[color:var(--color-border)] rounded bg-[color:var(--color-bg-subtle)]">
-            {summary.byDay.map((d) => {
-              const heightPct = d.cents === 0 ? 2 : Math.max(2, (d.cents / maxDayCents) * 100);
+            {effectiveByDay.map((d) => {
+              const estPart = includeShadow ? d.estimatedCents ?? 0 : 0;
+              const heightPct =
+                d.effectiveCents === 0 ? 2 : Math.max(2, (d.effectiveCents / maxDayCents) * 100);
               const jobLabel = t(d.jobs === 1 ? 'cost.job_one' : 'cost.job_other');
+              const title =
+                estPart > 0
+                  ? `${d.date}: ${fmt(d.cents)} + ${fmt(estPart)} est. · ${d.jobs} ${jobLabel}`
+                  : `${d.date}: ${fmt(d.cents)} · ${d.jobs} ${jobLabel}`;
               return (
                 <div
                   key={d.date}
-                  title={`${d.date}: ${fmt(d.cents)} · ${d.jobs} ${jobLabel}`}
+                  title={title}
                   class={
                     'flex-1 min-w-0 rounded-sm transition ' +
                     (d.cents > 0
                       ? 'bg-[color:var(--color-accent)]'
-                      : 'bg-[color:var(--color-border)]')
+                      : estPart > 0
+                        ? 'bg-[color:var(--color-accent)]/40'
+                        : 'bg-[color:var(--color-border)]')
                   }
                   style={{ height: `${heightPct}%` }}
                 />

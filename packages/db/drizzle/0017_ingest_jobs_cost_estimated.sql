@@ -1,0 +1,20 @@
+-- F151 shadow-estimat — cost_cents_estimated kolonne på ingest_jobs.
+--
+-- Separat fra cost_cents (som forbliver "real cost from provider
+-- telemetry"). Pre-F149 rækker har cost_cents=0 OG cost_cents_estimated
+-- populeret efter backfill-cost-estimates.ts-scriptets heuristik:
+--
+--   output_tokens ≈ SUM(LENGTH(doc.content)) / 4  (wiki docs produceret
+--                                                   af jobbet, F111.2
+--                                                   ingest_job_id-stamp)
+--   input_tokens  ≈ output_tokens × 15            (cumulative tool-call
+--                                                   context pr. ingest-
+--                                                   observation)
+--   cost_cents_estimated ≈ (input × $3 + output × $15) / 1M × 100
+--
+-- Alle tal ±30-50% — brug kun som orienterings-signal, ikke billing-tal.
+-- Real `cost_cents` tager ALTID præcedens i UI; estimatet er en toggle.
+--
+-- Nullable — en row uden backfill har ingen estimat (skal ikke forvirre
+-- med cost_cents=0 som betyder "gratis Max Plan / reel nul").
+ALTER TABLE `ingest_jobs` ADD COLUMN `cost_cents_estimated` integer;

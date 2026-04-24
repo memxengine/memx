@@ -20,11 +20,15 @@ import { broadcaster } from './broadcast.js';
 export interface CostSummary {
   windowDays: number;
   totalCents: number;
+  /** F151 shadow — sum of cost_cents_estimated for pre-F149 untracked
+   *  jobs in the window. Null when UI didn't opt-in to shadow. */
+  totalEstimatedCents: number | null;
   /** Jobs completed in the window. Excludes failed/running. */
   jobCount: number;
   /** Daily totals. Days with 0 jobs are included as 0 so a sparse-KB
-   *  chart still renders a continuous line. */
-  byDay: Array<{ date: string; cents: number; jobs: number }>;
+   *  chart still renders a continuous line. `estimatedCents` is null
+   *  when shadow is off, or the cumulative estimate for that day when on. */
+  byDay: Array<{ date: string; cents: number; jobs: number; estimatedCents: number | null }>;
   /** Top 10 most expensive sources by sum(cost_cents). */
   bySource: Array<{
     documentId: string;
@@ -39,6 +43,9 @@ export interface CostSummary {
    * (Max Plan). UI renders as "—" in those cases.
    */
   avgCentsPerNeuron: number;
+  /** Whether the caller opted into shadow estimates. Echoed back so
+   *  UI can style accordingly without managing the flag locally. */
+  includeShadow: boolean;
 }
 
 interface CostCacheEntry {
@@ -61,14 +68,19 @@ export function invalidateCostCache(tenantId: string, kbId: string): void {
 /**
  * Build a Cost summary for the given KB. window in days (7, 30, 90, 365).
  * Served from cache when fresh.
+ *
+ * `includeShadow` (F151 shadow-estimat): when true, also sum
+ * `cost_cents_estimated` into totalEstimatedCents + per-day estimate,
+ * so the UI can show "+ ca. $82 estimeret" below the real total.
  */
 export async function getCostSummary(
   trail: TrailDatabase,
   tenantId: string,
   kbId: string,
   windowDays: number,
+  includeShadow = false,
 ): Promise<CostSummary> {
-  const key = costKey(tenantId, kbId, windowDays);
+  const key = `${costKey(tenantId, kbId, windowDays)}:${includeShadow ? 'shadow' : 'real'}`;
   const hit = costCache.get(key);
   if (hit && hit.expiresAt > Date.now()) return hit.summary;
 
@@ -77,6 +89,7 @@ export async function getCostSummary(
   const totalRow = (await trail.execute(
     `SELECT
        COALESCE(SUM(cost_cents), 0) AS total_cents,
+       COALESCE(SUM(cost_cents_estimated), 0) AS total_estimated_cents,
        COUNT(*) AS job_count
      FROM ingest_jobs
      WHERE tenant_id = ?
@@ -84,12 +97,13 @@ export async function getCostSummary(
        AND status = 'done'
        AND started_at >= ${windowCutoff}`,
     [tenantId, kbId],
-  )).rows[0] as { total_cents: number; job_count: number };
+  )).rows[0] as { total_cents: number; total_estimated_cents: number; job_count: number };
 
   const byDayRows = (await trail.execute(
     `SELECT
        date(started_at) AS day,
        COALESCE(SUM(cost_cents), 0) AS cents,
+       COALESCE(SUM(cost_cents_estimated), 0) AS estimated_cents,
        COUNT(*) AS jobs
      FROM ingest_jobs
      WHERE tenant_id = ?
@@ -99,7 +113,7 @@ export async function getCostSummary(
      GROUP BY date(started_at)
      ORDER BY day ASC`,
     [tenantId, kbId],
-  )).rows as Array<{ day: string; cents: number; jobs: number }>;
+  )).rows as Array<{ day: string; cents: number; estimated_cents: number; jobs: number }>;
 
   // Pad days with zero so the chart is continuous. Builds from the
   // first observed day through today; if there are no jobs at all,
@@ -150,6 +164,7 @@ export async function getCostSummary(
   const summary: CostSummary = {
     windowDays,
     totalCents: totalRow.total_cents,
+    totalEstimatedCents: includeShadow ? totalRow.total_estimated_cents : null,
     jobCount: totalRow.job_count,
     byDay: paddedByDay,
     bySource: bySourceRows.map((r) => ({
@@ -160,6 +175,7 @@ export async function getCostSummary(
       jobCount: r.job_count,
     })),
     avgCentsPerNeuron,
+    includeShadow,
   };
 
   costCache.set(key, { summary, expiresAt: Date.now() + TTL_MS });
@@ -167,19 +183,24 @@ export async function getCostSummary(
 }
 
 function padDays(
-  rows: Array<{ day: string; cents: number; jobs: number }>,
+  rows: Array<{ day: string; cents: number; jobs: number; estimated_cents?: number }>,
   windowDays: number,
-): Array<{ date: string; cents: number; jobs: number }> {
+): Array<{ date: string; cents: number; jobs: number; estimatedCents: number | null }> {
   if (rows.length === 0) return [];
   const byDay = new Map(rows.map((r) => [r.day, r]));
-  const out: Array<{ date: string; cents: number; jobs: number }> = [];
+  const out: Array<{ date: string; cents: number; jobs: number; estimatedCents: number | null }> = [];
   const today = new Date();
   today.setUTCHours(0, 0, 0, 0);
   const start = new Date(today.getTime() - (windowDays - 1) * 24 * 60 * 60 * 1000);
   for (let d = new Date(start); d <= today; d.setUTCDate(d.getUTCDate() + 1)) {
     const iso = d.toISOString().slice(0, 10);
     const hit = byDay.get(iso);
-    out.push({ date: iso, cents: hit?.cents ?? 0, jobs: hit?.jobs ?? 0 });
+    out.push({
+      date: iso,
+      cents: hit?.cents ?? 0,
+      jobs: hit?.jobs ?? 0,
+      estimatedCents: hit?.estimated_cents ?? null,
+    });
   }
   return out;
 }

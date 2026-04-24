@@ -48,7 +48,8 @@ costRoutes.get('/knowledge-bases/:kbId/cost', async (c) => {
   const kbId = await resolveKbId(trail, tenant.id, c.req.param('kbId'));
   if (!kbId) return c.json({ error: 'Knowledge base not found' }, 404);
   const window = parseWindow(c.req.query('window'));
-  const summary = await getCostSummary(trail, tenant.id, kbId, window);
+  const includeShadow = c.req.query('shadow') === '1';
+  const summary = await getCostSummary(trail, tenant.id, kbId, window, includeShadow);
   return c.json(summary);
 });
 

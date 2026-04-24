@@ -51,6 +51,12 @@
       "of": "of",
       "prev": "← prev",
       "next": "next →"
+    },
+    "shadow": {
+      "toggle": "Include shadow estimate for pre-F149 ingests",
+      "hint": "Overlay a rough Sonnet-API estimate on top of real cost for jobs that ran before cost-tracking was enabled. ±30–50% margin.",
+      "plus": "+ {amount} estimated",
+      "realZeroNote": "Actual out-of-pocket cost for these jobs was 0 (Max Plan)."
     }
   },
   "quality": {

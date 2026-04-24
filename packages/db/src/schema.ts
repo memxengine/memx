@@ -425,6 +425,12 @@ export const ingestJobs = sqliteTable(
     // 2.5-flash"}]`. When fallback fires: `[{turn:1,model:"flash"},
     // {turn:7,model:"glm"}]`. Null on pre-F149 runs.
     modelTrail: text('model_trail'),
+    // F151 shadow — heuristic cost estimate for pre-F149 jobs where
+    // cost_cents is 0 (Max Plan or untracked). Derived from output-
+    // token size × Sonnet-API pricing. NULL on non-backfilled rows.
+    // UI shows only when a "shadow estimate" toggle is on. Never mix
+    // with real cost_cents in sums unless the user explicitly opts in.
+    costCentsEstimated: integer('cost_cents_estimated'),
     createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
     startedAt: text('started_at'),
     completedAt: text('completed_at'),
