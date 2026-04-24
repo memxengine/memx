@@ -250,6 +250,14 @@ Factor `apps/server/src/services/ingest.ts` bag et `IngestBackend`-interface med
 |---|---------|--------|-------|------|
 | F149 | [Pluggable Ingest Backends](features/F149-pluggable-ingest-backends.md) | Planned | 1/2 | [plan](features/F149-pluggable-ingest-backends.md) |
 
+### F150 — Admin Link-Report Panel
+
+Curator-facing UI for F148's `broken_links`-findings. Ny route `/kb/:kbId/link-check` der viser åbne findings med source-Neuron + link-text + suggested_fix + reported_at. Actions: [Accept] (anvender `suggested_fix` via str_replace på doc.content + version-bump + flipper status til `auto_fixed`), [Dismiss], [Reopen]. Footer-knap "Kør scan nu" kalder `/link-check/rescan`. Live-opdatering via F87 SSE — panel re-fetcher findings når `candidate_approved` fyrer efter en ingest. Ny server-route `POST /link-check/:id/accept` lukker det manglende accept-hul fra F148. Sidebar får "Link Check"-nav-item med badge-count. Depends on F148, F87, F17/F18.
+
+| # | Feature | Status | Phase | Plan |
+|---|---------|--------|-------|------|
+| F150 | [Admin Link-Report Panel](features/F150-admin-link-report-panel.md) | Planned | 1 | [plan](features/F150-admin-link-report-panel.md) |
+
 ---
 
 ## Descriptions
@@ -528,6 +536,9 @@ Orphan-Neuron detection now skips Neurons whose originating candidate came from 
 
 ### F147 — Share Extension (iOS + Android)
 Native share targets for iOS og Android der lader brugeren sende tekst, links og billeder direkte fra andre apps til Trail. iOS Share Extension (Swift/SwiftUI) dukker op i share sheet som "Trail Clipper" og deler credentials med hoved-appen via App Group. Android Share Extension (Kotlin) gør det samme. Billeder sendes gennem den eksisterende vision backend for beskrivelse + OCR. Connector: `share-extension`.
+
+### F150 — Admin Link-Report Panel
+Curator-facing UI til F148's `broken_links`-findings. Route `/kb/:kbId/link-check` renderer åbne findings i en tabel (source-Neuron, link-text, suggested_fix, reported_at) med [Accept] / [Dismiss] / [Reopen]-knapper pr. række + "Kør scan nu"-footer-knap. Accept-action anvender `suggested_fix` på Neuron'ens content via `str_replace(oldLink, suggestedFix)` + version-bump + flipper `broken_links.status='auto_fixed'` + setter `fixed_at`. Server-route-tilføjelsen `POST /link-check/:id/accept` lukker hullet fra F148 (som havde dismiss/reopen men ikke accept). Panel subscriber på SSE `candidate_approved`-events for live re-fetch. Sidebar "Link Check"-nav-item viser badge med antal åbne findings for aktiv KB. Empty-state: stort tjek-ikon + "Ingen broken links — din brain er intakt."
 
 ### F149 — Pluggable Ingest Backends
 Ingest-pipelinen factoreret bag et `IngestBackend`-interface. To implementeringer: `ClaudeCLIBackend` (nuværende `spawnClaude`-subprocess, Max Plan, default) og `OpenRouterBackend` (Gemini 2.5 Flash, GLM 4.6, Qwen 3.6 Plus, Claude Sonnet via API). **Live runtime fallback-chain** — på model-fejl skifter runneren til næste model i chain'en mid-job og bevarer allerede-skrevne Neuroner; chain stoppes kun når jobbet lykkes eller listen tømmes. Default chains: claude-cli → Flash → GLM → Qwen, eller openrouter → Flash → GLM → Qwen → Claude-API. Per-KB kolonne `ingest_backend`/`ingest_model`/`ingest_fallback_chain` overstyrer env. Per-tenant encrypted API-keys i `tenant_secrets` (libsodium seal, master-key fra `TRAIL_SECRETS_MASTER_KEY`). Cost-tracking pr. job via ny `ingest_jobs.cost_cents`-kolonne (migration 0014); `model_trail` JSON-kolonne logger hvilke modeller der faktisk kørte hvilke turns. Model-lab's OpenRouter-kode (`apps/model-lab/src/server/{openrouter,runner,two-pass,tools}.ts`) løftes ind i server-lag og bindes til Trail's MCP-write-tool så F111.2-stamping, F137 edge-types, F140 schemas og F148 link-checker virker identisk uanset backend. Runtime-UI-switch er separat F-feature (ikke v1); F149's chain-resolution er pure function klar til det kald. Christian kører fortsat claude-cli (Max Plan) som default indtil han eksplicit flipper.
