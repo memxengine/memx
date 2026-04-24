@@ -25,6 +25,56 @@
       "volume": "Ambient volume"
     }
   },
+  "cost": {
+    "exportCsv": "Export CSV",
+    "total": "Total",
+    "ingest_one": "ingest",
+    "ingest_other": "ingests",
+    "perNeuronAvg": "Per Neuron (avg)",
+    "noCostData": "no cost data",
+    "estimate": "estimate",
+    "window": "Window",
+    "daysWithData": "days w/ data",
+    "dailyUsage": "Daily spend",
+    "noIngestsInWindow": "No ingests in this window yet.",
+    "sources": "Sources",
+    "noSourcesInWindow": "No sources with ingest history in this window yet.",
+    "job_one": "job",
+    "job_other": "jobs",
+    "column": {
+      "source": "Source",
+      "cost": "Cost",
+      "ingests": "Ingests",
+      "lastIngested": "Latest"
+    },
+    "pagination": {
+      "of": "of",
+      "prev": "← prev",
+      "next": "next →"
+    }
+  },
+  "quality": {
+    "back": "← Cost",
+    "title": "Ingest comparison",
+    "runsAgainstSource_one": "({n} run against this source)",
+    "runsAgainstSource_other": "({n} runs against this source)",
+    "noRuns": "No ingest runs yet. The source is either uploaded but not yet processed, or processed before F149's cost-tracking was enabled.",
+    "fellBackTo": "fell back to {model}",
+    "footer": "KB: {kb} · Source: {filename}",
+    "column": {
+      "date": "Date",
+      "model": "Model",
+      "cost": "Cost",
+      "time": "Time",
+      "neurons": "Neurons",
+      "concepts": "Conc.",
+      "entities": "Ent.",
+      "links": "Links",
+      "typed": "Typed",
+      "broken": "Broken",
+      "status": "Status"
+    }
+  },
   "common": {
     "loading": "Loading…",
     "cancel": "Cancel",

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import { useRoute } from 'preact-iso';
 import { useKb } from '../lib/kb-cache';
-import { useLocale } from '../lib/i18n';
+import { t, useLocale } from '../lib/i18n';
 import { getQualityRuns, getFxRate, ApiError, type QualityComparison, type FxRate } from '../api';
 import { formatCostForLocale, maxPlanLabel } from '../lib/currency';
 import { CenteredLoader } from '../components/centered-loader';
@@ -71,42 +71,44 @@ export function QualityComparePanel() {
     <div class="page-shell space-y-4">
       <div class="flex items-baseline gap-3 text-sm text-[color:var(--color-fg-muted)]">
         <a href={`/kb/${kbId}/cost`} class="hover:text-[color:var(--color-fg)]">
-          ← Cost
+          {t('quality.back')}
         </a>
         <span>/</span>
         <span class="text-[color:var(--color-fg)] font-medium">
-          {data.source.title ?? data.source.filename}
+          {data.source.title ?? data.source.filename.replace(/\.[a-z0-9]+$/i, '')}
         </span>
       </div>
 
       <h1 class="text-xl font-semibold">
-        Ingest-sammenligning
+        {t('quality.title')}
         <span class="ml-2 text-sm font-normal text-[color:var(--color-fg-muted)]">
-          ({data.runs.length} {data.runs.length === 1 ? 'run' : 'runs'} mod denne kilde)
+          {t(
+            data.runs.length === 1 ? 'quality.runsAgainstSource_one' : 'quality.runsAgainstSource_other',
+            { n: data.runs.length },
+          )}
         </span>
       </h1>
 
       {data.runs.length === 0 ? (
         <div class="p-4 text-sm text-[color:var(--color-fg-muted)] border border-dashed border-[color:var(--color-border)] rounded">
-          Ingen ingest-runs endnu. Kilden er enten uploadet men ikke behandlet,
-          eller behandlet før F149's cost-tracking blev aktiveret.
+          {t('quality.noRuns')}
         </div>
       ) : (
         <div class="overflow-x-auto">
           <table class="w-full text-sm">
             <thead class="text-xs text-[color:var(--color-fg-muted)] uppercase tracking-wide text-left">
               <tr class="border-b border-[color:var(--color-border)]">
-                <th class="py-2 pr-3">Dato</th>
-                <th class="py-2 pr-3">Model</th>
-                <th class="py-2 pr-3 text-right">Cost</th>
-                <th class="py-2 pr-3 text-right">Tid</th>
-                <th class="py-2 pr-3 text-right">Neuroner</th>
-                <th class="py-2 pr-3 text-right">Konc.</th>
-                <th class="py-2 pr-3 text-right">Ent.</th>
-                <th class="py-2 pr-3 text-right">Links</th>
-                <th class="py-2 pr-3 text-right">Typed</th>
-                <th class="py-2 pr-3 text-right">Broken</th>
-                <th class="py-2 pr-3">Status</th>
+                <th class="py-2 pr-3">{t('quality.column.date')}</th>
+                <th class="py-2 pr-3">{t('quality.column.model')}</th>
+                <th class="py-2 pr-3 text-right">{t('quality.column.cost')}</th>
+                <th class="py-2 pr-3 text-right">{t('quality.column.time')}</th>
+                <th class="py-2 pr-3 text-right">{t('quality.column.neurons')}</th>
+                <th class="py-2 pr-3 text-right">{t('quality.column.concepts')}</th>
+                <th class="py-2 pr-3 text-right">{t('quality.column.entities')}</th>
+                <th class="py-2 pr-3 text-right">{t('quality.column.links')}</th>
+                <th class="py-2 pr-3 text-right">{t('quality.column.typed')}</th>
+                <th class="py-2 pr-3 text-right">{t('quality.column.broken')}</th>
+                <th class="py-2 pr-3">{t('quality.column.status')}</th>
               </tr>
             </thead>
             <tbody>
@@ -122,9 +124,9 @@ export function QualityComparePanel() {
                     <div class="font-mono text-xs">
                       {run.primaryModel ?? run.backend ?? '—'}
                     </div>
-                    {run.modelTrailLen > 1 && run.finalModel !== run.primaryModel ? (
+                    {run.modelTrailLen > 1 && run.finalModel !== run.primaryModel && run.finalModel ? (
                       <div class="text-xs text-[color:var(--color-fg-muted)]">
-                        → fell back to {run.finalModel}
+                        → {t('quality.fellBackTo', { model: run.finalModel })}
                       </div>
                     ) : null}
                   </td>
@@ -172,7 +174,7 @@ export function QualityComparePanel() {
       )}
 
       <div class="text-xs text-[color:var(--color-fg-muted)] italic">
-        KB: {kb?.name ?? kbId} · Source: <span class="font-mono">{data.source.filename}</span>
+        {t('quality.footer', { kb: kb?.name ?? kbId, filename: data.source.filename })}
       </div>
     </div>
   );

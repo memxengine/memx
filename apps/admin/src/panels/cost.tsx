@@ -173,7 +173,7 @@ export function CostPanel() {
             download
             class="ml-3 text-xs font-mono text-[color:var(--color-fg-muted)] hover:text-[color:var(--color-fg)] underline"
           >
-            Eksportér CSV
+            {t('cost.exportCsv')}
           </a>
         </div>
       </div>
@@ -181,26 +181,27 @@ export function CostPanel() {
       {/* Top-line metrics */}
       <div class="grid grid-cols-3 gap-4">
         <div class="p-3 rounded border border-[color:var(--color-border)]">
-          <div class="text-xs text-[color:var(--color-fg-muted)]">Total</div>
+          <div class="text-xs text-[color:var(--color-fg-muted)]">{t('cost.total')}</div>
           <div class="text-2xl font-mono">{fmt(summary.totalCents)}</div>
           <div class="text-xs text-[color:var(--color-fg-muted)] mt-1">
-            {summary.jobCount} ingest{summary.jobCount === 1 ? '' : 's'}
+            {summary.jobCount}{' '}
+            {t(summary.jobCount === 1 ? 'cost.ingest_one' : 'cost.ingest_other')}
           </div>
         </div>
         <div class="p-3 rounded border border-[color:var(--color-border)]">
-          <div class="text-xs text-[color:var(--color-fg-muted)]">Pr. Neuron (snit)</div>
+          <div class="text-xs text-[color:var(--color-fg-muted)]">{t('cost.perNeuronAvg')}</div>
           <div class="text-2xl font-mono">
             {summary.avgCentsPerNeuron === 0 ? '—' : fmt(summary.avgCentsPerNeuron)}
           </div>
           <div class="text-xs text-[color:var(--color-fg-muted)] mt-1">
-            {summary.avgCentsPerNeuron === 0 ? 'ingen cost-data' : 'estimat'}
+            {summary.avgCentsPerNeuron === 0 ? t('cost.noCostData') : t('cost.estimate')}
           </div>
         </div>
         <div class="p-3 rounded border border-[color:var(--color-border)]">
-          <div class="text-xs text-[color:var(--color-fg-muted)]">Vindue</div>
+          <div class="text-xs text-[color:var(--color-fg-muted)]">{t('cost.window')}</div>
           <div class="text-2xl font-mono">{summary.windowDays}d</div>
           <div class="text-xs text-[color:var(--color-fg-muted)] mt-1">
-            {summary.byDay.length} dage m. data
+            {summary.byDay.length} {t('cost.daysWithData')}
           </div>
         </div>
       </div>
@@ -208,20 +209,21 @@ export function CostPanel() {
       {/* Daily bar-chart */}
       <div>
         <h2 class="text-sm font-medium mb-2 text-[color:var(--color-fg-muted)]">
-          Dagligt forbrug
+          {t('cost.dailyUsage')}
         </h2>
         {summary.byDay.length === 0 ? (
           <div class="p-4 text-sm text-[color:var(--color-fg-muted)] border border-dashed border-[color:var(--color-border)] rounded">
-            Ingen ingests i dette vindue endnu.
+            {t('cost.noIngestsInWindow')}
           </div>
         ) : (
           <div class="flex items-end gap-px h-24 p-2 border border-[color:var(--color-border)] rounded bg-[color:var(--color-bg-subtle)]">
             {summary.byDay.map((d) => {
               const heightPct = d.cents === 0 ? 2 : Math.max(2, (d.cents / maxDayCents) * 100);
+              const jobLabel = t(d.jobs === 1 ? 'cost.job_one' : 'cost.job_other');
               return (
                 <div
                   key={d.date}
-                  title={`${d.date}: ${fmt(d.cents)} · ${d.jobs} job${d.jobs === 1 ? '' : 's'}`}
+                  title={`${d.date}: ${fmt(d.cents)} · ${d.jobs} ${jobLabel}`}
                   class={
                     'flex-1 min-w-0 rounded-sm transition ' +
                     (d.cents > 0
@@ -240,10 +242,10 @@ export function CostPanel() {
       <div>
         <div class="flex items-baseline justify-between mb-2">
           <h2 class="text-sm font-medium text-[color:var(--color-fg-muted)]">
-            Kilder
+            {t('cost.sources')}
             {sourcesPage && total > 0 ? (
               <span class="ml-2 font-normal">
-                ({pageStart}–{pageEnd} af {total})
+                ({pageStart}–{pageEnd} {t('cost.pagination.of')} {total})
               </span>
             ) : null}
           </h2>
@@ -258,7 +260,7 @@ export function CostPanel() {
                   : 'text-[color:var(--color-fg-subtle)] cursor-not-allowed')
               }
             >
-              ← forrige
+              {t('cost.pagination.prev')}
             </button>
             <button
               disabled={!hasNext || sourcesLoading}
@@ -270,13 +272,13 @@ export function CostPanel() {
                   : 'text-[color:var(--color-fg-subtle)] cursor-not-allowed')
               }
             >
-              næste →
+              {t('cost.pagination.next')}
             </button>
           </div>
         </div>
         {sourcesPage === null || sourcesPage.sources.length === 0 ? (
           <div class="p-4 text-sm text-[color:var(--color-fg-muted)] border border-dashed border-[color:var(--color-border)] rounded">
-            Ingen kilder med ingest-historik i dette vindue endnu.
+            {t('cost.noSourcesInWindow')}
           </div>
         ) : (
           <table class="w-full text-sm">
@@ -286,25 +288,25 @@ export function CostPanel() {
                   class="py-2 pr-3 cursor-pointer select-none hover:text-[color:var(--color-fg)]"
                   onClick={() => toggleSort('title')}
                 >
-                  Kilde{sortIndicator('title')}
+                  {t('cost.column.source')}{sortIndicator('title')}
                 </th>
                 <th
                   class="py-2 pr-3 text-right cursor-pointer select-none hover:text-[color:var(--color-fg)]"
                   onClick={() => toggleSort('cost')}
                 >
-                  Cost{sortIndicator('cost')}
+                  {t('cost.column.cost')}{sortIndicator('cost')}
                 </th>
                 <th
                   class="py-2 pr-3 text-right cursor-pointer select-none hover:text-[color:var(--color-fg)]"
                   onClick={() => toggleSort('jobs')}
                 >
-                  Ingests{sortIndicator('jobs')}
+                  {t('cost.column.ingests')}{sortIndicator('jobs')}
                 </th>
                 <th
                   class="py-2 text-right cursor-pointer select-none hover:text-[color:var(--color-fg)]"
                   onClick={() => toggleSort('recent')}
                 >
-                  Senest{sortIndicator('recent')}
+                  {t('cost.column.lastIngested')}{sortIndicator('recent')}
                 </th>
               </tr>
             </thead>

@@ -25,6 +25,56 @@
       "volume": "Ambient lydstyrke"
     }
   },
+  "cost": {
+    "exportCsv": "Eksportér CSV",
+    "total": "Total",
+    "ingest_one": "ingest",
+    "ingest_other": "ingests",
+    "perNeuronAvg": "Pr. Neuron (snit)",
+    "noCostData": "ingen cost-data",
+    "estimate": "estimat",
+    "window": "Vindue",
+    "daysWithData": "dage m. data",
+    "dailyUsage": "Dagligt forbrug",
+    "noIngestsInWindow": "Ingen ingests i dette vindue endnu.",
+    "sources": "Kilder",
+    "noSourcesInWindow": "Ingen kilder med ingest-historik i dette vindue endnu.",
+    "job_one": "job",
+    "job_other": "jobs",
+    "column": {
+      "source": "Kilde",
+      "cost": "Cost",
+      "ingests": "Ingests",
+      "lastIngested": "Senest"
+    },
+    "pagination": {
+      "of": "af",
+      "prev": "← forrige",
+      "next": "næste →"
+    }
+  },
+  "quality": {
+    "back": "← Cost",
+    "title": "Ingest-sammenligning",
+    "runsAgainstSource_one": "({n} run mod denne kilde)",
+    "runsAgainstSource_other": "({n} runs mod denne kilde)",
+    "noRuns": "Ingen ingest-runs endnu. Kilden er enten uploadet men ikke behandlet, eller behandlet før F149's cost-tracking blev aktiveret.",
+    "fellBackTo": "faldt tilbage til {model}",
+    "footer": "KB: {kb} · Kilde: {filename}",
+    "column": {
+      "date": "Dato",
+      "model": "Model",
+      "cost": "Cost",
+      "time": "Tid",
+      "neurons": "Neuroner",
+      "concepts": "Konc.",
+      "entities": "Ent.",
+      "links": "Links",
+      "typed": "Typed",
+      "broken": "Broken",
+      "status": "Status"
+    }
+  },
   "common": {
     "loading": "Henter…",
     "cancel": "Annullér",
