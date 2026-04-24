@@ -21,8 +21,10 @@ export interface CostSummary {
   windowDays: number;
   totalCents: number;
   /** F151 shadow — sum of cost_cents_estimated for pre-F149 untracked
-   *  jobs in the window. Null when UI didn't opt-in to shadow. */
-  totalEstimatedCents: number | null;
+   *  jobs in the window. Always populated so UI can show a discovery
+   *  hint when data exists but the shadow-pill is off; the `byDay`
+   *  entries remain gated on `includeShadow`. */
+  totalEstimatedCents: number;
   /** Jobs completed in the window. Excludes failed/running. */
   jobCount: number;
   /** Daily totals. Days with 0 jobs are included as 0 so a sparse-KB
@@ -164,7 +166,10 @@ export async function getCostSummary(
   const summary: CostSummary = {
     windowDays,
     totalCents: totalRow.total_cents,
-    totalEstimatedCents: includeShadow ? totalRow.total_estimated_cents : null,
+    // Always surface totalEstimatedCents so UI can show a discovery hint
+    // ("X estimater tilgængelige") even when the pill is off. Only the
+    // per-day estimate-bars are gated on includeShadow.
+    totalEstimatedCents: totalRow.total_estimated_cents,
     jobCount: totalRow.job_count,
     byDay: paddedByDay,
     bySource: bySourceRows.map((r) => ({

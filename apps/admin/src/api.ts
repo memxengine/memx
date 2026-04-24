@@ -773,7 +773,7 @@ export async function uploadSource(
 export interface CostSummary {
   windowDays: number;
   totalCents: number;
-  totalEstimatedCents: number | null;
+  totalEstimatedCents: number;
   jobCount: number;
   byDay: Array<{ date: string; cents: number; jobs: number; estimatedCents: number | null }>;
   bySource: Array<{

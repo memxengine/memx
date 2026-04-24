@@ -51,10 +51,14 @@ export function CostPanel() {
   const locale = useLocale();
   const [window, setWindow] = useState<number>(30);
   const [includeShadow, setIncludeShadow] = useState<boolean>(() => {
+    // Default ON: shadow estimates cover the entire pre-F149 history,
+    // and a fresh curator opening Cost on a Max-Plan KB would otherwise
+    // see "0" with no signal that estimates exist. Explicit "0" in
+    // localStorage means the user deliberately turned it off.
     try {
-      return localStorage.getItem('trail.admin.cost.shadow') === '1';
+      return localStorage.getItem('trail.admin.cost.shadow') !== '0';
     } catch {
-      return false;
+      return true;
     }
   });
   const [summary, setSummary] = useState<CostSummary | null>(null);
@@ -170,7 +174,7 @@ export function CostPanel() {
 
   return (
     <div class="page-shell space-y-6">
-      {/* Header with window switcher + CSV export */}
+      {/* Header with window switcher + shadow-pill + CSV export */}
       <div class="flex items-center justify-between">
         <h1 class="text-xl font-semibold">
           {kb?.name ?? kbId} — {t('nav.cost')}
@@ -190,6 +194,19 @@ export function CostPanel() {
               {w.label}
             </button>
           ))}
+          <button
+            onClick={() => setIncludeShadow(!includeShadow)}
+            title={t('cost.shadow.hint')}
+            aria-pressed={includeShadow}
+            class={
+              'ml-3 px-2 py-1 text-xs font-mono rounded transition ' +
+              (includeShadow
+                ? 'bg-[color:var(--color-accent)] text-[color:var(--color-accent-fg)]'
+                : 'text-[color:var(--color-fg-muted)] hover:text-[color:var(--color-fg)]')
+            }
+          >
+            {t('cost.shadow.pill')}
+          </button>
           <a
             href={costCsvUrl(kbId, window)}
             download
@@ -200,28 +217,22 @@ export function CostPanel() {
         </div>
       </div>
 
-      {/* Shadow-estimate toggle */}
-      <label
-        class="flex items-center gap-2 text-xs text-[color:var(--color-fg-muted)] cursor-pointer select-none hover:text-[color:var(--color-fg)]"
-        title={t('cost.shadow.hint')}
-      >
-        <input
-          type="checkbox"
-          checked={includeShadow}
-          onChange={(e) => setIncludeShadow((e.currentTarget as HTMLInputElement).checked)}
-        />
-        <span>{t('cost.shadow.toggle')}</span>
-      </label>
-
       {/* Top-line metrics */}
       <div class="grid grid-cols-3 gap-4">
         <div class="p-3 rounded border border-[color:var(--color-border)]">
           <div class="text-xs text-[color:var(--color-fg-muted)]">{t('cost.total')}</div>
           <div class="text-2xl font-mono">{fmt(summary.totalCents)}</div>
-          {includeShadow && summary.totalEstimatedCents && summary.totalEstimatedCents > 0 ? (
+          {includeShadow && summary.totalEstimatedCents > 0 ? (
             <div class="text-xs text-[color:var(--color-fg-muted)] mt-1 italic">
               {t('cost.shadow.plus', { amount: fmt(summary.totalEstimatedCents) })}
             </div>
+          ) : !includeShadow && summary.totalEstimatedCents > 0 ? (
+            <button
+              onClick={() => setIncludeShadow(true)}
+              class="text-xs text-[color:var(--color-fg-muted)] hover:text-[color:var(--color-fg)] mt-1 italic underline underline-offset-2 decoration-dotted text-left"
+            >
+              {t('cost.shadow.available', { amount: fmt(summary.totalEstimatedCents) })}
+            </button>
           ) : null}
           <div class="text-xs text-[color:var(--color-fg-muted)] mt-1">
             {summary.jobCount}{' '}
