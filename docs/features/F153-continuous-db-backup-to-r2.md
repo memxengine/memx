@@ -30,7 +30,7 @@ We reuse the `BackupProvider` interface shape from `@webhouse/cms/packages/cms-a
 ## Non-Goals
 
 - **Automated point-in-time restore into a running server.** Restore requires the server to stop (to release the libSQL write lock) and atomically swap the DB file. We ship a CLI script (`scripts/restore-backup.ts`) that operates on a stopped engine. One-click restore from the admin UI is out of scope; too easy to click by accident, too dangerous without a confirmation flow we don't have yet.
-- **Per-tenant backups.** F40.1 is one DB per process. When F40.2 lands (per-tenant libSQL files), F153 will loop over all tenant DBs — but that is an extension, not this feature. This feature backs up the single master DB.
+- **Per-tenant backups.** F153 is an **operator-level SaaS backup** of the single master DB that holds every tenant's data. It is NOT a tenant-facing feature — individual tenants cannot see it, trigger it, or restore from it. Per-tenant "export my brain" / "restore my trail" is a **separate future feature** with a distinct trust model, UI, and retention policy (likely customer-scoped storage, encryption, and GDPR-aligned deletion guarantees). When F40.2 lands (per-tenant libSQL files), F153 will loop over all tenant DBs and continue to be operator-scoped; the per-tenant feature is tracked separately.
 - **Incremental / WAL-only backups.** Each snapshot is a full copy of the DB. The DB is small enough (O(10–100MB) today) that full snapshots at 6h cadence are cheap in R2 cost and much simpler to reason about than WAL-shipping.
 - **Encryption at rest.** R2 encrypts at rest server-side. Client-side encryption of the snapshot before upload is an F81 (per-KB encryption) concern, not this feature.
 - **Deleted-data recovery beyond the retention window.** 30-day default retention means a row deleted 40 days ago is unrecoverable. Users who need longer retention bump `BACKUP_RETAIN_DAYS`. No tiered cold storage.
@@ -343,9 +343,9 @@ export function snapshotDb(source: LibSqlClient, outDir: string): Promise<Snapsh
 
 **Phase 3 (half-day)** — Scheduler + retention pruning + manifest. Default interval 6h. Verified via a 10-minute shortened test interval on dev.
 
-**Phase 4 (half-day)** — Settings UI panel + restore CLI + docs page.
+**Phase 4 (half-day) — ⛔ DROPPED 2026-04-24** — Admin Settings panel is not needed: F153 is an **operator-level backup of the whole SaaS DB**, not a per-tenant feature. Exposing it in `apps/admin` would either (a) confuse tenants who can't and shouldn't trigger it, or (b) require an operator-role-only section that adds a new auth axis for a one-button feature that `curl -X POST .../admin/backups` already covers for ops use. Restore-CLI + runbook can land if/when we need them — not MVP scope.
 
-Each phase independently verifiable, each reversible (delete the scheduler file, remove the env vars — Trail functions exactly as today). No DB migration required (manifest is a JSON file, not a table).
+Each phase independently verifiable, each reversible (remove the `runBackupStep(trail)` call in lint-scheduler, clear the env vars — Trail functions exactly as today). No DB migration required (manifest is a JSON file, not a table).
 
 ## Success Criteria
 
