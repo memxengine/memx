@@ -170,6 +170,7 @@ Multi-tenant SaaS, billing, richer pipelines, first 3rd-party adapters.
 | F61 | ~~SaaS Domain Pick~~ — **Done: `trailmem.com`** | — |
 | F154 | [Trail Control Plane (remote fleet management)](./features/F154-trail-control-plane.md) — kritisk ved Stadie 2, se [DEPLOYMENT-STAGES.md](./DEPLOYMENT-STAGES.md) | Must |
 | F155 | [Auto-scaling Policy (rule-drevet spawn/resize)](./features/F155-auto-scaling-policy.md) — automatiserer F154 handlinger ved Stadie 3 | Should |
+| F156 | [Credits-Based LLM Metering](./features/F156-credits-based-llm-metering.md) — user-paid LLM via credits + Stripe Checkout pakker; afgørende for unit economics | Must |
 
 ### SaaS Product UX
 

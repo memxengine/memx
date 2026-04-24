@@ -213,13 +213,21 @@ Ingen af disse er automatiske upgrades — de er **alerts** til F154 Control Pla
 
 ## Cost & indtjening — stadie-for-stadie
 
-| Stadie | Tenants | Fly + storage + DNS | Revenue (typisk mix) | GM | Net |
-|---|---|---|---|---|---|
-| 1 | 1-2 | €51/mo | €0-150/mo | — | break-even ved tenant #2 |
-| 2 | 10-20 | €326/mo | €1-3K MRR | 80-83% | €1.3-2.7K profit/mo |
-| 3 | 200-500 | €7.1K/mo | €25-75K MRR | 80-82% | €18-68K profit/mo |
+Tabellen nedenfor antager **F156 Credits-Based LLM Metering** er aktiv. Hver plan inkluderer en månedlig grundkvote af credits (Hobby 5 / Starter 20 / Pro 100 / Business 500); ekstra credits købes som one-time-pakker. LLM-omkostninger over baseline-kvoten **dækkes af tenant** via credit-pakker, ikke af subscription-margin.
 
-LLM-omkostninger er **ikke** inkluderet ovenfor. De er ca. 10-25% af revenue, passer ind i margin — det er dét F151 Cost Dashboard tracker per-tenant (og hvorfor F149 Pluggable Backends eksisterer: når Gemini Flash er godt nok til ingest, skrumper LLM-cost med 10×).
+| Stadie | Tenants | Fly + storage + DNS | Subscription MRR | LLM cost (vores andel) | Credit-pack revenue | GM | Net |
+|---|---|---|---|---|---|---|---|
+| 1 | 1-2 | €51/mo | €0-150/mo | €5-20/mo | — | — | break-even ved tenant #2 |
+| 2 | 10-20 | €326/mo | €1-3K MRR | €100-300/mo | €0-500/mo | 78-82% | €1.0-2.5K profit/mo |
+| 3 | 200-500 | €7.1K/mo | €25-75K MRR | €1.5-4K/mo | €5-20K/mo | 75-80% | €22-83K profit/mo |
+
+**Hvor LLM-omkostningen lander:**
+
+- **Vores andel** = baseline-kvoten (5 / 20 / 100 / 500 credits/måned per plan). En credit ≈ $0.10 LLM-cost; det er vores "subsidiserede" del. Bagt ind i subscription-prisen.
+- **Tenant's andel** = forbrug ud over baseline → credit-pakker købes via Stripe Checkout (10 / 20 / 50 / 100 / 200 credits per pakke, €0.30-0.50 per credit). Markup over vores cost = 1.25-5×.
+- **Krydsmotivation:** model-valg afgør credit-cost (Flash 1× / GLM 2× / Sonnet 10×). F149's pluggable backends får dermed ægte kommerciel betydning — curators har incitament til at vælge den billigste model der løser opgaven.
+
+Det er dét F151 Cost Dashboard tracker (intern view: USD-cost) og F156 Credits surfaces (kunde-vendt: credits-balance + pakke-køb). F149 Pluggable Backends eksisterer fordi: når Flash er godt nok til ingest, skrumper både vores cost og tenant's credit-burn 10×.
 
 ---
 
@@ -260,3 +268,4 @@ F155 (Auto-scaling Policy) automatiserer delmængden "pool-scaleup" og "performa
 - **F153** Continuous R2 backup — infrastruktur-primitiv, brug alle stadier.
 - **F154** Trail Control Plane — **operationelt nødvendig** ved Stadie 2, kritisk ved Stadie 3.
 - **F155** [Auto-scaling Policy](./features/F155-auto-scaling-policy.md) — automatiserer delmængden af Control Plane-handlinger via yaml-policy med safety rails.
+- **F156** [Credits-Based LLM Metering](./features/F156-credits-based-llm-metering.md) — gør LLM-cost user-paid via credits-pakker; afgørende for unit economics fra Stadie 2 og frem.

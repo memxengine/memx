@@ -10,17 +10,30 @@ Fem tiers: **Free / Starter / Pro / Business / Enterprise**. Pro har **modulære
 - Ingen "Pro Extended" eller lignende mellem-tier. Pro rummer kunder fra $75 til ~$420/mdr via tilkøb.
 - Pro→Business springet er bevidst: $999 skal repræsentere noget **kvalitativt** anderledes (SLA, dedicated infra, priority ingest), ikke bare "mere af det samme".
 - Hobby er renamed til **Starter** og flyttet fra $15 → $20 for professionel branding + headroom til månedlig fuld-backfill-feature.
+- **LLM-omkostninger er user-paid via credits, ikke absorberet i tier-prisen** (super-vigtig opdatering 2026-04-25). Hver tier inkluderer en månedlig grundkvote credits; ekstra credits købes som one-time-pakker. Se [F156 Credits-Based LLM Metering](./features/F156-credits-based-llm-metering.md). Tier-priserne nedenfor dækker **infrastruktur + baseline-kvoten**; power-users der ingest'er meget skalerer credit-pakker oven på subscription. Bevarer forudsigelig gross margin uanset brugsmønster og giver curators incitament til at vælge billige modeller (F149 pluggable backends).
 
 ## Tier-oversigt
 
-| Tier | Pris/mdr | Neurons | KBs | Parallelisme | Kontra-strategi | Support |
-|---|---:|---:|---:|:---:|---|---|
-| **Free** | $0 | 50 | 1 | P=1 | — | community |
-| **Starter** | $20 | 500 | 1 | P=1 | on-mutation + månedlig backfill | email 72t |
-| **Pro** | $75 | 5.000 | 3 | P=2 | + ugentlig sampling | email 48t |
-| **Pro (max add-ons)** | $420 | 20.000 | 11 | P=4 | daglig sampling + priority ingest | email 48t |
-| **Business** | $999 | 50.000 | 10 | P=4 | daglig sampling | SLA + 24t |
-| **Enterprise** | $2.500+ | ∞ | ∞ | P=8+ | custom | dedicated |
+| Tier | Pris/mdr | Inkl. credits/mdr | Neurons | KBs | Parallelisme | Kontra-strategi | Support |
+|---|---:|---:|---:|---:|:---:|---|---|
+| **Free** | $0 | 5 | 50 | 1 | P=1 | — | community |
+| **Starter** | $20 | 20 | 500 | 1 | P=1 | on-mutation + månedlig backfill | email 72t |
+| **Pro** | $75 | 100 | 5.000 | 3 | P=2 | + ugentlig sampling | email 48t |
+| **Pro (max add-ons)** | $420 | 100 + add-ons | 20.000 | 11 | P=4 | daglig sampling + priority ingest | email 48t |
+| **Business** | $999 | 500 | 50.000 | 10 | P=4 | daglig sampling | SLA + 24t |
+| **Enterprise** | $2.500+ | contract | ∞ | ∞ | P=8+ | custom | dedicated |
+
+**Credits-pakker (ekstra forbrug):**
+
+| Pakke | Pris | Pris/credit |
+|---|---:|---:|
+| 10 credits | €5 | €0,50 |
+| 20 credits | €9 | €0,45 |
+| 50 credits | €19 | €0,38 |
+| 100 credits | €35 | €0,35 |
+| 200 credits | €60 | €0,30 |
+
+1 credit ≈ $0,10 LLM-cost. En typisk Flash-ingest af en 10-siders PDF koster 1-2 credits; samme ingest på Sonnet koster 10-20 credits (10× faktor). Pakker udløber aldrig.
 
 ### Pro tilkøb (modulær skalering)
 

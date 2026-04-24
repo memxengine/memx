@@ -298,6 +298,14 @@ Rule-drevet automatisk spawn/resize/decommission af Fly-Machines baseret på pol
 |---|---------|--------|-------|------|
 | F155 | [Auto-scaling Policy](features/F155-auto-scaling-policy.md) | Planned | 2 | [plan](features/F155-auto-scaling-policy.md) |
 
+### F156 — Credits-Based LLM Metering
+
+User-paid LLM-omkostninger via credits-valuta. Hver tier inkluderer en månedlig grundkvote (Hobby 5 / Starter 20 / Pro 100 / Business 500); ekstra forbrug købes som one-time credit-pakker (10/20/50/100/200 credits, €0.30-0.50 per credit). Én credit ≈ $0.10 LLM-cost. Model-valg afgør credit-burn-rate: Flash 1× / GLM 2× / Qwen 3× / Sonnet 10× — giver F149 Pluggable Backends ægte kommerciel betydning. Schema: `tenant_credits` (balance, monthly_included) + `credit_transactions` (append-only audit). Phased rollout: M5 schema + tracking → M6 monthly top-up + Stripe Checkout → M7 soft alerts → M8 hard enforcement med 10% overdraft-buffer. Chat, lint, tag-extraction, glossary forbruger IKKE credits — kun ingest/compile af kilder. Erstatter F121's intern USD-tracking med kunde-vendt model. Markup på pakker = 1.25-5× over LLM-cost. Depends on F43, F44, F122, F149, F151. Medium effort (6-9 dage over 4 phases). Status: Planned.
+
+| # | Feature | Status | Phase | Plan |
+|---|---------|--------|-------|------|
+| F156 | [Credits-Based LLM Metering](features/F156-credits-based-llm-metering.md) | Planned | 2 | [plan](features/F156-credits-based-llm-metering.md) |
+
 ---
 
 **Se også:** [`NON-GOALS.md`](./NON-GOALS.md) — kuratert register over bevidst fravalg pr. F-plan (parked / declined / promoted / covered-by).

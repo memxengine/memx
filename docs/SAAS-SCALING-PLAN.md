@@ -412,16 +412,18 @@ Metered aligns incentives — Broberg.ai earns more when tenant uses Trail more.
 
 ## Pricing summary
 
-| Tier | Price/mo | Trails | Neurons/Trail | Sources/Trail | Queries/mo | Connectors | Node shape |
-|------|----------|--------|---------------|---------------|------------|------------|------------|
-| **Hobby** | Free | 1 | 500 | 100 | 1K | 2 | Shared |
-| **Starter** | €29 | 3 | 5K | 2K | 10K | 5 | Shared |
-| **Pro** | €149 | 10 | 25K | 10K | 50K | 8 | Shared (premium) |
-| **Business** | €499 | ∞ | 100K | 50K | 500K | All | Single dedicated |
-| **Enterprise (flat)** | €25K-150K/yr | ∞ | ∞ | ∞ | ∞ | All + custom | Multiple |
-| **Enterprise (metered)** | €2-5K/mo + usage | ∞ | metered | metered | metered | All + custom | Multiple |
+| Tier | Price/mo | Credits/mo (F156) | Trails | Neurons/Trail | Sources/Trail | Queries/mo | Connectors | Node shape |
+|------|----------|------:|--------|---------------|---------------|------------|------------|------------|
+| **Hobby** | Free | 5 | 1 | 500 | 100 | 1K | 2 | Shared |
+| **Starter** | €29 | 20 | 3 | 5K | 2K | 10K | 5 | Shared |
+| **Pro** | €149 | 100 | 10 | 25K | 10K | 50K | 8 | Shared (premium) |
+| **Business** | €499 | 500 | ∞ | 100K | 50K | 500K | All | Single dedicated |
+| **Enterprise (flat)** | €25K-150K/yr | contract | ∞ | ∞ | ∞ | ∞ | All + custom | Multiple |
+| **Enterprise (metered)** | €2-5K/mo + usage | metered | ∞ | metered | metered | metered | All + custom | Multiple |
 
 **Annual discount:** 2 months free (17%) at Starter/Pro/Business.
+
+**Credits = LLM-forbrug.** Hver tier inkluderer en månedlig grundkvote credits. Forbrug ud over baseline → tenant køber credit-pakker (10/20/50/100/200 credits, €0.30-0.50 per credit). En credit ≈ $0.10 LLM-cost. Model-valget bestemmer credit-burn-rate: Flash 1× / GLM 2× / Qwen 3× / Sonnet 10×. Se [F156 plan-doc](./features/F156-credits-based-llm-metering.md) for fuldt design.
 
 ---
 
@@ -447,26 +449,30 @@ Metered aligns incentives — Broberg.ai earns more when tenant uses Trail more.
 | Query synthesis | €0.01-0.04 |
 | Lint scan per Neuron | €0.001-0.003 |
 
-### Monthly LLM cost per tier (typical)
+### Monthly LLM cost per tier (typical, post-F156)
 
-| Tier | Compile | Queries | Lint | Total |
-|------|---------|---------|------|-------|
-| Hobby | €2 | €0.50 | €0.50 | €3 |
-| Starter | €15 | €3 | €2 | €20 |
-| Pro | €80 | €15 | €10 | €105 |
-| Business | €300 | €80 | €40 | €420 |
-| Enterprise | variable | variable | variable | metered |
+LLM-omkostninger splittes nu i to: hvad **vi** absorberer (lint, queries, glossary, translation — baggrunds-ydelser inkluderet i abonnementet) og hvad **tenant** betaler via credits (compile/ingest af kilder).
 
-### Gross margin (40% realistic utilization)
+| Tier | Vores andel (lint + queries + glossary) | Tenant via credits (compile) | Net cost for os |
+|------|------|------|------|
+| Hobby | €1 | €1 (baseline kvote) | €2 |
+| Starter | €5 | €2 (baseline) + 0-30 ekstra/mdr | €5 |
+| Pro | €25 | €10 (baseline) + 30-200 ekstra/mdr | €25 |
+| Business | €120 | €50 (baseline) + 100-1000 ekstra/mdr | €120 |
+| Enterprise | variable | metered | variable |
 
-| Tier | Effective GM% |
-|------|---------------|
-| Hobby | loss leader |
-| Starter | 45-55% |
-| Pro | 60-70% |
-| Business | 70-80% |
-| Enterprise (flat) | 50-75% |
-| Enterprise (metered) | 60-80% |
+Credit-pakke-revenue (markup over rene LLM-cost) lander oven på subscription. Pro-tenant der køber 200 ekstra credits/mdr (€60) vs cost €0.10/credit × 200 = €20 → **€40 ren credit-margin per måned ud over subscription**.
+
+### Gross margin (post-F156, kalibreret 2026-04-25)
+
+| Tier | Effective GM% | Kommentar |
+|------|---------------|-----------|
+| Hobby | loss leader | Acquisition cost; 5 credits er net-kost ~€0.50/mdr |
+| Starter | 75-82% | Højere end pre-F156 (45-55%) fordi tenant betaler eget compile-overforbrug |
+| Pro | 80-85% | Credit-pakke-margin øger top-line på heavy-users |
+| Business | 82-88% | Stort baseline + stort credit-køb = højeste margin |
+| Enterprise (flat) | 70-80% | Forhandlet kontrakt-credits; lavere markup men stort volumen |
+| Enterprise (metered) | 75-85% | Direkte spejling af forbrug + markup |
 
 ---
 
