@@ -1,0 +1,102 @@
+{
+  "$schema": "./ingest-reference.ground-truth.schema.json",
+  "fixture": "apps/server/test-fixtures/ingest-reference.md",
+  "description": "Expected ingest output-ranges for verifying that any ingest-backend (Claude CLI, OpenRouter Gemini Flash, GLM, Qwen) produces a coherent wiki from the Trail origin-story fixture. Ranges are deliberately loose so different models with different compile-behaviours can all pass — the goal is 'produces a reasonable wiki', not 'produces identical output'.",
+  "last_updated": "2026-04-24",
+  "language": "da",
+  "fixture_stats": {
+    "file_size_bytes": 8205,
+    "word_count": 1157,
+    "section_count": 11,
+    "unique_wiki_links_in_source": 13,
+    "explicit_typed_edges_in_source": 0,
+    "note_on_typed_edges": "The fixture source itself uses bare [[links]]; typed edges are created by the compiler during ingest based on the prose ('A is part of B' → [[B|part-of]] in compiled neuron). Ground-truth tracks how many typed edges the compile actually produces."
+  },
+  "expected": {
+    "source_summary_page": {
+      "description": "One source-summary page under /neurons/sources/ referencing the uploaded filename.",
+      "count": { "exact": 1 },
+      "must_have_frontmatter_fields": ["title", "tags", "date", "sources"]
+    },
+    "concept_pages": {
+      "description": "Under /neurons/concepts/. Reasonable min-max range for a ~1100-word fixture with 11 sections.",
+      "count": { "min": 5, "max": 12 },
+      "examples_likely_found": [
+        "memex",
+        "compile-at-ingest",
+        "neuron",
+        "curator",
+        "knowledge-base",
+        "curation-queue",
+        "typed-edges",
+        "llm-wiki"
+      ]
+    },
+    "entity_pages": {
+      "description": "Under /neurons/entities/. Named persons + organisations + tools in the fixture. Different models may or may not split all ten into pages; we accept 7-12.",
+      "count": { "min": 7, "max": 12 },
+      "named_entities_in_source": [
+        "Vannevar Bush",
+        "Andrej Karpathy",
+        "Christian Broberg",
+        "Sanne Andersen",
+        "WebHouse",
+        "Bun",
+        "Hono",
+        "libSQL",
+        "Preact",
+        "Claude Code"
+      ],
+      "entity_linking_assertion": "Every occurrence of these 10 names in concept-pages + source-summary MUST be wrapped in [[wiki-links]]. Tested by parsing concept + summary content and regex-counting un-wrapped mentions vs total mentions."
+    },
+    "wiki_backlinks": {
+      "description": "Rows in wiki_backlinks table after ingest. Every [[wiki-link]] that resolves via canonical slug OR F148 normalizedSlug fold counts.",
+      "count": { "min": 15, "max": 60 }
+    },
+    "typed_edges": {
+      "description": "Subset of wiki_backlinks where edge_type != 'cites'. Source uses bare [[links]] only; typed edges are the compiler's job. Good models (Sonnet, Gemini Flash 2-pass) emit 3-15; weaker single-pass models may emit 0-3.",
+      "count": { "min": 0, "max": 20 },
+      "semantic_relationships_implied_by_source": [
+        "Neuron is-a knowledge-atom (from 'En Neuron er et knowledge-atom')",
+        "Knowledge Base part-of Trail (from 'hver KB ejer tusindvis af Neuroner')",
+        "Trail example-of memex-inspired-system (from 'Memex-inspireret videns-infrastruktur')",
+        "F150 part-of F149 (from 'bygger ovenpå F149')",
+        "F151 part-of F149 (from 'bygger ovenpå F149')",
+        "F152 supersedes manual-env-switch (from 'supersedes manual env-baseret model-switch')",
+        "Compile-at-ingest supersedes verbatim-memory (from 'forskellen mellem verbatim memory og compile-at-ingest')"
+      ]
+    },
+    "glossary_entries": {
+      "description": "Entries added to /neurons/glossary.md. F102 says 1-3 durable fagtermer per ingest.",
+      "count": { "min": 0, "max": 5 }
+    },
+    "broken_links": {
+      "description": "F148 link-checker findings. After ingest completes AND link-checker runs, a well-behaved model produces 0 broken links. Non-zero = the entity-linking rule or slug-consistency rule was not followed.",
+      "open_count": { "min": 0, "max": 2 },
+      "hard_rule": "On a production run we require 0. On first pass of a new backend we allow up to 2 as grace — any more indicates the prompt's slug-rules are not landing."
+    },
+    "ingest_job": {
+      "description": "The ingest_jobs row created for this ingest.",
+      "status": { "exact": "done" },
+      "turns": { "min": 8, "max": 80 },
+      "cost_cents_by_backend": {
+        "claude-cli": { "description": "Max Plan → 0. Anthropic API direct → depends on model.", "value": 0 },
+        "openrouter/google/gemini-2.5-flash": { "min": 2, "max": 15 },
+        "openrouter/z-ai/glm-4.6": { "min": 5, "max": 30 },
+        "openrouter/qwen/qwen-plus": { "min": 1, "max": 10 }
+      }
+    }
+  },
+  "usage": {
+    "description": "Intended to be consumed by F149 verification scripts (verify-backend-claude.ts, verify-backend-openrouter.ts, trial-fallback-*.ts). Each script uploads ingest-reference.md, awaits ingest completion, queries the DB for actual counts, and asserts against the ranges above.",
+    "reproducibility": "Ranges are wide enough that a run which would rationally satisfy 'the spec produces a reasonable wiki' passes, but tight enough that a regression (e.g. prompt change that skips entities) fails visibly.",
+    "when_to_tighten": "After 10+ successful runs on a given model, narrow the ranges toward observed medians. Keep a changelog in this file's header so drift is traceable."
+  },
+  "changelog": [
+    {
+      "date": "2026-04-24",
+      "author": "F149 planning session",
+      "change": "Initial fixture + ground-truth authored. Ranges set by reasoning, not measurement — must be verified against first live ingest runs and tightened."
+    }
+  ]
+}

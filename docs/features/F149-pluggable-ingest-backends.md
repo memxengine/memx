@@ -274,9 +274,13 @@ ALTER TABLE knowledge_bases ADD COLUMN ingest_fallback_chain TEXT;
 
 ## Success Criteria
 
-**Test-kilde**: `docs/features/F149-pluggable-ingest-backends.md` (dette plan-dokument selv, ~30KB markdown) uploadet til KB `development-tester` (`http://127.0.0.1:58031/kb/development-tester/neurons`). Kilden er lille nok til hurtig iteration (<60s per backend), stor nok til at trigge multi-turn-ingest og afsløre fejl i tool-call-loop. Bevidst fravalg af den fulde NADA-PDF (122 sider) — den gemmes til Sanne's KB når vi er ready til produktion.
+**Test-kilde**: `apps/server/test-fixtures/ingest-reference.md` (1157 ord, ~8KB, 11 sektioner) — en kuraterings-fixture der er en ægte Trail-oprindelses-historie på dansk. Under version control så resultater er reproducerbare på tværs af sessioner. Ground-truth i `apps/server/test-fixtures/ingest-reference.ground-truth.json` definerer forventede counts (antal concept-pages, entity-pages, wiki-backlinks, typed-edges, broken-links) som verifikations-scriptene asserterer mod.
 
-Hvis F149-plan-doc'en viser sig for lille (fx ingen typed edges fordi tæt teknisk tekst), falder vi tilbage til en fixture-kombination `F148 + F149 + F150 plan-docs` concatenated som én kilde (~100KB) der garanterer diversitet.
+Fixturen inkluderer 10 navngivne entities (Vannevar Bush, Andrej Karpathy, Christian Broberg, Sanne Andersen, WebHouse, Bun, Hono, libSQL, Preact, Claude Code), 13 eksplicitte wiki-links, og tætte semantiske relationer (Neuron is-a knowledge-atom, F150 part-of F149, Compile-at-ingest supersedes verbatim-memory osv.) der tester F137 typed-edge-extraction.
+
+Uploadet til KB `development-tester` (`http://127.0.0.1:58031/kb/development-tester/neurons`). Kilden er lille nok til hurtig iteration (<60s per backend), stor nok til at trigge multi-turn-ingest og afsløre fejl i tool-call-loop. NADA-PDF (122 sider) gemmes til Sanne's KB når vi rampper op i produktion.
+
+**Bonus**: fixturen er skrevet som en rigtig tekst der kan genbruges på `trailmem.com`s "Om Trail"-sektion — vi får test-fixture + marketing-udkast i samme artefakt.
 
 1. **Samme kilde producerer samme-kvalitets-wiki uanset backend.** Målt ved: kør ingest på F149-plan-doc'en via både `claude-cli + claude-sonnet-4-6` og `openrouter + google/gemini-2.5-flash`; antal Neuroner skabt, antal wiki-links, antal entity-refs sammenlignelig inden for ±20%.
 2. **Mock-fail fra første chain-step udløser korrekt fallback.** `trial-fallback-rate-limit.ts` injicerer en 429 i Gemini Flash; runner skifter til GLM, fuldfører jobbet, `ingest_jobs.model_trail` indeholder begge modeller.
