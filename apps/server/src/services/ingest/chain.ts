@@ -29,23 +29,36 @@ export interface ChainStep {
 }
 
 /**
- * Hard-coded defaults. Phase 1 ships the single-step chain matching
- * pre-F149 behaviour; Phase 2 will extend these with OpenRouter
- * fallback steps.
+ * Hard-coded default chains — per Christian's spec (F149 review,
+ * 2026-04-24): every ingest run has fallback, regardless of the
+ * primary backend chosen.
+ *
+ *   claude-cli primary → Flash → GLM → Qwen
+ *                        (stays free on Max Plan when it works;
+ *                         drops to paid cloud on Max-Plan failure)
+ *
+ *   openrouter primary → Flash → GLM → Qwen → Sonnet (via API)
+ *                        (cheap-first strategy; Sonnet API is the
+ *                         high-quality last-resort — expensive but
+ *                         most reliable)
+ *
+ * Model IDs matched to model-lab's PRICING table which was verified
+ * against live OpenRouter inventory during the 2026-04-24 experiment.
+ * The F149 plan's verify-ingest-models.ts CI hook is what keeps these
+ * stable across provider-id renames.
  */
 export const DEFAULT_CHAIN_CLAUDE_CLI: ChainStep[] = [
   { backend: 'claude-cli', model: 'claude-sonnet-4-6' },
-  // Phase 2 extensions (commented out until OpenRouterBackend lands):
-  // { backend: 'openrouter', model: 'google/gemini-2.5-flash' },
-  // { backend: 'openrouter', model: 'z-ai/glm-4.6' },
-  // { backend: 'openrouter', model: 'qwen/qwen-plus' },
+  { backend: 'openrouter', model: 'google/gemini-2.5-flash' },
+  { backend: 'openrouter', model: 'z-ai/glm-5.1' },
+  { backend: 'openrouter', model: 'qwen/qwen3.6-plus' },
 ];
 
 export const DEFAULT_CHAIN_OPENROUTER: ChainStep[] = [
   { backend: 'openrouter', model: 'google/gemini-2.5-flash' },
-  { backend: 'openrouter', model: 'z-ai/glm-4.6' },
-  { backend: 'openrouter', model: 'qwen/qwen-plus' },
-  { backend: 'openrouter', model: 'anthropic/claude-sonnet-4.6' },
+  { backend: 'openrouter', model: 'z-ai/glm-5.1' },
+  { backend: 'openrouter', model: 'qwen/qwen3.6-plus' },
+  { backend: 'openrouter', model: 'anthropic/claude-sonnet-4-6' },
 ];
 
 export interface KbForChainResolution {

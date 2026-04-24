@@ -71,14 +71,19 @@ assert(
 // ── 2. resolveIngestChain precedence ──────────────────────────────────────
 console.log('\n[2] resolveIngestChain precedence');
 
-// Default with no overrides → claude-cli single-step
+// Default with no overrides → claude-cli 4-step chain (Phase 2c).
+// Primary is claude-cli (Max Plan); Flash/GLM/Qwen are cloud fallbacks.
 const defaultChain = resolveIngestChain(
   { ingestBackend: null, ingestModel: null, ingestFallbackChain: null },
   {},
 );
-assert(defaultChain.length === 1, 'default chain is single-step');
-assert(defaultChain[0]!.backend === 'claude-cli', 'default backend is claude-cli');
-assert(defaultChain[0]!.model === 'claude-sonnet-4-6', 'default model is sonnet-4-6');
+assert(defaultChain.length === 4, `default claude-cli chain has 4 steps (got ${defaultChain.length})`);
+assert(defaultChain[0]!.backend === 'claude-cli', 'default primary is claude-cli');
+assert(defaultChain[0]!.model === 'claude-sonnet-4-6', 'default primary model is sonnet-4-6');
+assert(defaultChain[1]!.backend === 'openrouter', 'fallback-1 is openrouter');
+assert(defaultChain[1]!.model === 'google/gemini-2.5-flash', 'fallback-1 model is Gemini Flash');
+assert(defaultChain[2]!.model === 'z-ai/glm-5.1', 'fallback-2 model is GLM');
+assert(defaultChain[3]!.model === 'qwen/qwen3.6-plus', 'fallback-3 model is Qwen');
 
 // Env-level single-step override
 const envChain = resolveIngestChain(
@@ -112,13 +117,14 @@ const jsonChain = resolveIngestChain(
 assert(jsonChain.length === 2, 'JSON chain override creates 2-step chain');
 assert(jsonChain[0]!.model === 'google/gemini-2.5-flash', 'first step from JSON chain');
 
-// Malformed JSON falls through gracefully
+// Malformed JSON falls through to default (which is the 4-step
+// claude-cli-primary chain after Phase 2c).
 const malformed = resolveIngestChain(
   { ingestBackend: null, ingestModel: null, ingestFallbackChain: 'not json at all' },
   {},
 );
 assert(
-  malformed.length === 1 && malformed[0]!.backend === 'claude-cli',
+  malformed.length === 4 && malformed[0]!.backend === 'claude-cli',
   'malformed JSON chain falls through to default',
 );
 
@@ -139,12 +145,14 @@ assert(
   'unknown backend filtered from JSON chain',
 );
 
-// openrouter-primary env → default openrouter chain (4 steps)
+// openrouter-primary env → Flash → GLM → Qwen → Sonnet-API (4 steps)
 const openrouterDefault = resolveIngestChain(
   { ingestBackend: null, ingestModel: null, ingestFallbackChain: null },
   { INGEST_BACKEND: 'openrouter' },
 );
-assert(openrouterDefault.length === 4, 'openrouter-primary default chain has 4 steps (Phase 2 shape)');
+assert(openrouterDefault.length === 4, 'openrouter-primary default chain has 4 steps');
+assert(openrouterDefault[0]!.model === 'google/gemini-2.5-flash', 'openrouter primary = Flash');
+assert(openrouterDefault[3]!.model === 'anthropic/claude-sonnet-4-6', 'openrouter last-resort = Sonnet via API');
 
 // ── 3. runWithFallback chain-advancement ──────────────────────────────────
 console.log('\n[3] runWithFallback fallback logic');
