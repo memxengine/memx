@@ -259,4 +259,4 @@ F155 (Auto-scaling Policy) automatiserer delmængden "pool-scaleup" og "performa
 - **F77** Multi-region — opt-in per tenant ved Stadig 3.
 - **F153** Continuous R2 backup — infrastruktur-primitiv, brug alle stadier.
 - **F154** Trail Control Plane — **operationelt nødvendig** ved Stadig 2, kritisk ved Stadig 3.
-- **F155** Auto-scaling Policy — automatiserer delmængden af Control Plane-handlinger.
+- **F155** [Auto-scaling Policy](./features/F155-auto-scaling-policy.md) — automatiserer delmængden af Control Plane-handlinger via yaml-policy med safety rails.

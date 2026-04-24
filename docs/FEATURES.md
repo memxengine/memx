@@ -290,6 +290,14 @@ Separate admin app (`ops.trailmem.com`) der styrer hele Trail-produktionsfleeten
 |---|---------|--------|-------|------|
 | F154 | [Trail Control Plane](features/F154-trail-control-plane.md) | Planned | 2 | [plan](features/F154-trail-control-plane.md) |
 
+### F155 — Auto-scaling Policy
+
+Rule-drevet automatisk spawn/resize/decommission af Fly-Machines baseret på policy-yaml (`config/auto-scale-policy.yaml`, hot-reloadable). Policy-engine evaluerer hver 60s, foreslår handlinger til en kø med `auto` eller `require_confirm` approval-flags, udfører godkendte via F154's Fly-client, audit-logger alt. Safety rails: rate-limit (3/5min), daily soft-cap €50 + monthly hard-cap €500 ekstra cost, oscillation-detektor (kontradiktoriske regler pauser automatisk), panic-button der øjeblikkeligt disabler auto-approve. Seks default regler: `pro-pool-scaleup`, `business-machine-vertical-scale`, `starter-pool-shrink`, `noisy-neighbor-isolation`, `hobby-quota-abuse`, `pool-selection-on-signup`. Phased rollout: dry-run først (2-4 uger validering), derefter conservative auto-approve (pool-selection + pro-scaleup), slutteligt full auto. Lever i F154 Control Plane's UI som "Auto-scale"-tab med pending-actions, history, dry-run-simulator. Depends on F154, F44, F151, F43. Medium effort (5-7 dage over 4 phases). Status: Planned.
+
+| # | Feature | Status | Phase | Plan |
+|---|---------|--------|-------|------|
+| F155 | [Auto-scaling Policy](features/F155-auto-scaling-policy.md) | Planned | 2 | [plan](features/F155-auto-scaling-policy.md) |
+
 ---
 
 **Se også:** [`NON-GOALS.md`](./NON-GOALS.md) — kuratert register over bevidst fravalg pr. F-plan (parked / declined / promoted / covered-by).
