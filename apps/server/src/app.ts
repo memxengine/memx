@@ -20,6 +20,7 @@ import { glossaryRoutes } from './routes/glossary.js';
 import { graphRoutes } from './routes/graph.js';
 import { workRoutes } from './routes/work.js';
 import { apiKeyRoutes } from './routes/api-keys.js';
+import { backupRoutes } from './routes/backups.js';
 
 /**
  * Hono context variables visible to every handler.
@@ -93,6 +94,8 @@ export function createApp(trail: TrailDatabase): Hono<AppBindings> {
   app.route('/api/v1', graphRoutes);
   app.route('/api/v1', workRoutes);
   app.route('/api/v1', apiKeyRoutes);
+  // F153 — admin-only backup endpoints. Route prefix is `/api/v1/admin/...`.
+  app.route('/api/v1', backupRoutes);
 
   return app;
 }
