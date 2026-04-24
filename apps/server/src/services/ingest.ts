@@ -7,10 +7,11 @@ import {
   type SchemaNeuronRow,
 } from '@trail/core';
 import { broadcaster } from './broadcast.js';
-import { spawnClaude } from './claude.js';
 import { ensureMcpConfig, writeIngestMcpConfig, cleanupIngestMcpConfig } from '../lib/mcp-config.js';
 import { listKbTags } from './tag-aggregate.js';
 import { listKbEntities } from './entity-aggregate.js';
+import { resolveIngestChain } from './ingest/chain.js';
+import { runWithFallback } from './ingest/runner.js';
 
 /**
  * Collapse a raw spawnClaude error into a one-sentence reason the
@@ -451,27 +452,31 @@ GENERAL
     dataDir: DATA_DIR,
     connector: sourceConnector,
   });
-  const args = [
-    '-p',
-    prompt,
-    '--mcp-config',
-    mcpConfigPath,
-    '--allowedTools',
-    'mcp__trail__guide,mcp__trail__search,mcp__trail__read,mcp__trail__write',
-    '--dangerously-skip-permissions',
-    '--max-turns',
-    String(INGEST_MAX_TURNS),
-    '--output-format',
-    'json',
-    ...(INGEST_MODEL ? ['--model', INGEST_MODEL] : []),
-  ];
+
+  // F149 — resolve the ingest chain for this KB from (KB override →
+  // env → hardcoded default). ClaudeCLIBackend was the only step pre-
+  // F149; Phase 2 adds OpenRouterBackend fallback steps. The INGEST_
+  // MODEL env var is still honoured via resolveIngestChain's env-level
+  // single-step override.
+  const chain = resolveIngestChain(
+    {
+      ingestBackend: kb.ingestBackend,
+      ingestModel: kb.ingestModel,
+      ingestFallbackChain: kb.ingestFallbackChain,
+    },
+    {
+      INGEST_BACKEND: process.env.INGEST_BACKEND,
+      INGEST_MODEL: process.env.INGEST_MODEL || INGEST_MODEL || undefined,
+      INGEST_FALLBACK_CHAIN: process.env.INGEST_FALLBACK_CHAIN,
+    },
+  );
 
   try {
-    // Env on claude CLI itself — kept as a belt-and-braces duplicate of the
-    // mcp-config env, in case a future claude-CLI release starts forwarding
-    // to MCP. Today the MCP reads only from the config file (see
-    // writeIngestMcpConfig above).
-    await spawnClaude(args, {
+    const runnerResult = await runWithFallback(chain, {
+      prompt,
+      tools: ['mcp__trail__guide', 'mcp__trail__search', 'mcp__trail__read', 'mcp__trail__write'],
+      mcpConfigPath,
+      maxTurns: INGEST_MAX_TURNS,
       timeoutMs: INGEST_TIMEOUT_MS,
       env: {
         TRAIL_TENANT_ID: job.tenantId,
@@ -491,7 +496,13 @@ GENERAL
       .run();
     await trail.db
       .update(ingestJobs)
-      .set({ status: 'done', completedAt: finishedAt })
+      .set({
+        status: 'done',
+        completedAt: finishedAt,
+        backend: runnerResult.backend,
+        costCents: runnerResult.costCents,
+        modelTrail: JSON.stringify(runnerResult.modelTrail),
+      })
       .where(eq(ingestJobs.id, jobId))
       .run();
 

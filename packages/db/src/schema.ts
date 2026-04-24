@@ -65,6 +65,17 @@ export const knowledgeBases = sqliteTable(
     // flip off per Trail if they don't want individual reads recorded.
     // Off → recordAccess is a no-op + rollup skips the KB.
     trackAccess: integer('track_access', { mode: 'boolean' }).notNull().default(true),
+    // F149 — per-KB ingest-backend overrides. Nullable; runner's
+    // resolveIngestChain falls back to env → hardcoded defaults when
+    // these are NULL. Legal values for ingest_backend today:
+    // 'claude-cli' | 'openrouter'. ingest_model is the provider-specific
+    // id (e.g. 'claude-sonnet-4-6' or 'google/gemini-2.5-flash').
+    // ingest_fallback_chain is an optional JSON-encoded ChainStep[]
+    // override; when present it fully replaces the default chain for
+    // this KB.
+    ingestBackend: text('ingest_backend'),
+    ingestModel: text('ingest_model'),
+    ingestFallbackChain: text('ingest_fallback_chain'),
     createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
     updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
   },
@@ -401,6 +412,19 @@ export const ingestJobs = sqliteTable(
     // the same shape the original trigger chose.
     promptOptions: text('prompt_options'),
     errorMessage: text('error_message'),
+    // F149 — per-job cost tracking. Populated by OpenRouter-backend from
+    // the `usage.total_cost` field of each response; claude-cli on Max
+    // Plan emits 0 (rendered as "gratis (Max)" in the cost dashboard).
+    // NOT NULL DEFAULT 0 so pre-F149 rows satisfy the schema.
+    costCents: integer('cost_cents').notNull().default(0),
+    // F149 — 'claude-cli' | 'openrouter'. NULL on pre-F149 rows; UI
+    // renders those as "claude-cli" legacy for display purposes.
+    backend: text('backend'),
+    // F149 — JSON array of {turn, model} entries recording which model
+    // actually ran each turn. Typical shape: `[{turn:1,model:"gemini-
+    // 2.5-flash"}]`. When fallback fires: `[{turn:1,model:"flash"},
+    // {turn:7,model:"glm"}]`. Null on pre-F149 runs.
+    modelTrail: text('model_trail'),
     createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
     startedAt: text('started_at'),
     completedAt: text('completed_at'),
