@@ -47,6 +47,11 @@ import {
 } from './contradiction-lint.js';
 import { rebuildAccessRollup, pruneOldAccessRows } from './access-rollup.js';
 import { runFullLinkCheck } from './link-checker.js';
+import { createBackupProvider, readBackupConfigFromEnv } from './backup/providers/index.js';
+import { runBackupPass } from './backup/pass.js';
+import { pruneRetention } from './backup/retention.js';
+import { mkdirSync } from 'node:fs';
+import { join } from 'node:path';
 
 const SCHEDULE_HOURS = Number(process.env.TRAIL_LINT_SCHEDULE_HOURS ?? 24);
 const INITIAL_DELAY_MS =
@@ -164,6 +169,12 @@ async function runFullPass(trail: TrailDatabase): Promise<void> {
       console.error('[lint-scheduler] access-rollup failed:', err instanceof Error ? err.message : err);
     }
 
+    // F153 — DB snapshot + R2 upload + retention prune. Piggy-backs on
+    // the lint-scheduler cadence (default 24h) so we don't proliferate
+    // schedulers across the engine. Failures here DO NOT fail the whole
+    // lint pass — the next pass tries again.
+    await runBackupStep(trail);
+
     const elapsed = Math.round((Date.now() - t0) / 1000);
     console.log(
       `[lint-scheduler] pass complete: ${kbCount} KB(s), ${totalFindings} new findings, ${contradictionsScanned} Neurons scanned for contradictions, ${elapsed}s`,
@@ -182,6 +193,82 @@ async function listKBs(trail: TrailDatabase): Promise<ScannedKB[]> {
     })
     .from(knowledgeBases)
     .all();
+}
+
+/**
+ * F153 — run the backup pass + retention prune as part of the scheduler.
+ * No-op when TRAIL_BACKUP_R2_* env vars are unset.
+ */
+async function runBackupStep(trail: TrailDatabase): Promise<void> {
+  const config = readBackupConfigFromEnv();
+  if (config.type === 'off') return;
+
+  const dataDir = process.env.TRAIL_DATA_DIR ?? join(process.cwd(), 'data');
+  const root = join(dataDir, 'backups');
+  const stagingDir = join(root, 'staging');
+  const localDir = join(root, 'local');
+  mkdirSync(stagingDir, { recursive: true });
+  mkdirSync(localDir, { recursive: true });
+
+  let provider;
+  try {
+    provider = await createBackupProvider(config);
+  } catch (err) {
+    console.error(
+      '[lint-scheduler] backup provider init failed:',
+      err instanceof Error ? err.message : err,
+    );
+    return;
+  }
+
+  // ── Snapshot + upload ───────────────────────────────────────────
+  try {
+    const t0 = Date.now();
+    const result = await runBackupPass({
+      dbPath: trail.path,
+      dataDir,
+      stagingDir,
+      localDir,
+      provider,
+      trigger: 'scheduled',
+    });
+    const elapsed = Math.round((Date.now() - t0) / 1000);
+    if (result.ok) {
+      console.log(
+        `[lint-scheduler] backup uploaded: ${result.snapshot.id} (${result.snapshot.compressedBytes}B, ${elapsed}s)`,
+      );
+    } else {
+      console.error(`[lint-scheduler] backup failed: ${result.error ?? 'unknown'}`);
+    }
+  } catch (err) {
+    console.error('[lint-scheduler] backup pass threw:', err instanceof Error ? err.message : err);
+  }
+
+  // ── Retention prune (runs even if the current pass failed — old
+  // uploaded snapshots from previous passes can still be pruned). ──
+  try {
+    const localKeep = Number(process.env.TRAIL_BACKUP_LOCAL_KEEP ?? 3);
+    const retainDays = Number(process.env.TRAIL_BACKUP_RETAIN_DAYS ?? 30);
+    const pruned = await pruneRetention({
+      dataDir,
+      provider,
+      localKeep,
+      retainDays,
+    });
+    if (pruned.prunedRemoteObjects > 0 || pruned.prunedLocalFiles > 0) {
+      console.log(
+        `[lint-scheduler] backup retention: ${pruned.prunedRemoteObjects} R2 object(s) older than ${retainDays}d, ${pruned.prunedLocalFiles} local file(s) beyond keep=${localKeep}`,
+      );
+    }
+    for (const err of pruned.errors) {
+      console.error(`[lint-scheduler] backup retention error: ${err}`);
+    }
+  } catch (err) {
+    console.error(
+      '[lint-scheduler] backup retention threw:',
+      err instanceof Error ? err.message : err,
+    );
+  }
 }
 
 async function runOrphansStale(trail: TrailDatabase, kb: ScannedKB): Promise<LintReport> {

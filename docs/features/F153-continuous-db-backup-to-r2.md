@@ -173,11 +173,26 @@ export class R2BackupProvider implements BackupProvider {
 
 Interface (`types.ts`) mirrors the CMS pattern exactly so other S3-compatible backends drop in without touching the scheduler.
 
-### Scheduler — `apps/server/src/services/backup-scheduler.ts` (new)
+### Scheduler — plug-in to `services/lint-scheduler.ts` (revised 2026-04-24)
 
-Pattern mirrors `startLintScheduler` (see `apps/server/src/services/lint-scheduler.ts:85-172`). Returns a `stop()` function. Bootstraps in `apps/server/src/index.ts` next to the other scheduled services.
+**Design change from the original plan**: rather than shipping a new `backup-scheduler.ts` with its own `setInterval`, the backup pass plugs into `runFullPass()` in `lint-scheduler.ts` as a final step after access-rollup. One periodic loop for all background work; no proliferation of schedulers. Cadence is inherited from `TRAIL_LINT_SCHEDULE_HOURS` (default 24h). The original plan's `TRAIL_BACKUP_INTERVAL_HOURS` env var is retired — it would conflict with the single-loop invariant.
 
-**Gotcha discovered in Phase 1 verification:** `VACUUM INTO` on the *same* libSQL connection that the engine is actively writing to **hangs indefinitely**. The scheduler therefore MUST open a distinct libSQL client pointed at the same DB file for each backup pass, take the snapshot through that client, and close it. `trail.sqliteClient` (the engine's writer connection) is off-limits for snapshots. The extra client is cheap — libSQL handles per-file concurrency via WAL — but the snapshot path is physically separate from the engine's write path:
+Concretely, inside `lint-scheduler.ts`:
+
+```typescript
+// After rebuildAccessRollup + pruneOldAccessRows:
+await runBackupStep(trail);
+```
+
+Where `runBackupStep(trail)` is a self-contained helper in the same file that:
+
+1. Reads `readBackupConfigFromEnv()`. Returns immediately if type is `'off'`.
+2. Creates staging + local dirs under `${TRAIL_DATA_DIR}/backups/`.
+3. Builds the provider, runs `runBackupPass` (trigger=`'scheduled'`).
+4. Runs `pruneRetention` with `localKeep` + `retainDays` from env, regardless of whether step 3 succeeded — aged-out snapshots from earlier successful passes can still be pruned even when the current pass failed.
+5. Logs outcomes. Any exception is caught inside this helper so a backup hiccup doesn't abort the rest of the lint pass.
+
+**Gotcha discovered in Phase 1 verification:** `VACUUM INTO` on the *same* libSQL connection that the engine is actively writing to **hangs indefinitely**. `runBackupPass` in `services/backup/pass.ts` therefore opens a distinct libSQL client pointed at the same DB file for each backup pass, takes the snapshot through that client, and closes it. `trail.sqliteClient` (the engine's writer connection) is off-limits for snapshots. The extra client is cheap — libSQL handles per-file concurrency via WAL — but the snapshot path is physically separate from the engine's write path:
 
 ```typescript
 import { createClient } from '@libsql/client';
@@ -318,7 +333,11 @@ export function snapshotDb(source: LibSqlClient, outDir: string): Promise<Snapsh
 
 ## Rollout
 
-**Phase 1 (half-day) — ✅ LANDED** — Snapshot primitive (`packages/db/src/backup.ts`) + `LibsqlTrailDatabase.sqliteClient` typed accessor + `apps/server/scripts/snapshot-dry-run.ts` that asserts end-to-end integrity. 13 assertions pass: file-size match, sha256 reproducible, gunzip + `integrity_check = ok`, row counts preserved, logical content stable across repeat snapshots, mutation correctly reflected in a subsequent snapshot. Feature is otherwise invisible (no env-var side effects, no routes, no scheduler). Caught the "same-connection VACUUM INTO hangs" gotcha above.
+**Phase 1 (half-day) — ✅ LANDED `dbcbe22`** — Snapshot primitive (`packages/db/src/backup.ts`) + `LibsqlTrailDatabase.sqliteClient` typed accessor + `apps/server/scripts/snapshot-dry-run.ts` that asserts end-to-end integrity. 13 assertions pass: file-size match, sha256 reproducible, gunzip + `integrity_check = ok`, row counts preserved, logical content stable across repeat snapshots, mutation correctly reflected in a subsequent snapshot. Feature is otherwise invisible (no env-var side effects, no routes, no scheduler). Caught the "same-connection VACUUM INTO hangs" gotcha above.
+
+**Phase 2 (half-day) — ✅ LANDED `5acd290`** — R2 provider (`services/backup/providers/r2.ts`) built on `@aws-sdk/client-s3` + `@aws-sdk/lib-storage`'s multipart `Upload`; factory + env-reader (`services/backup/providers/index.ts`); atomic manifest (`services/backup/manifest.ts`); shared `runBackupPass` (`services/backup/pass.ts`) used by both the manual route and the scheduler; 3 admin HTTP routes (`routes/backups.ts`: `GET /admin/backups`, `POST /admin/backups`, `POST /admin/backups/test`) gated on `requireAuth` + owner role. End-to-end probe (`scripts/verify-f153-backup.ts`) with 14 assertions against the real `trail-backups` bucket (under an isolated `_verify/` prefix) — 213ms for a 150-row seeded DB, byte-perfect sha256 round-trip on download.
+
+**Phase 3 (half-day) — ✅ LANDED** — Retention pruning (`services/backup/retention.ts`) + plug-in to `lint-scheduler.ts`'s `runFullPass`. Scheduled pass trigger='scheduled' runs alongside the dreaming pass at 24h cadence; retention pruning runs unconditionally after each pass so aged-out snapshots from earlier passes get pruned even if the current backup failed. Verification script (`scripts/verify-f153-retention.ts`) exercises 5 backup rounds with forged timestamps (40d/35d ago for the oldest two), calls `pruneRetention(localKeep=2, retainDays=30)`, asserts: 2 R2 deletes, 1 local unlink, 3 uploaded rows remain, 2 pruned-remote rows recorded, bucket state matches. 20 assertions green + idempotence check (second prune is a no-op).
 
 **Phase 2 (half-day)** — Wire the R2 provider + manual `POST /api/admin/backups` route. No scheduler yet. Christian provisions the R2 bucket and API tokens, drops them in `.env`, clicks the admin button, verifies the upload lands.
 
