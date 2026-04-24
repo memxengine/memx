@@ -16,24 +16,33 @@ Fem tiers: **Free / Starter / Pro / Business / Enterprise**. Pro har **modulære
 
 | Tier | Pris/mdr | Inkl. credits/mdr | Neurons | KBs | Parallelisme | Kontra-strategi | Support |
 |---|---:|---:|---:|---:|:---:|---|---|
-| **Free** | $0 | 5 | 50 | 1 | P=1 | — | community |
-| **Starter** | $20 | 20 | 500 | 1 | P=1 | on-mutation + månedlig backfill | email 72t |
-| **Pro** | $75 | 100 | 5.000 | 3 | P=2 | + ugentlig sampling | email 48t |
-| **Pro (max add-ons)** | $420 | 100 + add-ons | 20.000 | 11 | P=4 | daglig sampling + priority ingest | email 48t |
-| **Business** | $999 | 500 | 50.000 | 10 | P=4 | daglig sampling | SLA + 24t |
-| **Enterprise** | $2.500+ | contract | ∞ | ∞ | P=8+ | custom | dedicated |
+| **Free** | $0 | 100 | 50 | 1 | P=1 | — | community |
+| **Starter** | $20 | 400 | 500 | 1 | P=1 | on-mutation + månedlig backfill | email 72t |
+| **Pro** | $75 | 2 000 | 5.000 | 3 | P=2 | + ugentlig sampling | email 48t |
+| **Pro (max add-ons)** | $420 | 2 000 + add-ons | 20.000 | 11 | P=4 | daglig sampling + priority ingest | email 48t |
+| **Business** | $999 | 10 000 | 50.000 | 10 | P=4 | daglig sampling | SLA + 24t |
+| **Enterprise** | $2.500+ | contract (50K-500K/år) | ∞ | ∞ | P=8+ | custom | dedicated |
 
 **Credits-pakker (ekstra forbrug):**
 
 | Pakke | Pris | Pris/credit |
 |---|---:|---:|
-| 10 credits | €5 | €0,50 |
-| 20 credits | €9 | €0,45 |
-| 50 credits | €19 | €0,38 |
-| 100 credits | €35 | €0,35 |
-| 200 credits | €60 | €0,30 |
+| 100 credits | €5 | €0,050 |
+| 200 credits | €9 | €0,045 |
+| 500 credits | €19 | €0,038 |
+| 1 000 credits | €35 | €0,035 |
+| 2 000 credits | €60 | €0,030 |
 
-1 credit ≈ $0,10 LLM-cost. En typisk Flash-ingest af en 10-siders PDF koster 1-2 credits; samme ingest på Sonnet koster 10-20 credits (10× faktor). Pakker udløber aldrig.
+**1 credit = $0,01 LLM-cost** (målt via OpenRouter `usage.cost`, ikke estimat). En typisk 10-siders PDF-ingest på Flash koster ~1 credit; samme ingest på Sonnet koster ~30 credits fordi Sonnet er ~30× dyrere per token. Pakker udløber aldrig.
+
+**Token-konvertering (transparens for forhåndsberegning):**
+
+| Model | Credits per 1M input tokens | Credits per 1M output tokens |
+|---|---:|---:|
+| Gemini 2.5 Flash | 8 | 30 |
+| GLM 4.6 | 14 | 28 |
+| Qwen 3.6 Plus | 20 | 60 |
+| Claude Sonnet 4.6 | 300 | 1 500 |
 
 ### Pro tilkøb (modulær skalering)
 

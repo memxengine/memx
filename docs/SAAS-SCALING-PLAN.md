@@ -414,16 +414,16 @@ Metered aligns incentives — Broberg.ai earns more when tenant uses Trail more.
 
 | Tier | Price/mo | Credits/mo (F156) | Trails | Neurons/Trail | Sources/Trail | Queries/mo | Connectors | Node shape |
 |------|----------|------:|--------|---------------|---------------|------------|------------|------------|
-| **Hobby** | Free | 5 | 1 | 500 | 100 | 1K | 2 | Shared |
-| **Starter** | €29 | 20 | 3 | 5K | 2K | 10K | 5 | Shared |
-| **Pro** | €149 | 100 | 10 | 25K | 10K | 50K | 8 | Shared (premium) |
-| **Business** | €499 | 500 | ∞ | 100K | 50K | 500K | All | Single dedicated |
+| **Hobby** | Free | 100 | 1 | 500 | 100 | 1K | 2 | Shared |
+| **Starter** | €29 | 400 | 3 | 5K | 2K | 10K | 5 | Shared |
+| **Pro** | €149 | 2 000 | 10 | 25K | 10K | 50K | 8 | Shared (premium) |
+| **Business** | €499 | 10 000 | ∞ | 100K | 50K | 500K | All | Single dedicated |
 | **Enterprise (flat)** | €25K-150K/yr | contract | ∞ | ∞ | ∞ | ∞ | All + custom | Multiple |
 | **Enterprise (metered)** | €2-5K/mo + usage | metered | ∞ | metered | metered | metered | All + custom | Multiple |
 
 **Annual discount:** 2 months free (17%) at Starter/Pro/Business.
 
-**Credits = LLM-forbrug.** Hver tier inkluderer en månedlig grundkvote credits. Forbrug ud over baseline → tenant køber credit-pakker (10/20/50/100/200 credits, €0.30-0.50 per credit). En credit ≈ $0.10 LLM-cost. Model-valget bestemmer credit-burn-rate: Flash 1× / GLM 2× / Qwen 3× / Sonnet 10×. Se [F156 plan-doc](./features/F156-credits-based-llm-metering.md) for fuldt design.
+**Credits = LLM-forbrug.** Hver tier inkluderer en månedlig grundkvote credits. Forbrug ud over baseline → tenant køber credit-pakker (100/200/500/1000/2000 credits, €0.030-0.050 per credit). **1 credit = $0.01 LLM-cost**, målt direkte fra provider's response (OpenRouter `usage.cost`) — ingen separat multiplier-tabel. Model-valget bestemmer credit-burn-rate implicit: Flash ~1 credit/PDF, GLM ~2, Qwen ~3, Sonnet ~30. Se [F156 plan-doc](./features/F156-credits-based-llm-metering.md) for fuldt design + token-til-credit konverteringstabeller.
 
 ---
 
@@ -451,17 +451,17 @@ Metered aligns incentives — Broberg.ai earns more when tenant uses Trail more.
 
 ### Monthly LLM cost per tier (typical, post-F156)
 
-LLM-omkostninger splittes nu i to: hvad **vi** absorberer (lint, queries, glossary, translation — baggrunds-ydelser inkluderet i abonnementet) og hvad **tenant** betaler via credits (compile/ingest af kilder).
+LLM-omkostninger splittes i to: hvad **vi** absorberer (lint, queries, glossary, translation — baggrunds-ydelser inkluderet i abonnementet PLUS credits-baseline) og hvad **tenant** betaler via credit-pakker (forbrug ud over baseline).
 
-| Tier | Vores andel (lint + queries + glossary) | Tenant via credits (compile) | Net cost for os |
-|------|------|------|------|
-| Hobby | €1 | €1 (baseline kvote) | €2 |
-| Starter | €5 | €2 (baseline) + 0-30 ekstra/mdr | €5 |
-| Pro | €25 | €10 (baseline) + 30-200 ekstra/mdr | €25 |
-| Business | €120 | €50 (baseline) + 100-1000 ekstra/mdr | €120 |
-| Enterprise | variable | metered | variable |
+| Tier | Vores cost: baggrunds-ydelser | Vores cost: credits-baseline | Net cost for os | Forventet credit-pakke-revenue |
+|------|------|------|------|------|
+| Hobby | €1 | $1 (100 credits) | ~€2 | €0 (free tier) |
+| Starter | €5 | $4 (400 credits) | ~€9 | €0-15/mdr |
+| Pro | €25 | $20 (2 000 credits) | ~€45 | €0-70/mdr |
+| Business | €120 | $100 (10 000 credits) | ~€220 | €0-300/mdr |
+| Enterprise | variable | contract-included | variable | included i contract |
 
-Credit-pakke-revenue (markup over rene LLM-cost) lander oven på subscription. Pro-tenant der køber 200 ekstra credits/mdr (€60) vs cost €0.10/credit × 200 = €20 → **€40 ren credit-margin per måned ud over subscription**.
+Credit-pakke-revenue (markup over rene LLM-cost) lander oven på subscription. Pro-tenant der køber en 1000-credit-pakke (€35) vs cost ~€9.5 → **€25.5 marginal-margin per pakke ud over subscription**. En heavy-user Pro der køber 2 pakker/måned = €70 ekstra revenue, ~€51 ekstra margin.
 
 ### Gross margin (post-F156, kalibreret 2026-04-25)
 

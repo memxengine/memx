@@ -120,8 +120,8 @@
     }
   },
   "diff": {
-    "toggleShow": "Vis diff",
-    "toggleHide": "Skjul diff",
+    "toggleShow": "Vis ændringer",
+    "toggleHide": "Skjul ændringer",
     "hint": "Se præcis hvilke linjer denne kandidat ændrer på den eksisterende Neuron",
     "before": "Før",
     "after": "Efter",

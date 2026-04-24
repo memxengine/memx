@@ -213,21 +213,21 @@ Ingen af disse er automatiske upgrades — de er **alerts** til F154 Control Pla
 
 ## Cost & indtjening — stadie-for-stadie
 
-Tabellen nedenfor antager **F156 Credits-Based LLM Metering** er aktiv. Hver plan inkluderer en månedlig grundkvote af credits (Hobby 5 / Starter 20 / Pro 100 / Business 500); ekstra credits købes som one-time-pakker. LLM-omkostninger over baseline-kvoten **dækkes af tenant** via credit-pakker, ikke af subscription-margin.
+Tabellen nedenfor antager **F156 Credits-Based LLM Metering** er aktiv. Hver plan inkluderer en generøs månedlig grundkvote af credits (Hobby 100 / Starter 400 / Pro 2 000 / Business 10 000); ekstra credits købes som one-time-pakker. LLM-omkostninger over baseline-kvoten **dækkes af tenant** via credit-pakker, ikke af subscription-margin.
 
-| Stadie | Tenants | Fly + storage + DNS | Subscription MRR | LLM cost (vores andel) | Credit-pack revenue | GM | Net |
+| Stadie | Tenants | Fly + storage + DNS | Subscription MRR | LLM cost (vores andel: baggrund + baseline) | Credit-pack revenue | GM | Net |
 |---|---|---|---|---|---|---|---|
-| 1 | 1-2 | €51/mo | €0-150/mo | €5-20/mo | — | — | break-even ved tenant #2 |
-| 2 | 10-20 | €326/mo | €1-3K MRR | €100-300/mo | €0-500/mo | 78-82% | €1.0-2.5K profit/mo |
-| 3 | 200-500 | €7.1K/mo | €25-75K MRR | €1.5-4K/mo | €5-20K/mo | 75-80% | €22-83K profit/mo |
+| 1 | 1-2 | €51/mo | €0-150/mo | €10-50/mo | — | — | break-even ved tenant #2 |
+| 2 | 10-20 | €326/mo | €1-3K MRR | €200-600/mo | €0-700/mo | 75-80% | €0.9-2.4K profit/mo |
+| 3 | 200-500 | €7.1K/mo | €25-75K MRR | €3-8K/mo | €5-25K/mo | 73-78% | €20-85K profit/mo |
 
 **Hvor LLM-omkostningen lander:**
 
-- **Vores andel** = baseline-kvoten (5 / 20 / 100 / 500 credits/måned per plan). En credit ≈ $0.10 LLM-cost; det er vores "subsidiserede" del. Bagt ind i subscription-prisen.
-- **Tenant's andel** = forbrug ud over baseline → credit-pakker købes via Stripe Checkout (10 / 20 / 50 / 100 / 200 credits per pakke, €0.30-0.50 per credit). Markup over vores cost = 1.25-5×.
-- **Krydsmotivation:** model-valg afgør credit-cost (Flash 1× / GLM 2× / Sonnet 10×). F149's pluggable backends får dermed ægte kommerciel betydning — curators har incitament til at vælge den billigste model der løser opgaven.
+- **Vores andel** = (a) baggrunds-ydelser som chat/lint/glossary/translation der altid er inkluderet, plus (b) baseline-kvoten der følger med abonnementet (100 / 400 / 2 000 / 10 000 credits per måned per plan). **1 credit = $0.01 LLM-cost**, målt direkte fra provider's response — ingen separat multiplier-tabel.
+- **Tenant's andel** = forbrug ud over baseline → credit-pakker købes via Stripe Checkout (100 / 200 / 500 / 1 000 / 2 000 credits per pakke, €0.030-0.050 per credit). Markup over vores cost = 3-5×.
+- **Krydsmotivation:** model-valg afgør credit-cost implicit. Flash-ingest af 10-siders PDF = ~1 credit; samme PDF på Sonnet = ~30 credits (fordi Sonnet faktisk er 30× dyrere per token). F149's pluggable backends får dermed ægte kommerciel betydning — curators har konkret incitament til at vælge den billigste model der løser opgaven.
 
-Det er dét F151 Cost Dashboard tracker (intern view: USD-cost) og F156 Credits surfaces (kunde-vendt: credits-balance + pakke-køb). F149 Pluggable Backends eksisterer fordi: når Flash er godt nok til ingest, skrumper både vores cost og tenant's credit-burn 10×.
+Det er dét F151 Cost Dashboard tracker (intern view: USD-cost) og F156 Credits surfaces (kunde-vendt: credits-balance + pakke-køb). F149 Pluggable Backends eksisterer fordi: når Flash er godt nok til ingest, skrumper både vores cost og tenant's credit-burn 10-30×.
 
 ---
 

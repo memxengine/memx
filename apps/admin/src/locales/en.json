@@ -120,8 +120,8 @@
     }
   },
   "diff": {
-    "toggleShow": "Show diff",
-    "toggleHide": "Hide diff",
+    "toggleShow": "Show changes",
+    "toggleHide": "Hide changes",
     "hint": "See exactly which lines this candidate changes on the existing Neuron",
     "before": "Before",
     "after": "After",

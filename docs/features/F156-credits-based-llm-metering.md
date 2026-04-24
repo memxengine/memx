@@ -1,6 +1,6 @@
 # F156 — Credits-Based LLM Metering
 
-> Bruger-vendt credits-valuta til LLM-forbrug. Hver plan inkluderer X credits/måned, ekstra credits købes som one-time pakker (10/20/50/100/200 credits). LLM-cost skjules bag et stabilt enhedsbegreb — det som skalerer omkostninger fra en post på vores regnskab til en del af tenant's abonnement. Tier: Phase 2 infrastructure · Effort: Medium · Status: Planned.
+> Bruger-vendt credits-valuta til LLM-forbrug. Hver plan inkluderer X credits/måned, ekstra credits købes som one-time pakker (100/200/500/1000/2000 credits). LLM-cost skjules bag et stabilt enhedsbegreb — det som skalerer omkostninger fra en post på vores regnskab til en del af tenant's abonnement. Tier: Phase 2 infrastructure · Effort: Medium · Status: Planned.
 
 ## Problem
 
@@ -24,21 +24,51 @@ Både alternativer er dårlige. Det rigtige svar er at **brugeren betaler for si
 
 ## Solution
 
-Introducér **credits** som enheden for tenant's LLM-forbrug. Én credit ≈ 1 enheds-omkostning (internt: $0.10 USD af LLM-spend). Alle ingest-jobs og alle ressource-tunge compile-cascades forbruger credits. Chat, lint, tag-aggregering, glossary og andre "baggrunds-features" forbruger **ikke** credits — de er inkluderet i abonnementet.
+Introducér **credits** som enheden for tenant's LLM-forbrug. **1 credit = $0.01 LLM-cost**, målt direkte fra OpenRouter's `usage.cost` felt på den faktiske API-response (F149 leverer dette per turn). Ingen separat multiplier-tabel — credits *er* cost, blot opskaleret til en hel-tals-enhed brugeren kan tælle. Alle ingest-jobs og ressource-tunge compile-cascades forbruger credits. Chat, lint, tag-aggregering, glossary og andre "baggrunds-features" forbruger **ikke** credits — de er inkluderet i abonnementet.
 
 Hver plan inkluderer en månedlig grundkvote. Løber tenant tør → de kan købe credits-pakker som one-time-purchase via Stripe Checkout. Pakker udløber aldrig og akkumulerer.
 
-Consumption rate varierer per model:
+### Hvordan credits beregnes per ingest
 
-| Model | Cost-faktor | Forklaring |
-|---|---|---|
-| Gemini 2.5 Flash | **1× credit** | Default for alle plans. Skalerer bedst. |
-| GLM 4.6 | **2× credits** | Kvalitet mellem Flash og Sonnet, stadig billigt. |
-| Qwen 3.6 Plus | **3× credits** | For specifikke use-cases. |
-| Claude Sonnet 4.6 (API) | **10× credits** | Høj kvalitet, høj pris. Curator-choice. |
-| Claude CLI (Max Plan) | **0 credits** | Christian's egen tenant kun. |
+Vi bruger den faktiske LLM-cost som returneres af provider, IKKE estimat fra tokens på vores side. Det er den industri-standard tilgang (OpenRouter, Anthropic Console, OpenAI usage API gør samme). Tokens er en proxy; cost er sandheden.
 
-Prisen på en Sonnet-ingest bliver 10 gange så høj som samme ingest på Flash — curators har direkte økonomisk signal til at vælge den billigste model der løser opgaven. Det er F149's pluggable-backend der pludselig giver kommerciel mening.
+```typescript
+// 1 credit = $0.01 = 1 cent USD af målt LLM-cost
+const credits = Math.ceil(costCentsUsd);
+```
+
+**Hvad det betyder i praksis** (typiske ingest-cost ifølge live-cost-data fra F149/F151):
+
+| Operation | Model | Typisk USD | ≈ credits |
+|---|---|---:|---:|
+| 10-siders PDF ingest (small KB) | Flash | $0.01 | **1** |
+| 10-siders PDF ingest (small KB) | GLM | $0.02 | **2** |
+| 10-siders PDF ingest (small KB) | Qwen | $0.03 | **3** |
+| 10-siders PDF ingest (small KB) | Sonnet | $0.30 | **30** |
+| 50-siders PDF (medium KB) | Flash | $0.05 | **5** |
+| 50-siders PDF (medium KB) | Sonnet | $1.50 | **150** |
+| 200-siders bog (large KB) | Flash | $0.20 | **20** |
+| 200-siders bog (large KB) | Sonnet | $6.00 | **600** |
+| Re-compile efter source-edit (cascade, 5 sider) | Flash | $0.005 | **1** (rounded up) |
+| Re-compile efter source-edit (cascade, 5 sider) | Sonnet | $0.15 | **15** |
+| Claude CLI (Max Plan, Christian's tenant kun) | — | $0 | **0** |
+
+Multiplikatoren mellem modeller er **implicit** i den målte cost — Sonnet ER ca. 30× dyrere end Flash for samme job, fordi Anthropic's API faktisk koster 30× per token. Brugeren ser sandheden, og vi behøver ikke vedligeholde en separat multiplier-tabel der drifter mod virkeligheden.
+
+### Token-til-credit konverteringsstandarder
+
+For curators der vil regne på det forhånd (før de starter et ingest), publicerer vi en transparent reference baseret på provider-prislister (april 2026):
+
+| Model | Input pris | Output pris | Credits per 1M input tokens | Credits per 1M output tokens |
+|---|---:|---:|---:|---:|
+| Gemini 2.5 Flash | $0.075/M | $0.30/M | 8 credits | 30 credits |
+| GLM 4.6 | $0.14/M | $0.28/M | 14 credits | 28 credits |
+| Qwen 3.6 Plus | $0.20/M | $0.60/M | 20 credits | 60 credits |
+| Claude Sonnet 4.6 | $3.00/M | $15.00/M | 300 credits | 1500 credits |
+
+En "typisk" ingest har 50 000 input tokens (PDF-tekst + prompt) og 8 000 output tokens (compiled wiki-pages). På Flash giver det 0.4 + 0.24 = 0.64 credits → rounded up til 1 credit. På Sonnet: 15 + 12 = 27 credits.
+
+Tabellerne er rene **transparens**, ikke billing-mekanik. Faktisk afregning bruger altid OpenRouter's målte `usage.cost` som er den eneste sandhed.
 
 Credits tracker vi i en ny `tenant_credits`-tabel + `credit_transactions`-logbog (append-only, til audit).
 
@@ -89,23 +119,20 @@ CREATE INDEX idx_credit_tx_job ON credit_transactions(related_job_id);
 ```typescript
 // packages/core/src/credits/consume.ts
 
-const MODEL_CREDIT_FACTOR: Record<string, number> = {
-  'google/gemini-2.5-flash': 1,
-  'z-ai/glm-5.1': 2,
-  'qwen/qwen3.6-plus': 3,
-  'anthropic/claude-sonnet-4.6': 10,
-  'claude-sonnet-4-6': 0, // Claude CLI Max Plan — no credits
-};
-
-const CENTS_PER_CREDIT = 10; // $0.10 = 1 baseline credit equivalent
-
-export function computeCreditsForJob(
-  model: string,
-  costCents: number,
-): number {
-  const factor = MODEL_CREDIT_FACTOR[model] ?? 1;
-  const baseline = Math.ceil(costCents / CENTS_PER_CREDIT);
-  return baseline * factor;
+/**
+ * 1 credit = $0.01 LLM-cost. We use the provider-reported cost
+ * (OpenRouter `usage.cost`, Anthropic API response cost-tracking)
+ * as the source of truth — same approach OpenRouter, Anthropic
+ * Console and OpenAI usage API all use. Tokens are a proxy; cost
+ * is the truth and matches what we're actually billed.
+ *
+ * Claude CLI (Max Plan) returns 0 cost on the response — those
+ * jobs consume 0 credits, only billable for Christian's tenant
+ * who pays Anthropic directly via subscription.
+ */
+export function computeCreditsForJob(costCents: number): number {
+  if (costCents <= 0) return 0;
+  return Math.ceil(costCents);  // 1 cent = 1 credit; round up
 }
 
 export async function consumeCredits(
@@ -160,29 +187,35 @@ if (currentBalance < -maxOverdraft) {
 
 ### Purchase flow
 
-Stripe Checkout one-time products:
+Stripe Checkout one-time products. Pakker er kalibreret til 1 credit = $0.01 cost-baseline med 3-5× markup:
 
 | Pack | Price | €/credit | Stripe Price ID env |
 |---|---|---|---|
-| 10 credits | €5 | €0.50 | `STRIPE_PRICE_CREDITS_10` |
-| 20 credits | €9 | €0.45 | `STRIPE_PRICE_CREDITS_20` |
-| 50 credits | €19 | €0.38 | `STRIPE_PRICE_CREDITS_50` |
-| 100 credits | €35 | €0.35 | `STRIPE_PRICE_CREDITS_100` |
-| 200 credits | €60 | €0.30 | `STRIPE_PRICE_CREDITS_200` |
+| 100 credits | €5 | €0.050 | `STRIPE_PRICE_CREDITS_100` |
+| 200 credits | €9 | €0.045 | `STRIPE_PRICE_CREDITS_200` |
+| 500 credits | €19 | €0.038 | `STRIPE_PRICE_CREDITS_500` |
+| 1 000 credits | €35 | €0.035 | `STRIPE_PRICE_CREDITS_1000` |
+| 2 000 credits | €60 | €0.030 | `STRIPE_PRICE_CREDITS_2000` |
 
-Volume-rabatten opfordrer til større pakker. Ved at sælge for €0.30-0.50/credit mod en cost på $0.10-0.40/credit (afhængig af model), bevarer vi 1.25-5× markup på credits-salg isoleret.
+Volume-rabatten opfordrer til større pakker. Vores cost per credit er $0.01 (= ~€0.0095 ved typisk EUR/USD), så pakker sælges for 3-5× markup. En 1000-credit-pakke til €35 dækker fx ~700 Flash-ingests eller ~33 Sonnet-ingests og koster os ~€9.5 LLM-cost = €25.5 marginal-margin.
 
 Webhook `checkout.session.completed` → insert `credit_transactions` med `kind='purchase'` + top-up balance.
 
 ### Plan baselines
 
-| Plan | Monthly credits included | Fits (approx) |
-|---|---|---|
-| Hobby (free) | 5 | 1 PDF ingest på Flash |
-| Starter (€29) | 20 | 15-20 små PDF'er/måned på Flash |
-| Pro (€149) | 100 | 80-100 PDF'er/måned, eller 10 på Sonnet |
-| Business (€499) | 500 | 400+ PDF'er/måned, store batches |
-| Enterprise | Contract | Typisk 5000-50000 credits/år |
+20× mere generøse end første draft — credits skal ikke føles som en tællekæde, og samtidig matcher vi det Karpathy/Notion/Linear-mønster hvor abonnementet føles inkluderende:
+
+| Plan | Monthly credits included | Vores LLM-cost (subsidiseret) | Fits (typisk Flash) | Fits (typisk Sonnet) |
+|---|---:|---:|---|---|
+| Hobby (free) | 100 | ~$1 | ~50-100 små PDF'er | ~3 PDF'er |
+| Starter (€29) | 400 | ~$4 | ~200-400 PDF'er | ~13 PDF'er |
+| Pro (€149) | 2 000 | ~$20 | ~1500-2000 PDF'er | ~66 PDF'er |
+| Business (€499) | 10 000 | ~$100 | ~7000-10000 PDF'er | ~300 PDF'er |
+| Enterprise | Contract (typisk 50 000-500 000/år) | metered | hundredvis tusind | tusinder |
+
+**Hvorfor Hobby = 100 (ikke 5):** Trail's value-prop er "se hvor god din egen brain bliver". Med 100 credits kan en gratis-bruger ingest'e 50-100 små Flash-PDF'er = en hel Karpathy-"idea file"-samling. 5 credits ville lade dem prøve én PDF og så møde paywall — det er trial-bait, ikke onboarding.
+
+**Hvorfor Sonnet-fits er små:** En Sonnet-ingest af samme PDF er 30× dyrere end Flash. Tabellen viser tenant deres reelle valg: "Du kan ingest'e 100 PDF'er på Flash, eller 3 på Sonnet — vælg klogt." Det er F149's pluggable backends's kommercielle pointe.
 
 ### Admin UI
 
@@ -222,16 +255,21 @@ export interface CreditBalance {
   estimatedRunwayDays: number | null;
 }
 
-export const CREDIT_PACK_SIZES = [10, 20, 50, 100, 200] as const;
+export const CREDIT_PACK_SIZES = [100, 200, 500, 1000, 2000] as const;
 export type CreditPackSize = (typeof CREDIT_PACK_SIZES)[number];
 
 export const PLAN_MONTHLY_CREDITS = {
-  hobby: 5,
-  starter: 20,
-  pro: 100,
-  business: 500,
+  hobby: 100,
+  starter: 400,
+  pro: 2000,
+  business: 10000,
   enterprise: 0, // contract-specified
 } as const;
+
+/** 1 credit = 1 USD cent of measured LLM cost. Provider-reported,
+ *  not estimated from tokens. Source of truth: OpenRouter
+ *  `usage.cost` or Anthropic API response cost field. */
+export const CENTS_PER_CREDIT = 1;
 ```
 
 ## Rollout
