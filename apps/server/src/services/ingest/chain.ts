@@ -58,7 +58,9 @@ export const DEFAULT_CHAIN_OPENROUTER: ChainStep[] = [
   { backend: 'openrouter', model: 'google/gemini-2.5-flash' },
   { backend: 'openrouter', model: 'z-ai/glm-5.1' },
   { backend: 'openrouter', model: 'qwen/qwen3.6-plus' },
-  { backend: 'openrouter', model: 'anthropic/claude-sonnet-4-6' },
+  // Note: dot-separated on OpenRouter; verify-ingest-models.ts
+  // catches drift if renamed.
+  { backend: 'openrouter', model: 'anthropic/claude-sonnet-4.6' },
 ];
 
 export interface KbForChainResolution {

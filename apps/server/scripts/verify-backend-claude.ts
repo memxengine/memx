@@ -152,7 +152,7 @@ const openrouterDefault = resolveIngestChain(
 );
 assert(openrouterDefault.length === 4, 'openrouter-primary default chain has 4 steps');
 assert(openrouterDefault[0]!.model === 'google/gemini-2.5-flash', 'openrouter primary = Flash');
-assert(openrouterDefault[3]!.model === 'anthropic/claude-sonnet-4-6', 'openrouter last-resort = Sonnet via API');
+assert(openrouterDefault[3]!.model === 'anthropic/claude-sonnet-4.6', 'openrouter last-resort = Sonnet via API');
 
 // ── 3. runWithFallback chain-advancement ──────────────────────────────────
 console.log('\n[3] runWithFallback fallback logic');

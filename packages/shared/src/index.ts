@@ -6,3 +6,4 @@ export * from './slug.js';
 export * from './seq-id.js';
 export * from './tags.js';
 export * from './heuristic.js';
+export * from './ingest-models.js';

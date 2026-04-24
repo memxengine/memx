@@ -23,7 +23,10 @@
  * just fulfil a single run.
  */
 
-export type IngestBackendId = 'claude-cli' | 'openrouter';
+// F149 Phase 2f — single source of truth for backend IDs in
+// `@trail/shared` so admin UI + core + server agree.
+export type { IngestBackendId } from '@trail/shared';
+import type { IngestBackendId } from '@trail/shared';
 
 export interface IngestBackendInput {
   /**
