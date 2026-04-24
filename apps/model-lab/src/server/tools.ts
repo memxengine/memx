@@ -45,13 +45,21 @@ export function buildToolDefinitions() {
       type: 'function' as const,
       function: {
         name: 'read',
-        description: 'Read a file from the knowledge base. Returns the full content of the file at the given path.',
+        description: 'Read a file from the knowledge base. For large files, use offset and limit to read in chunks. Each chunk is ~4000 tokens (16000 chars). If truncated, call again with offset to continue.',
         parameters: {
           type: 'object',
           properties: {
             path: {
               type: 'string',
               description: 'Path to the file (e.g. "/neurons/overview.md" or "/sources/book.pdf.md")',
+            },
+            offset: {
+              type: 'number',
+              description: 'Character offset to start reading from (0 = beginning). Use for paginating large files.',
+            },
+            limit: {
+              type: 'number',
+              description: 'Max characters to return. Default 16000 (~4000 tokens). Max 30000.',
             },
           },
           required: ['path'],
@@ -144,10 +152,19 @@ export function createToolExecutor(kb: SimulatedKB) {
 async function toolRead(kb: SimulatedKB, args: Record<string, unknown>): Promise<string> {
   const path = String(args.path ?? '');
   if (!path) return 'Error: path is required';
+  const offset = Number(args.offset ?? 0);
+  const limit = Math.min(Number(args.limit ?? 40000), 60000);
   const fullPath = join(kb.rootDir, path);
   try {
     const content = await readFile(fullPath, 'utf-8');
-    return content;
+    const totalLen = content.length;
+    const chunk = content.slice(offset, offset + limit);
+    const truncated = offset + limit < totalLen;
+    let result = chunk;
+    if (offset > 0) result = `[...continuing from offset ${offset}]\n` + result;
+    if (truncated) result += `\n\n[TRUNCATED at ${offset + limit}/${totalLen} chars. You MUST call read again with offset=${offset + limit} to read the rest. Do not create Neurons until you have read the ENTIRE source.]`;
+    if (offset === 0 && truncated) result = `[File: ${path} — ${totalLen} chars total, showing first ${limit}. You MUST read all remaining chunks before writing any Neurons.]\n\n` + result;
+    return result;
   } catch {
     return `Error: File not found at ${path}`;
   }

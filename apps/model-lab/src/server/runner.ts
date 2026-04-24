@@ -15,6 +15,12 @@ export interface StartRunOptions {
   temperature?: number;
 }
 
+const activeRuns = new Map<string, Promise<void>>();
+
+export function isRunActive(runId: string): boolean {
+  return activeRuns.has(runId);
+}
+
 export async function startRun(opts: StartRunOptions): Promise<string> {
   const runId = `run_${crypto.randomUUID().slice(0, 12)}`;
   const sourceContent = await readFile(opts.sourceFilePath, 'utf-8');
@@ -45,7 +51,7 @@ export async function startRun(opts: StartRunOptions): Promise<string> {
   const executeTool = createToolExecutor(kb);
   let turnCounter = 0;
 
-  void (async () => {
+  const runPromise = (async () => {
     try {
       const result = await runAgenticLoop(
         {
@@ -59,22 +65,31 @@ export async function startRun(opts: StartRunOptions): Promise<string> {
         executeTool,
         (turn: TurnResult) => {
           turnCounter++;
-          insertTurnLog({
-            run_id: runId,
-            turn_number: turnCounter,
-            role: turn.role,
-            content: turn.content?.slice(0, 100000) ?? null,
-            tool_calls: turn.tool_calls ? JSON.stringify(turn.tool_calls) : null,
-            tool_call_id: turn.tool_call_id ?? null,
-            tokens_in: turn.tokensIn,
-            tokens_out: turn.tokensOut,
-            cost_usd: turn.costUsd,
-            latency_ms: turn.latencyMs,
-          });
+          try {
+            insertTurnLog({
+              run_id: runId,
+              turn_number: turnCounter,
+              role: turn.role,
+              content: turn.content?.slice(0, 100000) ?? null,
+              tool_calls: turn.tool_calls ? JSON.stringify(turn.tool_calls) : null,
+              tool_call_id: turn.tool_call_id ?? null,
+              tokens_in: turn.tokensIn,
+              tokens_out: turn.tokensOut,
+              cost_usd: turn.costUsd,
+              latency_ms: turn.latencyMs,
+            });
+          } catch (logErr) {
+            console.error(`[runner] Failed to log turn ${turnCounter}:`, logErr);
+          }
         },
       );
 
-      const kbOutput = await collectKBOutput(kb);
+      let kbOutput: Record<string, string> = {};
+      try {
+        kbOutput = await collectKBOutput(kb);
+      } catch (collectErr) {
+        console.error(`[runner] Failed to collect KB output:`, collectErr);
+      }
 
       updateRunCompleted(runId, {
         status: result.error ? 'failed' : 'done',
@@ -89,28 +104,48 @@ export async function startRun(opts: StartRunOptions): Promise<string> {
         kb_output: JSON.stringify(kbOutput),
       });
 
-      const run = getRun(runId)!;
-      const scores = scoreRun(run);
-      for (const s of scores) {
-        insertQualityScore({ run_id: runId, scorer: s.scorer, score: s.score, details: s.details });
+      try {
+        const run = getRun(runId);
+        if (run) {
+          const scores = scoreRun(run);
+          for (const s of scores) {
+            insertQualityScore({ run_id: runId, scorer: s.scorer, score: s.score, details: s.details });
+          }
+        }
+      } catch (scoreErr) {
+        console.error(`[runner] Failed to score run:`, scoreErr);
       }
 
-      await cleanupKB(kb);
+      try {
+        await cleanupKB(kb);
+      } catch (cleanErr) {
+        console.error(`[runner] Failed to cleanup KB:`, cleanErr);
+      }
+
+      console.log(`[runner] Run ${runId} completed: ${result.error ? 'failed' : 'done'}, ${result.totalTurns} turns, $${result.totalCostUsd.toFixed(4)}`);
     } catch (err) {
-      updateRunCompleted(runId, {
-        status: 'failed',
-        completed_at: new Date().toISOString(),
-        error: err instanceof Error ? err.message : String(err),
-        total_tokens_in: 0,
-        total_tokens_out: 0,
-        total_cost_usd: 0,
-        total_turns: 0,
-        duration_ms: 0,
-      });
-      await cleanupKB(kb);
+      console.error(`[runner] Run ${runId} crashed:`, err);
+      try {
+        updateRunCompleted(runId, {
+          status: 'failed',
+          completed_at: new Date().toISOString(),
+          error: err instanceof Error ? err.message : String(err),
+          total_tokens_in: 0,
+          total_tokens_out: 0,
+          total_cost_usd: 0,
+          total_turns: 0,
+          duration_ms: 0,
+        });
+      } catch {}
+      try {
+        await cleanupKB(kb);
+      } catch {}
+    } finally {
+      activeRuns.delete(runId);
     }
   })();
 
+  activeRuns.set(runId, runPromise);
   return runId;
 }
 

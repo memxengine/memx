@@ -27,38 +27,40 @@ export function buildIngestPrompt(config: IngestPromptConfig): {
   const systemPrompt = `You are the wiki compiler for a knowledge base. You have access to three tools: read, list_files, and write. Use them to ingest source material into a structured wiki.
 
 IMPORTANT RULES:
+- For large source files, use the read tool's offset and limit parameters to read in chunks (each chunk is ~40000 chars). Read the first chunk, process it into Neurons, then read the next chunk. This incremental approach keeps your context manageable.
 - Be thorough but concise. Every claim should reference its source.
 - Use [[page-name]] for internal wiki cross-references.
 - ALL pages you create or update MUST have a \`sources: [...]\` field in their YAML frontmatter.
 - Required frontmatter fields on every page: title, tags, date, sources.
-- Do NOT create pages for trivial concepts. Focus on the 2-5 most important ones.
+- Do NOT create pages for trivial concepts. Focus on the 2-5 most important ones per chunk.
 - If the source is very short or trivial, just create the summary and update overview/log.`;
 
   const userPrompt = `You are the wiki compiler for knowledge base ${sKbName} (slug: ${sKbSlug}).${tagBlock}
 
 A new source has been added: ${sFilename} at path ${sSourcePath}.
 
-Your job is to ingest this source into the wiki. Follow these steps exactly:
+Your job is to ingest this source into the wiki. Follow these steps:
 
-1. Call \`read\` with path=${sSourcePath} to read the new source.
+1. Call \`read\` with path=${sSourcePath}, offset=0, limit=40000 to read the first chunk. Also call \`list_files\` with mode="list" and kind="wiki" to see the current wiki structure. Also call \`read\` with path="/neurons/overview.md" to understand the current wiki state.
 
-2. Call \`list_files\` with mode="list" and kind="wiki" to see the current wiki structure.
-
-3. Call \`read\` with path="/neurons/overview.md" to understand the current wiki state.
-
-4. Create a source summary page:
+2. Create a source summary page based on what you've read so far:
    Call \`write\` with command="create", path="/neurons/sources/", title=${sSummaryTitle}, and content that includes:
    - YAML frontmatter with title, tags (array), date (${today}), sources ([${sFilename}])
-   - Key takeaways and findings
-   - Important quotes or data points
+   - Key takeaways and findings from this chunk
+   - A note at the end: "[Source reading in progress — more chunks to process]" if the source was TRUNCATED
 
-5. For each KEY CONCEPT found in the source (aim for 2-5 concepts):
-   - Check if a concept page already exists (you saw the wiki listing in step 2).
-   - If it exists: \`read\` it, then \`write\` with command="str_replace" to integrate new information. Use the full path (e.g. "/neurons/concepts/concept-name.md") as the title parameter. CRITICAL: preserve existing frontmatter but ADD ${sFilename} to its \`sources: [...]\` array.
+3. For each KEY CONCEPT found in the current chunk (aim for 2-5 concepts):
+   - Check if a concept page already exists (you saw the wiki listing in step 1).
+   - If it exists: \`read\` it, then \`write\` with command="str_replace" to integrate new information. CRITICAL: preserve existing frontmatter but ADD ${sFilename} to its \`sources: [...]\` array.
    - If it doesn't exist: \`write\` with command="create", path="/neurons/concepts/", and full content INCLUDING frontmatter with \`sources: [${sFilename}]\`.
 
-6. For each KEY ENTITY (person, organization, tool) found:
+4. For each KEY ENTITY (person, organization, tool) found in the current chunk:
    - Same pattern under /neurons/entities/. Same \`sources\` frontmatter rule applies.
+
+5. If the source was TRUNCATED (you haven't read all of it yet), call \`read\` again with the next offset to read the next chunk. Then process new concepts/entities from this chunk (go back to step 3). Repeat until you have read the entire source.
+
+6. Once you have read ALL chunks, update the source summary page with a complete overview:
+   \`write\` with command="str_replace" on the source page — remove the "reading in progress" note and add a complete summary.
 
 7. Maintain the glossary:
    - Call \`read\` with path="/neurons/glossary.md" to see the current vocabulary.

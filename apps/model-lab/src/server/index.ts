@@ -1,10 +1,14 @@
-import { config } from 'dotenv';
-config({ path: import.meta.dir + '/../../.env' });
-
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { startRun, startBatchRun, AVAILABLE_MODELS } from './runner';
 import { listRuns, getRun, getTurnLogs, getQualityScores, getRunsBySource } from './db';
+
+process.on('uncaughtException', (err) => {
+  console.error('[model-lab] UNCAUGHT:', err);
+});
+process.on('unhandledRejection', (err) => {
+  console.error('[model-lab] UNHANDLED:', err);
+});
 
 const app = new Hono();
 
@@ -106,13 +110,6 @@ app.post('/api/v1/upload', async (c) => {
   await Bun.write(filePath, file);
 
   return c.json({ path: filePath, filename, size: file.size }, 201);
-});
-
-process.on('uncaughtException', (err) => {
-  console.error('[model-lab] UNCAUGHT:', err);
-});
-process.on('unhandledRejection', (err) => {
-  console.error('[model-lab] UNHANDLED REJECTION:', err);
 });
 
 const PORT = Number(process.env.PORT ?? 3032);
