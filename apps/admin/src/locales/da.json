@@ -506,9 +506,9 @@
       "done": "Færdig"
     },
     "kind": {
-      "task": "Task",
-      "bug": "Bug",
-      "milestone": "Milestone",
+      "task": "Opgave",
+      "bug": "Fejl",
+      "milestone": "Milepæl",
       "decision": "Beslutning"
     },
     "filter": {
