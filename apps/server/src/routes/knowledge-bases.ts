@@ -8,6 +8,7 @@ import { broadcaster } from '../services/broadcast.js';
 import { listKbTags } from '../services/tag-aggregate.js';
 import { buildSeedGlossary } from '../services/glossary-seed.js';
 import { VALID_EDGE_TYPES, type EdgeType } from '../services/backlink-extractor.js';
+import { getIngestStatus } from '../services/ingest.js';
 
 export const kbRoutes = new Hono();
 
@@ -80,6 +81,22 @@ kbRoutes.get('/knowledge-bases/:id/tags', async (c) => {
 
   const tags = await listKbTags(trail, tenant.id, kbId);
   return c.json(tags);
+});
+
+/**
+ * F21 — ingest backpressure status. Sources panel polls this to show
+ * curators their position in the queue ("3 før dig") and to render
+ * friendly capacity messages when the global cap is hit. Future F154
+ * Control Plane will aggregate the same shape across tenants.
+ */
+kbRoutes.get('/knowledge-bases/:id/ingest-status', async (c) => {
+  const trail = getTrail(c);
+  const tenant = getTenant(c);
+  const kbId = await resolveKbId(trail, tenant.id, c.req.param('id'));
+  if (!kbId) return c.json({ error: 'Not found' }, 404);
+
+  const status = await getIngestStatus(trail, tenant.id, kbId);
+  return c.json(status);
 });
 
 /**

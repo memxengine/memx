@@ -155,6 +155,99 @@ export function startBackpressureScheduler(trail: TrailDatabase): void {
   );
 }
 
+/**
+ * F21 — read-only status snapshot for UI + monitoring. Sources panel
+ * polls this on pending rows so the curator sees "i kø, 3 før dig"
+ * instead of a generic processing spinner. F154 Control Plane will
+ * later aggregate across tenants for fleet-wide capacity dashboards;
+ * F155 Auto-scaling Policy reads the same shape to decide when the
+ * cap should be raised.
+ */
+export interface IngestStatusSnapshot {
+  globalCapacity: {
+    running: number;
+    max: number;
+    available: number;
+  };
+  kb: {
+    runningJobId: string | null;
+    queued: Array<{
+      jobId: string;
+      documentId: string;
+      position: number; // 1-based, position in this KB's queue
+      queuedAt: string;
+    }>;
+  };
+  tenant: {
+    last1hCount: number;
+    rateCap: number;
+    rateAvailable: number;
+  };
+  config: {
+    globalCap: number;
+    perTenantRate: number;
+    schedulerIntervalMs: number;
+  };
+}
+
+export async function getIngestStatus(
+  trail: TrailDatabase,
+  tenantId: string,
+  kbId: string,
+): Promise<IngestStatusSnapshot> {
+  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+
+  const tenantRecent = await trail.db
+    .select({ id: ingestJobs.id })
+    .from(ingestJobs)
+    .where(and(eq(ingestJobs.tenantId, tenantId), gte(ingestJobs.startedAt, oneHourAgo)))
+    .all();
+
+  const kbRunning = await trail.db
+    .select({ id: ingestJobs.id })
+    .from(ingestJobs)
+    .where(and(eq(ingestJobs.knowledgeBaseId, kbId), eq(ingestJobs.status, 'running')))
+    .get();
+
+  const kbQueued = await trail.db
+    .select({
+      id: ingestJobs.id,
+      documentId: ingestJobs.documentId,
+      createdAt: ingestJobs.createdAt,
+    })
+    .from(ingestJobs)
+    .where(and(eq(ingestJobs.knowledgeBaseId, kbId), eq(ingestJobs.status, 'queued')))
+    .orderBy(asc(ingestJobs.createdAt))
+    .all();
+
+  return {
+    globalCapacity: {
+      running: globalConcurrentCount(),
+      max: BACKPRESSURE.maxConcurrentGlobal,
+      available: Math.max(0, BACKPRESSURE.maxConcurrentGlobal - globalConcurrentCount()),
+    },
+    kb: {
+      runningJobId: kbRunning?.id ?? null,
+      queued: kbQueued.map((row, i) => ({
+        jobId: row.id,
+        documentId: row.documentId,
+        position: i + 1,
+        queuedAt: row.createdAt,
+      })),
+    },
+    tenant: {
+      last1hCount: tenantRecent.length,
+      rateCap: BACKPRESSURE.maxPerHourPerTenant,
+      rateAvailable: Math.max(0, BACKPRESSURE.maxPerHourPerTenant - tenantRecent.length),
+    },
+    config: {
+      globalCap: BACKPRESSURE.maxConcurrentGlobal,
+      perTenantRate: BACKPRESSURE.maxPerHourPerTenant,
+      schedulerIntervalMs: BACKPRESSURE.schedulerIntervalMs,
+    },
+  };
+}
+
 export function stopBackpressureScheduler(): void {
   if (backpressureTimer) {
     clearInterval(backpressureTimer);

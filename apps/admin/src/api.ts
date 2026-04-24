@@ -775,6 +775,27 @@ export async function uploadSource(
   return (await response.json()) as Document;
 }
 
+// ── F21 — Ingest Backpressure status ─────────────────────────────────────
+
+export interface IngestStatus {
+  globalCapacity: { running: number; max: number; available: number };
+  kb: {
+    runningJobId: string | null;
+    queued: Array<{
+      jobId: string;
+      documentId: string;
+      position: number;
+      queuedAt: string;
+    }>;
+  };
+  tenant: { last1hCount: number; rateCap: number; rateAvailable: number };
+  config: { globalCap: number; perTenantRate: number; schedulerIntervalMs: number };
+}
+
+export function getIngestStatus(kbId: string): Promise<IngestStatus> {
+  return api(`/api/v1/knowledge-bases/${encodeURIComponent(kbId)}/ingest-status`);
+}
+
 // ── F151 — Cost & Quality Dashboard ──────────────────────────────────────
 
 export interface CostSummary {
