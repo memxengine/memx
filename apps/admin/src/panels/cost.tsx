@@ -57,13 +57,13 @@ export function CostPanel() {
     return <CenteredLoader />;
   }
   if (error) {
-    return <div class="p-4 text-red-500">Error: {error}</div>;
+    return <div class="page-shell text-red-500">Error: {error}</div>;
   }
 
   const maxDayCents = Math.max(...summary.byDay.map((d) => d.cents), 1);
 
   return (
-    <div class="p-4 space-y-6">
+    <div class="page-shell space-y-6">
       {/* Header with window switcher + CSV export */}
       <div class="flex items-center justify-between">
         <h1 class="text-xl font-semibold">

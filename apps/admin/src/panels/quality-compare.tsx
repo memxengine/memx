@@ -55,10 +55,10 @@ export function QualityComparePanel() {
   }, [sourceId]);
 
   if (loading || !data) return <CenteredLoader />;
-  if (error) return <div class="p-4 text-red-500">Error: {error}</div>;
+  if (error) return <div class="page-shell text-red-500">Error: {error}</div>;
 
   return (
-    <div class="p-4 space-y-4">
+    <div class="page-shell space-y-4">
       <div class="flex items-baseline gap-3 text-sm text-[color:var(--color-fg-muted)]">
         <a href={`/kb/${kbId}/cost`} class="hover:text-[color:var(--color-fg)]">
           ← Cost
