@@ -36,12 +36,15 @@ Backend-valg + fallback-chain løses som en ren funktion `resolveIngestChain(kb,
 
 ## Non-Goals
 
-- **Runtime UI-switch.** Chain-resolution er en pure function klar til at blive kaldt fra UI, men dropdown'en selv er en separat F-feature (foreslået: F15x). F149 v1 shipper chain + per-KB settings + env-overrides; UI-switch kommer efter.
+- **Runtime UI-switch** → **promoted to F152** (Runtime Model Switcher UI). F149 leverer pure-function chain-resolution + PATCH-routes; F152 ship'er dropdown'en.
+- **Cost & Quality dashboards** → **promoted to F151** (Cost & Quality Dashboard). F149 persisterer `cost_cents` + `model_trail`; F151 render'er dem.
 - **Streaming tokens til admin UI under ingest.** Begge backends returnerer et final-result; progress rapporteres via de eksisterende `ingest_started`/`ingest_completed`-events.
-- **Per-tenant billing aggregation + fakturaer.** `cost_cents`-kolonnen lander, men invoice-rendering, plan-quotas og threshold-alerts er F43/F44's ansvar.
+- **Per-tenant billing aggregation + fakturaer** → **covered by F43 (Stripe Billing) + F44 (Usage Metering)**. `cost_cents`-kolonnen er data-kilden; fakturerings-logik lever dér.
 - **To-backend voting / konsensus-ingest.** Spændende men out of scope — vi vælger én backend per turn.
-- **Auto-retraining af billingsmodellen baseret på historiske cost_cents.** F149 persisterer dataen; analyse kommer i F54 (Curator Analytics).
-- **Backend for ikke-OpenRouter-cloud-providers (Anthropic API direkte, Vertex AI, Bedrock).** Arkitekturen er åben for det via `IngestBackend`-interfacet; men F149 v1 shipper kun Claude CLI + OpenRouter.
+- **Auto-retraining af billingsmodellen baseret på historiske cost_cents.** Declined — pricing-tier sættes manuelt via F43; ingen business-case for auto-retrain. Noteret i `docs/NON-GOALS.md`.
+
+**Arkitektur-åbnet** (ikke-shipped i v1 men interface klar):
+- **Direkte Anthropic API, Vertex AI, Bedrock, andre cloud-providers.** Fordi OpenRouterBackend bruger in-process `CandidateQueueAPI` (ikke MCP-subprocess), er det trivielt at tilføje `AnthropicBackend` eller `VertexBackend` senere uden arkitektur-ændring. F149 v1 shipper Claude CLI (via MCP) + OpenRouter (in-process); andre kommer efterhånden.
 
 ## Technical Design
 
@@ -80,9 +83,47 @@ export interface IngestBackend {
 
 Ny fil `apps/server/src/services/ingest/claude-cli-backend.ts`. Flyt den eksisterende `spawnClaude(args, ...)`-invocation i `runJob` ind her uændret. Parse CLI's `--output-format json` svar for `num_turns` + evt. cost (CLI returnerer cost-info i final-message when using the Anthropic API path; Max Plan returnerer 0). Default-model: `claude-sonnet-4-6`.
 
-### OpenRouterBackend
+### OpenRouterBackend (in-process — ikke via MCP)
 
-Ny fil `apps/server/src/services/ingest/openrouter-backend.ts`. Løft fra `apps/model-lab/src/server/openrouter.ts` + `runner.ts` + `tools.ts` + `two-pass.ts`. Kritisk port: den eksisterende model-lab-runner skriver til en in-memory-struktur eller lokal SQLite — vi skal i stedet kalde Trail's MCP `write`-tool (allerede i `apps/mcp/src/index.ts`) så output lander via Candidate Queue og trigger F111.2 stamping, F137 edge-types, F140 schemas, F148 link-checker uændret.
+Ny fil `apps/server/src/services/ingest/openrouter-backend.ts`. Løft fra `apps/model-lab/src/server/openrouter.ts` + `runner.ts` + `tools.ts` + `two-pass.ts`.
+
+**Arkitektur-beslutning (Christian 2026-04-24):** OpenRouterBackend kører in-process i `apps/server`. Det behøver IKKE gå igennem MCP — MCP var kun nødvendig for `claude-cli` fordi subprocessen kunne ikke kalde DB direkte. In-process backend kan kalde Trail's core-funktioner direkte uden subprocess-roundtrip.
+
+Ny intern API: `packages/core/src/ingest/candidate-api.ts` eksporterer:
+
+```typescript
+export interface CandidateQueueAPI {
+  search(query: { mode: 'list' | 'search'; kind?: string; q?: string }): Promise<SearchResult>;
+  read(path: string): Promise<ReadResult>;
+  write(args: WriteArgs): Promise<WriteResult>;
+}
+
+export function createCandidateQueueAPI(
+  trail: TrailDatabase,
+  ctx: { tenantId: string; userId: string; kbId: string; ingestJobId: string; connector: string },
+): CandidateQueueAPI;
+```
+
+Funktionaliteten er identisk med hvad `mcp__trail__{search,read,write}` tilbyder — faktisk eksporterer vi `apps/mcp/src/index.ts`'s handlers i en faktoreret form som **begge** MCP-serveren OG OpenRouterBackend importerer. Sandheden lever ét sted.
+
+OpenRouterBackend's tool-loop (porteret fra model-lab's `runner.ts`) oversætter model's tool-calls til direkte `CandidateQueueAPI`-kald:
+
+```typescript
+for (const toolCall of modelResponse.tool_calls) {
+  const result = await candidateApi[toolCall.name](toolCall.arguments);
+  messages.push({ role: 'tool', tool_call_id: toolCall.id, content: JSON.stringify(result) });
+}
+```
+
+Downstream-features kører uændret fordi `createCandidate()` (som `CandidateQueueAPI.write` kalder) fyrer `candidate_approved`-events → F111.2 stamping, F137 edges, F140 schemas, F148 link-checker lytter på dem som altid.
+
+**Fordele ved in-process i stedet for MCP:**
+- Færre lag = færre fejl-punkter (ingen stdio-parsing, ingen subprocess-crash-håndtering)
+- Hurtigere (ingen subprocess-roundtrip per tool-call; ~5-20ms sparet pr. call × ~30 calls/ingest = ~500ms per ingest)
+- Nemmere debugging (in-process stack-traces)
+- **Åbner automatisk for Anthropic API / Vertex / Bedrock**: alle in-process, alle via samme `CandidateQueueAPI` → ingen ny MCP-wiring per backend
+
+**ClaudeCLIBackend beholder MCP-pathet** fordi den kører som subprocess og IKKE kan kalde in-process funktioner. MCP er stdio-broen for netop den use-case.
 
 Cost-beregning: OpenRouter returnerer `{usage: {total_cost}}` i response — konverter til cents og rapportér.
 
@@ -233,12 +274,17 @@ ALTER TABLE knowledge_bases ADD COLUMN ingest_fallback_chain TEXT;
 
 ## Success Criteria
 
-1. **Samme kilde producerer samme-kvalitets-wiki uanset backend.** Målt ved: kør ingest på Sanne's NADA-PDF via både `claude-cli` og `openrouter/gemini-2.5-flash`; antal Neuroner skabt, antal wiki-links, antal entity-refs sammenlignelig inden for ±20%.
-2. **Mock-fail fra første chain-step udløser korrekt fallback.** `trial-fallback-*.ts` injicerer en 429 i Gemini Flash; runner skifter til GLM, fuldfører jobbet, `ingest_jobs.model_trail` indeholder begge modeller.
-3. **Cost_cents populeres korrekt.** For en test-ingest af NADA-PDF: `cost_cents > 0` for OpenRouter-path (forventet ~66 cent); `cost_cents=0` for claude-cli-Max-path (intet billing-signal).
-4. **Per-KB override vinder over env.** Sæt `INGEST_MODEL=claude-sonnet-4-6` i env, men `knowledge_bases.ingest_model='google/gemini-2.5-flash'` på KB. Verificér at jobbet kører på Flash.
-5. **Per-tenant key fallback.** Slet proces-env `OPENROUTER_API_KEY`; sæt `tenant_secrets.openrouter_api_key_encrypted` for tenant A; kør ingest på A's KB. Asserter: succes. Kør ingest på tenant B's KB (ingen key nogen steder). Asserter: synligt fejlet job med klar fejlbesked.
+**Test-kilde**: `docs/features/F149-pluggable-ingest-backends.md` (dette plan-dokument selv, ~30KB markdown) uploadet til KB `development-tester` (`http://127.0.0.1:58031/kb/development-tester/neurons`). Kilden er lille nok til hurtig iteration (<60s per backend), stor nok til at trigge multi-turn-ingest og afsløre fejl i tool-call-loop. Bevidst fravalg af den fulde NADA-PDF (122 sider) — den gemmes til Sanne's KB når vi er ready til produktion.
+
+Hvis F149-plan-doc'en viser sig for lille (fx ingen typed edges fordi tæt teknisk tekst), falder vi tilbage til en fixture-kombination `F148 + F149 + F150 plan-docs` concatenated som én kilde (~100KB) der garanterer diversitet.
+
+1. **Samme kilde producerer samme-kvalitets-wiki uanset backend.** Målt ved: kør ingest på F149-plan-doc'en via både `claude-cli + claude-sonnet-4-6` og `openrouter + google/gemini-2.5-flash`; antal Neuroner skabt, antal wiki-links, antal entity-refs sammenlignelig inden for ±20%.
+2. **Mock-fail fra første chain-step udløser korrekt fallback.** `trial-fallback-rate-limit.ts` injicerer en 429 i Gemini Flash; runner skifter til GLM, fuldfører jobbet, `ingest_jobs.model_trail` indeholder begge modeller.
+3. **Cost_cents populeres korrekt.** For en test-ingest af F149-plan-doc'en: `cost_cents > 0` for OpenRouter-path (forventet 5-20 cent for denne str.); `cost_cents=0` for claude-cli-Max-path (intet billing-signal, "gratis (Max)"-badge).
+4. **Per-KB override vinder over env.** Sæt `INGEST_MODEL=claude-sonnet-4-6` i env, men `knowledge_bases.ingest_model='google/gemini-2.5-flash'` på development-tester-KB. Verificér at jobbet kører på Flash.
+5. **Per-tenant key fallback (via dev-tenant seed-script).** Vi har ingen UI til at oprette tenants; verificéres via `apps/server/scripts/seed-dev-tenant.ts` der SQL-inserter en skjult dev-tenant + KB + user + `tenant_secrets`-row med krypteret OpenRouter-key. Test-flow: slet proces-env `OPENROUTER_API_KEY`; kør ingest på dev-tenantens KB → succes (henter fra tenant_secrets). Kør ingest på en tredje tenant uden key → synligt fejlet job med klar fejlbesked "No OpenRouter key configured for this tenant".
 6. **Backwards compat**: en pre-F149 KB uden `ingest_backend`/`ingest_model`-felter falder tilbage til `claude-cli + claude-sonnet-4-6` identisk med pre-F149-adfærd. Sanne's KB ingester fortsætter uændret efter deploy.
+7. **Model-registry CI-check grøn**: `scripts/verify-ingest-models.ts` kalder OpenRouter's `/models`-endpoint og Anthropic's `/models`-endpoint og bekræfter at alle whitelist-IDs eksisterer. Kører i pre-commit hook eller CI. Fejler byggen hvis en model-ID er stale.
 
 ## Impact Analysis
 
@@ -332,13 +378,16 @@ Kun ingest-pathet flyttes; chat-pathet er uændret.
 1. **Fase 1a — Extract interface + ClaudeCLIBackend**: `backend.ts`, `claude-cli-backend.ts`, `runner.ts`. Flyt `spawnClaude`-logik uændret. `resolveIngestChain` returnerer single-step chain. Kør eksisterende ingests — intet ændrer sig synligt.
 2. **Fase 1b — Migration 0014 + schema**: Tilføj kolonnerne. Verifikations-script kører `pragma_table_info`-probe.
 3. **Fase 1c — verify-backend-claude.ts**: scripted probe. Commit fase 1 hvis grøn.
-4. **Fase 2a — OpenRouterBackend**: port model-lab's `openrouter.ts` + `runner.ts` + `two-pass.ts` + `tools.ts`. Tilslut til Trail's MCP-write-tool. Få ingest of NADA-PDF til at lande valide Neuroner i queue uden manual intervention.
-5. **Fase 2b — Chain + runWithFallback**: default-chains + fallback-loop. Tilføj `model_trail`-persistens på `ingest_jobs`.
-6. **Fase 2c — trial-fallback scripts**: mock 429 + context-limit. Assert chain fortsætter korrekt.
-7. **Fase 2d — tenant_secrets + encryption**: libsodium seal; migration inkluderet; round-trip-test. Admin-UI-tab stubbed.
-8. **Fase 2e — Per-KB settings routes + admin dropdown**: `ingest-settings.ts` + `ingest-models.ts`. Admin kb-settings-panel får dropdown med whitelist. Runtime-edit via admin er out of v1, men struktur'en klar.
-9. **Fase 3 — Runtime UI switch**: separat F-feature (foreslået: F15x). Ikke del af F149.
-10. **Rollout verification**: kør smoke-test-suite mod development-tester-KB, rapportér success-criteria-tal, commit.
+4. **Fase 2a — Faktorér `CandidateQueueAPI` ud af `apps/mcp/src/index.ts`**: flyt search/read/write-handlers til `packages/core/src/ingest/candidate-api.ts`. Både MCP-server OG OpenRouterBackend importerer herfra. Sandhed ét sted.
+5. **Fase 2b — OpenRouterBackend (in-process)**: port model-lab's `openrouter.ts` + `runner.ts` + `two-pass.ts` + `tools.ts`. Tool-call-loop kalder `CandidateQueueAPI` direkte (ikke MCP). Kør ingest af F149-plan-doc'en mod development-tester-KB → valide Neuroner uden manual intervention.
+6. **Fase 2c — Chain + runWithFallback**: default-chains + fallback-loop. Tilføj `model_trail`-persistens på `ingest_jobs`.
+7. **Fase 2d — trial-fallback scripts**: mock 429 + context-limit. Assert chain fortsætter korrekt.
+8. **Fase 2e — tenant_secrets + libsodium encryption**: `crypto_secretbox` seal/unseal. Migration inkluderet. Round-trip-test.
+9. **Fase 2f — seed-dev-tenant.ts**: SQL-baseret skjult dev-tenant med `tenant_secrets`-row til test af per-tenant-key-fallback.
+10. **Fase 2g — verify-ingest-models.ts (CI model-registry-check)**: kalder OpenRouter's + Anthropic's `/models`-endpoints og asserterer at alle whitelist-IDs eksisterer. Kører i pre-commit hook + CI.
+11. **Fase 2h — Per-KB settings routes**: `ingest-settings.ts` + `ingest-models.ts`. Runtime-dropdown-UI er F152.
+12. **Fase 2i — rotate-secrets-key.ts**: bootstrap-kommando til key-rotation. Dekryptér med gammel + encryptér med ny.
+13. **Rollout verification**: kør smoke-test-suite mod development-tester-KB, rapportér success-criteria-tal, commit.
 
 ## Dependencies
 
@@ -352,16 +401,20 @@ Kun ingest-pathet flyttes; chat-pathet er uændret.
 
 ## Open Questions
 
-1. **Kryptering af tenant_secrets.** libsodium er mit default-forslag, men Christian har evt. en eksisterende `crypto`-helper i `@webhouse/cms` eller WHop-stakken der er blåstemplet. Verificér før implementering.
-2. **Max Plan cost reporting.** Når claude-cli kører via Max Plan returneres der ingen cost i `--output-format json`'s final-message. Skal `cost_cents=0` rendere som "gratis (Max)" eller skal admin estimere ud fra token-count? Første er korrekt; andet er vildledende. Default: "gratis (Max)"-badge.
-3. **Model-navne i whitelist.** OpenRouter-model-ids har formen `<provider>/<model>`: `google/gemini-2.5-flash`, `z-ai/glm-4.6`, `qwen/qwen-plus`, `anthropic/claude-sonnet-4.6`. Bekræft at disse er de valide, aktuelle id'er på dagen F149 bygges — model-lab-rapporten listede dem per 2026-04-24 men OpenRouter ændrer ofte på id-formatet.
-4. **Failure-mode for encryption-key rotation.** Hvis master-key roteres uden at re-encryptet secrets-rækker, fejler lookups. Skal der være en bootstrap-migration-kommando til at re-encrypt? v1 kan nøjes med at crashe højlydt, men det er dårligt for uptime.
+**Afklaret af Christian 2026-04-24:**
+
+1. ✅ **Kryptering af tenant_secrets**: libsodium `crypto_secretbox` (markedsstandard, auditeret). Master-key via env `TRAIL_SECRETS_MASTER_KEY` (32 bytes base64).
+2. ✅ **Max Plan cost reporting**: `cost_cents=0 && backend='claude-cli'` rendres som "gratis (Max)"-badge. Aldrig estimér.
+3. ✅ **Model-navne i whitelist**: CI-check `scripts/verify-ingest-models.ts` kalder OpenRouter + Anthropic `/models`-endpoints og bekræfter whitelist-IDs. Kører i pre-commit + CI. Fejler byggen hvis stale. Tilføjet som Implementation Step 10.
+4. ✅ **Bootstrap-migration for key-rotation**: `apps/server/scripts/rotate-secrets-key.ts` dekrypterer alle `tenant_secrets`-rækker med gammel key + encrypter med ny. Kørt én-gang ved deploy efter key-rotation. Ingen runtime-rotation i v1.
+
+Ingen åbne spørgsmål — F149 klar til implementation.
 
 ## Related Features
 
 - **Depends on:** F06, F111.2, F137, F140, F143, F148.
+- **Enables:** **F151** (Cost & Quality Dashboard — UI ovenpå `cost_cents` + `model_trail`), **F152** (Runtime Model Switcher UI — dropdown ovenpå `resolveIngestChain`).
 - **Supports:** F43 (Stripe Billing) + F44 (Usage Metering) via `cost_cents`-data; F52 (FysioDK onboarding) som kan få egen Flash-default-model uden at røre Sanne's setup.
-- **Enables:** Runtime-UI-switch-feature (separat F-feature, ikke F149) hvor curator kan flippe model mid-session via dropdown. F149 sikrer at pure-function-chain-resolution er klar til det kald.
 - **Spawned by:** model-lab-eksperiment rapport (`apps/model-lab/data/REPORT.md`), `~/Downloads/MODEL-LAB-NEURON-LINK-QUALITY-RAPPORT.md`, `~/Downloads/PROMPT-TO-OPUS.md`.
 
 ## Effort Estimate
