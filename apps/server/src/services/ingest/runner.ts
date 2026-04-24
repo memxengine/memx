@@ -25,10 +25,11 @@ import type {
 } from './backend.js';
 import type { ChainStep } from './chain.js';
 import { ClaudeCLIBackend } from './claude-cli-backend.js';
+import { OpenRouterBackend } from './openrouter-backend.js';
 
 const BACKENDS: Record<string, IngestBackend> = {
   'claude-cli': new ClaudeCLIBackend(),
-  // 'openrouter': new OpenRouterBackend(),  // F149 Phase 2
+  'openrouter': new OpenRouterBackend(),
 };
 
 export interface RunnerResult extends IngestBackendResult {

@@ -226,7 +226,7 @@ assert(typeof parser.ClaudeCLIBackend === 'function', 'ClaudeCLIBackend is const
 console.log('\n[5] Backend registry');
 const ids = getBackendIds();
 assert(ids.includes('claude-cli'), 'claude-cli backend registered');
-assert(!ids.includes('openrouter'), 'openrouter NOT yet registered (Phase 2)');
+assert(ids.includes('openrouter'), 'openrouter backend registered (Phase 2b)');
 
 // ── Result ───────────────────────────────────────────────────────────────
 console.log(`\n${failures === 0 ? '✓ ALL PROBES PASSED' : `✗ ${failures} probe(s) failed`}\n`);

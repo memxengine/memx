@@ -83,6 +83,15 @@ export interface IngestBackendInput {
    * → Gemini Flash expand. Leave undefined for single-pass.
    */
   translationModel?: string;
+
+  /**
+   * F149 Phase 2 — in-process CandidateQueueAPI. Populated by the
+   * runner from the ingest-job's context. In-process backends
+   * (OpenRouterBackend, AnthropicBackend, …) dispatch tool calls
+   * directly to this API. ClaudeCLIBackend IGNORES it — the CLI
+   * subprocess reaches the queue through MCP stdio instead.
+   */
+  candidateApi?: import('@trail/core').CandidateQueueAPI;
 }
 
 export interface IngestBackendResult {

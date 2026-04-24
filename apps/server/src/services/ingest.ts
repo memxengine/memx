@@ -1,9 +1,10 @@
-import { documents, knowledgeBases, ingestJobs, documentReferences, DATA_DIR, type TrailDatabase } from '@trail/db';
+import { documents, knowledgeBases, ingestJobs, documentReferences, tenants, DATA_DIR, type TrailDatabase } from '@trail/db';
 import { and, asc, eq } from 'drizzle-orm';
 import {
   parseSchemaNeuron,
   renderSchemaForPrompt,
   resolveSchemaChain,
+  createCandidateQueueAPI,
   type SchemaNeuronRow,
 } from '@trail/core';
 import { broadcaster } from './broadcast.js';
@@ -471,6 +472,24 @@ GENERAL
     },
   );
 
+  // F149 Phase 2 — build the in-process CandidateQueueAPI that
+  // OpenRouterBackend + any other in-process backend dispatches tool
+  // calls to. ClaudeCLIBackend ignores it (uses MCP subprocess).
+  const tenantRow = await trail.db
+    .select({ name: tenants.name })
+    .from(tenants)
+    .where(eq(tenants.id, job.tenantId))
+    .get();
+  const candidateApi = createCandidateQueueAPI({
+    trail,
+    tenantId: job.tenantId,
+    tenantName: tenantRow?.name ?? job.tenantId,
+    userId: job.userId,
+    connector: sourceConnector,
+    ingestJobId: jobId,
+    defaultKbId: job.kbId,
+  });
+
   try {
     const runnerResult = await runWithFallback(chain, {
       prompt,
@@ -486,6 +505,7 @@ GENERAL
         TRAIL_CONNECTOR: sourceConnector,
         TRAIL_INGEST_JOB_ID: jobId,
       },
+      candidateApi,
     });
 
     const finishedAt = new Date().toISOString();
