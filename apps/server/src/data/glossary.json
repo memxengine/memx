@@ -137,13 +137,22 @@
       "relatedTerms": ["candidate", "curator", "confidence"]
     },
     {
+      "id": "compile",
+      "label": { "en": "Compile", "da": "Kompilér" },
+      "definition": {
+        "en": "The LLM step that turns extracted Source text into one or more Neurons. Takes the chunked body plus a compile prompt (see `apps/server/src/services/ingest.ts`), the Trail's language, its existing tag list, and the set of entity Neurons it already holds (F148), then asks the model to emit claim-dense markdown pages — each with YAML frontmatter (`title`, `sources: [filename.pdf]`, `tags: [...]`, optional `type`/`kind` per F101) and `[[Neuron-links]]` to related pages. The output lands as Queue candidates (`ingest-summary` for new, `ingest-page-update` for edits); auto-approval policy decides whether they commit without a human click. Compile is what F149's pluggable ingest backends parameterise — same input, different model: Claude CLI via `spawnClaude` (Max Plan default), or OpenRouter for Gemini Flash, GLM, Qwen, direct Claude API. A run emits an F136 compile-log card with turn count, cost, and wall-clock. **Distinct from:** *Ingest* (the full pipeline wrapping compile with extraction + chunking + candidate emission), *Retry* (re-runs everything including file-format extraction), *Re-ingest* (re-runs only compile against already-extracted content).",
+        "da": "LLM-trinnet der forvandler udtrukket Kilde-tekst til én eller flere Neuroner. Tager det opdelte indhold plus en kompileringsprompt (se `apps/server/src/services/ingest.ts`), Trail'ens sprog, dens eksisterende tag-liste og sættet af entity-Neuroner den allerede har (F148), og beder modellen udsende påstands-tætte markdown-sider — hver med YAML-frontmatter (`title`, `sources: [filnavn.pdf]`, `tags: [...]`, valgfri `type`/`kind` jf. F101) og `[[Neuron-links]]` til relaterede sider. Output'et lander som Kø-kandidater (`ingest-summary` for nye, `ingest-page-update` for redigeringer); auto-godkendelsespolitikken afgør om de committes uden menneskeklik. Kompilering er det F149's pluggbare ingest-backends parameteriserer — samme input, forskellig model: Claude CLI via `spawnClaude` (Max Plan-standard), eller OpenRouter for Gemini Flash, GLM, Qwen, direkte Claude API. En kørsel udsender et F136 kompileringslog-kort med turn-antal, omkostning og wall-clock. **Adskilt fra:** *Ingest* (hele pipelinen der pakker compile ind sammen med udtrækning + opdeling + kandidat-udsendelse), *Prøv igen* (kører alt om inkl. filformat-udtrækning), *Re-ingest* (kører kun kompilering igen mod allerede udtrukket indhold)."
+      },
+      "relatedTerms": ["ingest", "source", "neuron", "re-ingest", "retry", "auto-approve"]
+    },
+    {
       "id": "ingest",
       "label": { "en": "Ingest", "da": "Ingest" },
       "definition": {
         "en": "The process of reading a new Source, extracting its text, chunking it for search, and compiling one or more Neurons from it. Ingest produces ingest-summary candidates that auto-approve if confidence is high enough.",
         "da": "Processen med at læse en ny Kilde, udtrække dens tekst, opdele den til søgning og kompilere en eller flere Neuroner fra den. Ingest producerer ingest-resumé-kandidater der auto-godkendes hvis sikkerheden er høj nok."
       },
-      "relatedTerms": ["source", "neuron", "auto-approve", "retry", "re-ingest"]
+      "relatedTerms": ["compile", "source", "neuron", "auto-approve", "retry", "re-ingest"]
     },
     {
       "id": "retry",
