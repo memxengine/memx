@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { documents, knowledgeBases, chatSessions, chatTurns, type TrailDatabase } from '@trail/db';
-import { and, eq, like } from 'drizzle-orm';
+import { and, asc, eq, like } from 'drizzle-orm';
 import { requireAuth, getTenant, getUser, getTrail } from '../middleware/auth.js';
 import { spawnClaude, extractAssistantText } from '../services/claude.js';
 import { ChatRequestSchema } from '@trail/shared';
@@ -10,6 +10,7 @@ import {
   computeConfidence,
   isFaded,
   isPinned,
+  rewriteWikiLinks,
 } from '@trail/shared';
 import { recordAccess } from '../services/access-tracker.js';
 import { resolve, dirname } from 'node:path';
@@ -21,6 +22,13 @@ const CHAT_MODEL = process.env.CHAT_MODEL ?? 'claude-haiku-4-5-20251001';
 // the final composition; bump to 60s default timeout, 5 max turns.
 const CHAT_TIMEOUT_MS = Number(process.env.CHAT_TIMEOUT_MS ?? 60_000);
 const CHAT_MAX_TURNS = Number(process.env.CHAT_MAX_TURNS ?? 5);
+// How many historical turn-pairs to replay into each new turn. 10 turns
+// = 5 exchanges, which is ~2500 tokens at typical verbosity — trivial
+// against Haiku's 200k context but plenty for "what did you just offer
+// me?" follow-ups. Individual turn content is truncated to 2000 chars
+// to bound the worst-case (a curator pasting a wall of text).
+const CHAT_HISTORY_TURNS = Number(process.env.CHAT_HISTORY_TURNS ?? 10);
+const CHAT_HISTORY_MAX_CHARS_PER_TURN = 2000;
 
 // Resolve the trail MCP entrypoint from this file's location, not from
 // `process.cwd()`. Early version did the latter and broke when the engine
@@ -98,6 +106,15 @@ chatRoutes.post('/chat', async (c) => {
     tenant.id,
   );
 
+  // F144 follow-up: multi-turn memory. If the client pinned a sessionId,
+  // replay the last N turn-pairs so the LLM sees its own prior offer and
+  // the user's short follow-up ("Ja det vil jeg gerne") as one coherent
+  // conversation. Without this, every turn looks like a cold-start and
+  // short confirmations fail to resolve.
+  const priorTurns = body.sessionId
+    ? await loadPriorTurns(trail, body.sessionId, tenant.id, CHAT_HISTORY_TURNS)
+    : [];
+
   // F89 shift: tool-equipped chat doesn't need to refuse on empty context —
   // the LLM can now call search/count/queue_summary to answer metadata
   // questions even when FTS returns nothing. Context-less runs just get a
@@ -133,11 +150,27 @@ ${currentTrailName ? `## Current Trail\nThe user is currently viewing the Trail 
 - Reference wiki pages with [[page-name]] links where relevant
 - If tools and context both come up empty, say so honestly`;
 
+  // F30 — server-side render of [[wiki-links]] into `[display](href)`
+  // markdown. Consumers (widget, API clients, non-admin integrators)
+  // receive `renderedAnswer` ready to pass to their own markdown→HTML
+  // renderer without writing their own wiki-link parser. Admin already
+  // runs `rewriteWikiLinks` client-side so the second pass is a no-op
+  // (all `[[...]]` are gone). Cross-KB resolution uses the tenant's
+  // full KB list so `[[kb:other-trail/Page]]` resolves to the sister
+  // KB when it exists.
+  const primaryKbId = resolvedKbId ?? kbs[0]!.id;
+  const tenantKbSlugMap = await buildKbSlugMap(trail, tenant.id);
+  const renderAnswer = (raw: string): string =>
+    rewriteWikiLinks(raw, {
+      currentKbId: primaryKbId,
+      resolveKbSlug: (slug) => tenantKbSlugMap.get(slug) ?? null,
+    });
+
   // Dev default: claude -p subprocess. Prod will flip to direct API once stable.
   if (ANTHROPIC_API_KEY && process.env.TRAIL_CHAT_BACKEND === 'api') {
     try {
-      const answer = await callAnthropicAPI(systemPrompt, body.message);
-      return c.json({ answer, citations });
+      const answer = await callAnthropicAPI(systemPrompt, priorTurns, body.message);
+      return c.json({ answer, renderedAnswer: renderAnswer(answer), citations });
     } catch (err) {
       console.error('[chat] API error, falling back to CLI:', (err as Error).message);
     }
@@ -157,7 +190,7 @@ ${currentTrailName ? `## Current Trail\nThe user is currently viewing the Trail 
 
   const args = [
     '-p',
-    `${systemPrompt}\n\n## User Question\n${body.message}`,
+    buildCliPrompt(systemPrompt, priorTurns, body.message),
     '--dangerously-skip-permissions',
     '--max-turns',
     String(CHAT_MAX_TURNS),
@@ -192,14 +225,14 @@ ${currentTrailName ? `## Current Trail\nThe user is currently viewing the Trail 
       trail,
       tenant.id,
       user.id,
-      resolvedKbId ?? kbs[0]!.id,
+      primaryKbId,
       body.sessionId ?? null,
       body.message,
       answer,
       citations,
       latencyMs,
     );
-    return c.json({ answer, citations, sessionId });
+    return c.json({ answer, renderedAnswer: renderAnswer(answer), citations, sessionId });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[chat] Error:', msg);
@@ -293,7 +326,93 @@ function deriveSessionTitle(message: string): string {
   return normalised.slice(0, 57).replace(/[,.!?;:]+$/, '') + '…';
 }
 
-async function callAnthropicAPI(system: string, userMessage: string): Promise<string> {
+/**
+ * F30 — lookup table for cross-KB link resolution in server-side
+ * chat-answer rendering. Maps `kb-slug` to `kb-id`. Scoped to the
+ * caller's tenant. Small enough to compute per-request; a future
+ * optimisation would cache with SSE invalidation on KB create/update.
+ */
+async function buildKbSlugMap(trail: TrailDatabase, tenantId: string): Promise<Map<string, string>> {
+  const rows = await trail.db
+    .select({ id: knowledgeBases.id, slug: knowledgeBases.slug })
+    .from(knowledgeBases)
+    .where(eq(knowledgeBases.tenantId, tenantId))
+    .all();
+  const map = new Map<string, string>();
+  for (const r of rows) {
+    if (r.slug) map.set(r.slug, r.id);
+  }
+  return map;
+}
+
+interface PriorTurn {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+/**
+ * Load up to `limit` most-recent turns for a session, returned in
+ * chronological order (oldest first) so they replay as a natural
+ * conversation. Scoped by sessionId + tenantId via a join so a crafted
+ * sessionId from another tenant can't leak turns.
+ */
+async function loadPriorTurns(
+  trail: TrailDatabase,
+  sessionId: string,
+  tenantId: string,
+  limit: number,
+): Promise<PriorTurn[]> {
+  try {
+    const rows = await trail.db
+      .select({ role: chatTurns.role, content: chatTurns.content })
+      .from(chatTurns)
+      .innerJoin(chatSessions, eq(chatSessions.id, chatTurns.sessionId))
+      .where(
+        and(eq(chatTurns.sessionId, sessionId), eq(chatSessions.tenantId, tenantId)),
+      )
+      .orderBy(asc(chatTurns.createdAt))
+      .limit(limit)
+      .all();
+    return rows.map((r) => ({
+      role: r.role as 'user' | 'assistant',
+      content: truncateForHistory(r.content),
+    }));
+  } catch (err) {
+    console.error('[chat] loadPriorTurns failed:', err instanceof Error ? err.message : err);
+    return [];
+  }
+}
+
+function truncateForHistory(content: string): string {
+  if (content.length <= CHAT_HISTORY_MAX_CHARS_PER_TURN) return content;
+  return content.slice(0, CHAT_HISTORY_MAX_CHARS_PER_TURN) + '…';
+}
+
+/**
+ * Build the single-string prompt for the `claude -p` CLI path. The CLI
+ * has no multi-turn message API, so we inline the history as a
+ * transcript before the new question. Claude reliably treats this as
+ * conversation context when the headings + roles are explicit.
+ */
+function buildCliPrompt(
+  systemPrompt: string,
+  history: PriorTurn[],
+  currentMessage: string,
+): string {
+  if (history.length === 0) {
+    return `${systemPrompt}\n\n## User Question\n${currentMessage}`;
+  }
+  const transcript = history
+    .map((t) => `${t.role === 'user' ? 'User' : 'Assistant'}: ${t.content}`)
+    .join('\n\n');
+  return `${systemPrompt}\n\n## Prior Conversation (oldest first — use this to resolve short follow-ups like "yes", "do it", "show me")\n${transcript}\n\n## User Question (current turn)\n${currentMessage}`;
+}
+
+async function callAnthropicAPI(
+  system: string,
+  history: PriorTurn[],
+  userMessage: string,
+): Promise<string> {
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -305,7 +424,12 @@ async function callAnthropicAPI(system: string, userMessage: string): Promise<st
       model: CHAT_MODEL || 'claude-haiku-4-5-20251001',
       max_tokens: 1024,
       system,
-      messages: [{ role: 'user', content: userMessage }],
+      // Multi-turn: replay history as proper role-tagged messages so the
+      // API sees the conversation structure natively.
+      messages: [
+        ...history.map((t) => ({ role: t.role, content: t.content })),
+        { role: 'user', content: userMessage },
+      ],
     }),
   });
   if (!res.ok) {
