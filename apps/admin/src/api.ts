@@ -767,3 +767,58 @@ export async function uploadSource(
   }
   return (await response.json()) as Document;
 }
+
+// ── F151 — Cost & Quality Dashboard ──────────────────────────────────────
+
+export interface CostSummary {
+  windowDays: number;
+  totalCents: number;
+  jobCount: number;
+  byDay: Array<{ date: string; cents: number; jobs: number }>;
+  bySource: Array<{
+    documentId: string;
+    filename: string;
+    title: string | null;
+    cents: number;
+    jobCount: number;
+  }>;
+  avgCentsPerNeuron: number;
+}
+
+export function getCostSummary(kbId: string, windowDays = 30): Promise<CostSummary> {
+  return api<CostSummary>(`/knowledge-bases/${encodeURIComponent(kbId)}/cost?window=${windowDays}`);
+}
+
+export function costCsvUrl(kbId: string, windowDays = 30): string {
+  return `/api/v1/knowledge-bases/${encodeURIComponent(kbId)}/cost.csv?window=${windowDays}`;
+}
+
+export interface QualityRun {
+  jobId: string;
+  status: string;
+  startedAt: string;
+  completedAt: string | null;
+  durationMs: number | null;
+  backend: string | null;
+  primaryModel: string | null;
+  finalModel: string | null;
+  costCents: number;
+  modelTrailLen: number;
+  metrics: {
+    neuronsCreated: number;
+    conceptsCreated: number;
+    entitiesCreated: number;
+    wikiBacklinks: number;
+    typedEdges: number;
+    openBrokenLinks: number;
+  };
+}
+
+export interface QualityComparison {
+  source: { id: string; filename: string; title: string | null };
+  runs: QualityRun[];
+}
+
+export function getQualityRuns(sourceId: string): Promise<QualityComparison> {
+  return api<QualityComparison>(`/sources/${encodeURIComponent(sourceId)}/ingests`);
+}

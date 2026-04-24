@@ -1,0 +1,12 @@
+-- F151 — date-range index on ingest_jobs for Cost Dashboard queries.
+--
+-- The cost-tab runs SELECT ... WHERE knowledge_base_id = ? AND
+-- started_at >= date('now', '-30 days') GROUP BY date(started_at).
+-- Existing indexes cover (kb_id, status) and (document_id); neither
+-- helps a date-range scan on started_at. A composite index on
+-- (knowledge_base_id, started_at) keeps the sort + filter entirely
+-- in the index and avoids table-scans on busy KBs.
+--
+-- Cheap to add (one tree build) and cheap to maintain (one update
+-- per ingest row insert/update). Idempotent on re-run.
+CREATE INDEX IF NOT EXISTS `idx_ingest_jobs_kb_started` ON `ingest_jobs` (`knowledge_base_id`, `started_at`);
