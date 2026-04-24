@@ -182,13 +182,22 @@
       "relatedTerms": ["neuron", "reference", "source", "orphan-neuron"]
     },
     {
+      "id": "neuron-link",
+      "label": { "en": "Neuron-link", "da": "Neuron-link" },
+      "definition": {
+        "en": "The `[[...]]` double-bracket syntax that links one Neuron to another inside a Trail. The text between the brackets is slugified to resolve against a target filename — `[[Orphans + Stale]]` finds `orphans-stale.md`. Neuron-links build the graph that powers the Chat's context-gathering, the Backlink view in the reader, and the orphan-detector's \"no one links here\" signal. **How to author one:** type `[[Target Neuron Title]]` directly in any markdown content field — the Neuron editor, the \"+ New\" modal, a Work item's Description (Task / Bug / Milestone / Decision), or the save-dialog when you pin a Chat answer as a Neuron. The backlink extractor resolves it on save; the new edge appears in the Graph and the target Neuron's \"N Neurons link here\" count ticks up. The ingest pipeline also writes Neuron-links automatically when compiling Sources, so the Curator rarely has to add them by hand. Optional typed form `[[target|edge-type]]` (F137) carries a semantic relation — `cites` (default, bare mention), `is-a`, `part-of`, `contradicts`, `supersedes`, `example-of`, `caused-by` — and colours the graph accordingly. Subject to link-integrity guarantees (F148): an unresolvable link becomes a broken-link finding for the Curator, never a 404 on the reader.",
+        "da": "Den `[[...]]`-dobbeltparentes-syntaks der linker én Neuron til en anden inden for en Trail. Teksten mellem parenteserne slugifiseres og slås op mod et mål-filnavn — `[[Yin og Yang]]` finder `yin-og-yang.md`. Neuron-links opbygger grafen der driver Chat'ens konteksthøst, Baglink-visningen i læseren og forældreløs-detektorens \"ingen linker hertil\"-signal. **Sådan laver du selv et:** skriv `[[Titel på mål-Neuron]]` direkte i et markdown-indholdsfelt — Neuron-editoren, \"+ NYT\"-modalet, et Work-items Beskrivelse-felt (Opgave / Fejl / Milepæl / Beslutning), eller gem-dialogen når du pinner et Chat-svar som en Neuron. Baglink-extractoren opløser det ved gemning; den nye kant dukker op i Grafen og mål-Neuronens \"N Neuroner linker hertil\"-tæller stiger. Ingest-pipelinen skriver også Neuron-links automatisk når den kompilerer Kilder, så Kuratoren sjældent skal tilføje dem manuelt. Valgfri typet form `[[mål|edge-type]]` (F137) bærer en semantisk relation — `cites` (standard, simpel omtale), `is-a`, `part-of`, `contradicts`, `supersedes`, `example-of`, `caused-by` — og farver grafen derefter. Underlagt link-integritet-garantien (F148): et ikke-opløseligt link bliver til en broken-link-observation til Kuratoren, aldrig en 404 på læseren."
+      },
+      "relatedTerms": ["neuron", "backlink", "contradiction", "orphan-neuron"]
+    },
+    {
       "id": "backlink",
       "label": { "en": "Backlink", "da": "Baglink" },
       "definition": {
         "en": "The inverse of a Neuron-link. If Neuron A contains [[B]], then B has a backlink FROM A. Shown on the Neuron reader as \"N Neurons link here\" — lets the Curator see how interconnected a Neuron is.",
         "da": "Det omvendte af et Neuron-link. Hvis Neuron A indeholder [[B]], så har B et baglink FRA A. Vist på Neuron-læseren som \"N Neuroner linker hertil\" — lader Kuratoren se hvor forbundet en Neuron er."
       },
-      "relatedTerms": ["neuron", "reference"]
+      "relatedTerms": ["neuron", "neuron-link", "reference"]
     },
     {
       "id": "effect",
