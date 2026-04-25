@@ -52,9 +52,14 @@ export interface RunChatInput
 }
 
 /**
- * Resolve the chat chain, run each step until one succeeds. Phase 1:
- * the chain is always single-step, so the loop exits after one
- * iteration. Phase 2 adds isFallbackEligible-gated step advance.
+ * Resolve the chat chain, run each step until one succeeds.
+ *
+ * Phase 4 (this code) advances to the next step on `isFallbackEligible`
+ * errors — rate-limits, 5xx, network/connection errors, missing
+ * `claude` binary. Hard errors (4xx user-error, content-policy
+ * refusal, validation) bubble up immediately; they wouldn't succeed
+ * on the next backend either, and silent fall-through would mask
+ * real bugs.
  */
 export async function runChat(input: RunChatInput): Promise<ChatBackendResult> {
   const chain = resolveChatChain({ kb: input.kb });
@@ -70,10 +75,13 @@ export async function runChat(input: RunChatInput): Promise<ChatBackendResult> {
       return { ...result, stepsAttempted: i + 1 };
     } catch (err) {
       lastError = err;
-      // Phase 1: no fallback gate — re-throw immediately. Phase 2
-      // wraps this in isFallbackEligible(err) so 429 / 5xx / network
-      // errors advance to the next step instead of bubbling up.
-      throw err;
+      const isLast = i === chain.length - 1;
+      if (isLast || !isFallbackEligible(err)) throw err;
+      console.warn(
+        `[runChat] step ${i + 1}/${chain.length} (${step.backend}:${step.model}) failed, advancing: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
     }
   }
   throw new Error(
@@ -81,4 +89,38 @@ export async function runChat(input: RunChatInput): Promise<ChatBackendResult> {
       lastError instanceof Error ? lastError.message : String(lastError)
     }`,
   );
+}
+
+/**
+ * Decide whether a backend failure should advance to the next chain
+ * step or bubble up as a hard error. Mirror of F149's same-name
+ * predicate in services/ingest/runner.ts.
+ *
+ *   ELIGIBLE (advance):
+ *     - "Executable not found" (no claude binary in prod)
+ *     - "ENOTFOUND" / "ECONNREFUSED" / "ETIMEDOUT" (network)
+ *     - HTTP 429 (rate-limit), HTTP 5xx (provider error)
+ *     - "exceeded maxTurns" (this backend ran out of headroom — try
+ *       another model with different reasoning shape)
+ *
+ *   NOT ELIGIBLE (throw immediately):
+ *     - HTTP 4xx (auth, validation, malformed body)
+ *     - Anthropic-style content-policy refusal
+ *     - Generic Error without a recognisable signal — assume
+ *       user-error, don't waste budget on the next backend
+ */
+export function isFallbackEligible(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  const lower = msg.toLowerCase();
+
+  // CLI binary not on PATH — F159's headline reason for fallback.
+  if (lower.includes('executable not found') || lower.includes('enoent')) return true;
+  // Network failures.
+  if (lower.includes('enotfound') || lower.includes('econnrefused') || lower.includes('etimedout')) return true;
+  if (lower.includes('aborterror') || lower.includes('aborted')) return true;
+  // Provider 429 / 5xx.
+  if (/\b(429|5\d\d)\b/.test(msg)) return true;
+  // maxTurns exhaustion — this backend gave up; try another shape.
+  if (lower.includes('exceeded maxturns')) return true;
+  return false;
 }

@@ -92,6 +92,21 @@ export function resolveChatChain(input: ChainResolutionInput = {}): ChainStep[] 
     return [{ backend: envBackend, model: env.CHAT_MODEL || DEFAULT_CHAT_MODEL }];
   }
 
-  // Precedence 4: hardcoded default. Phase 4 flips this to multi-step.
-  return [{ backend: 'claude-cli', model: env.CHAT_MODEL || DEFAULT_CHAT_MODEL }];
+  // Precedence 4: hardcoded default — F159 Phase 4 multi-step chain.
+  // Christian's Mac wins step 1 (claude-cli with his Max Plan, free).
+  // Production environments (Fly.io, Docker) lack the `claude` binary
+  // so the spawn fails immediately → runChat advances to step 2
+  // (Gemini Flash via OpenRouter, ~0.1 credits/turn). If OpenRouter
+  // itself rate-limits or 5xx's, step 3 routes through OpenRouter to
+  // Anthropic Claude Sonnet — independent quota from the Max account.
+  //
+  // The default model in env.CHAT_MODEL only overrides step 1; the
+  // OpenRouter steps use canonical Gemini Flash + Claude Sonnet
+  // identifiers. To customise the chain, set per-KB chatFallbackChain
+  // via PATCH /chat-settings (precedence 1 above).
+  return [
+    { backend: 'claude-cli', model: env.CHAT_MODEL || DEFAULT_CHAT_MODEL },
+    { backend: 'openrouter', model: 'google/gemini-2.5-flash' },
+    { backend: 'openrouter', model: 'anthropic/claude-sonnet-4-6' },
+  ];
 }
