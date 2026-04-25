@@ -314,6 +314,14 @@ Dedicated native iPhone + iPad app der gør telefonen til Trail's primære captu
 |---|---------|--------|-------|------|
 | F157 | [Trail iOS App](features/F157-trail-ios-app.md) | Planned | 2 | [plan](features/F157-trail-ios-app.md) |
 
+### F158 — Idempotent Contradiction-Lint
+
+No-work-at-rest principle for contradiction-scan. Adds `documents.last_contradiction_scan_signature` (sha256 over neuron-version + sorted peer-versions, including TOP_K + MODEL so config changes invalidate). Before each scan: compute signature; if matches stored, skip LLM calls entirely. After successful scan: stamp signature. Effect: a brain at rest = 0 Haiku calls per pass, regardless of round-robin schedule. Saves ~1740 calls/day on 348-Neuron quiet KB. Kill-switch via `TRAIL_CONTRADICTION_FORCE_RESCAN=1`. Stamp happens on success only — flaky Neurons don't get stuck via stale signature. Verified: typecheck clean, migration 0020 applied. Depends on F32, F118. Small effort (0.5 day). Status: Done 2026-04-25.
+
+| # | Feature | Status | Phase | Plan |
+|---|---------|--------|-------|------|
+| F158 | [Idempotent Contradiction-Lint](features/F158-idempotent-contradiction-lint.md) | Done | 1 | [plan](features/F158-idempotent-contradiction-lint.md) |
+
 ---
 
 **Se også:** [`NON-GOALS.md`](./NON-GOALS.md) — kuratert register over bevidst fravalg pr. F-plan (parked / declined / promoted / covered-by).

@@ -20,6 +20,7 @@
  */
 import { documents, queueCandidates, type TrailDatabase } from '@trail/db';
 import { and, eq, like, ne } from 'drizzle-orm';
+import { createHash } from 'node:crypto';
 import {
   createCandidate,
   detectContradictions,
@@ -35,6 +36,32 @@ import { spawnClaude, extractAssistantText } from './claude.js';
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY ?? '';
 const BACKEND = process.env.TRAIL_CONTRADICTION_BACKEND ?? (ANTHROPIC_API_KEY ? 'api' : 'cli');
 const MODEL = process.env.TRAIL_CONTRADICTION_MODEL ?? 'claude-haiku-4-5-20251001';
+// F158 — kill-switch for the idempotent skip. Set to '1' to force a
+// full re-scan regardless of cached signatures. Useful when:
+//   - prompt or model env changed and you want fresh evaluations
+//   - debugging a suspected false-skip
+const FORCE_RESCAN = process.env.TRAIL_CONTRADICTION_FORCE_RESCAN === '1';
+
+/**
+ * F158 — content-signature for idempotent skip. Hash of (neuron-id +
+ * neuron-version + sorted peer-id:version pairs). When unchanged from
+ * the previous successful scan, the entire LLM-call loop is bypassed.
+ *
+ * Includes TOP_K + MODEL so any config change forces a fresh scan
+ * (prevents stale skips after we tune the prompt or swap model).
+ */
+function computeContradictionSignature(
+  neuronId: string,
+  neuronVersion: number,
+  peers: Array<{ documentId: string; version: number }>,
+): string {
+  const peerSig = peers
+    .map((p) => `${p.documentId}:v${p.version}`)
+    .sort()
+    .join('|');
+  const input = `topk=${TOP_K}|model=${MODEL}|${neuronId}:v${neuronVersion}|${peerSig}`;
+  return createHash('sha256').update(input).digest('hex').slice(0, 16);
+}
 const TOP_K = Number(process.env.TRAIL_CONTRADICTION_TOPK ?? 5);
 const MIN_CONTENT_CHARS = 200; // skip short stubs — too little signal
 const CLI_TIMEOUT_MS = Number(process.env.TRAIL_CONTRADICTION_CLI_TIMEOUT_MS ?? 45_000);
@@ -161,6 +188,7 @@ async function runForEvent(
       knowledgeBaseId: documents.knowledgeBaseId,
       userId: documents.userId,
       version: documents.version,
+      lastContradictionScanSignature: documents.lastContradictionScanSignature,
     })
     .from(documents)
     .where(eq(documents.id, event.documentId))
@@ -180,6 +208,18 @@ async function runForEvent(
   const similars = await findSimilarNeurons(trail, doc);
   if (similars.length === 0) return;
 
+  // F158 — idempotent skip. Compute signature over (this Neuron's
+  // version, peer-id+version pairs). If unchanged from last successful
+  // scan, the LLM-result would be identical too — skip the calls.
+  // FORCE_RESCAN env-knob bypasses this for debugging/model-changes.
+  const signature = computeContradictionSignature(doc.id, doc.version, similars);
+  if (!FORCE_RESCAN && doc.lastContradictionScanSignature === signature) {
+    console.log(
+      `[contradiction-lint] "${doc.filename}": signature unchanged, skipping (saved ${similars.length} LLM call${similars.length === 1 ? '' : 's'})`,
+    );
+    return;
+  }
+
   const neuron: NewNeuron = {
     documentId: doc.id,
     filename: doc.filename,
@@ -189,6 +229,16 @@ async function runForEvent(
   };
 
   const findings = await detectContradictions(neuron, similars, check);
+
+  // F158 — stamp signature on every successful completion (zero or more
+  // findings). Signature update happens BEFORE the early return on empty
+  // findings, so the next pass with same versions skips the LLM work.
+  await trail.db
+    .update(documents)
+    .set({ lastContradictionScanSignature: signature })
+    .where(eq(documents.id, doc.id))
+    .run();
+
   if (findings.length === 0) return;
 
   // Emit each finding as a contradiction-alert candidate. Actor kind='system'

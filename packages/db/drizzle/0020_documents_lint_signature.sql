@@ -1,0 +1,15 @@
+-- F158 — last_contradiction_scan_signature on documents.
+--
+-- Idempotent contradiction-lint: skip LLM calls entirely when the
+-- (neuron-version, peer-versions) signature hasn't changed since the
+-- last scan. A brain at rest = 0 Haiku calls per pass.
+--
+-- Companion to F118's last_contradiction_scan_at (column 0019). That
+-- one drives round-robin coverage; this one gates whether the scan
+-- runs at all. Both columns get stamped on successful scan; only the
+-- timestamp stamps on error (so flaky Neurons don't monopolise the
+-- next NULLS-FIRST pass via stale signature).
+--
+-- Signature shape: sha256(`${neuronId}:v${version}|${peerId:vVersion|...sorted}`)
+-- truncated to 16 hex chars. Order-independent in peers via sort.
+ALTER TABLE `documents` ADD COLUMN `last_contradiction_scan_signature` text;

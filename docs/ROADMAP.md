@@ -128,6 +128,7 @@ The remaining Phase 1 scope, ordered by leverage and dependency.
 | F151 | Cost & Quality Dashboard (cost-tab + side-by-side ingest-compare for F149 data) | F149, F143, F148 | Medium |
 | F152 | Runtime Model Switcher UI (per-KB model-dropdown, chain-preview, F151 recommendation-badge) | F149, F151, F18 | Small |
 | F153 | Continuous online backup of `trail.db` to Cloudflare R2 (VACUUM INTO + gzip + R2 multipart upload, `backup-scheduler` service, admin panel, stopped-server restore CLI) | — | Small |
+| F158 | ~~Idempotent Contradiction-Lint~~ — **Done 2026-04-25** (signature-skip → 0 LLM calls when brain at rest; saves ~1740 Haiku-calls/day on quiet 348-Neuron fleet) | F32, F118 | Small |
 
 ### Pipelines + Adapters — widen the ingest surface
 

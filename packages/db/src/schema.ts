@@ -144,6 +144,12 @@ export const documents = sqliteTable(
     // Neurons get visited first across passes. Stamped after each
     // scanDocForContradictions completes.
     lastContradictionScanAt: text('last_contradiction_scan_at'),
+    // F158 — content-signature for idempotent skip. sha256 hash of
+    // (neuron.version + sorted peer-versions). When unchanged from
+    // previous successful scan, the entire LLM-call loop is bypassed.
+    // Stamped only on success (not error) so a flaky Neuron retries
+    // next pass instead of getting stuck.
+    lastContradictionScanSignature: text('last_contradiction_scan_signature'),
     createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
     updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
   },
