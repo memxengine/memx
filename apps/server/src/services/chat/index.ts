@@ -35,8 +35,11 @@ export async function createChatBackend(id: ChatBackendId): Promise<ChatBackend>
       return new OpenRouterChatBackend();
     }
     case 'claude-api': {
-      // Phase 2b — direct Anthropic API for low-latency premium chats.
-      throw new Error(`ClaudeAPIBackend not yet implemented (F159 Phase 2b)`);
+      // F159 Phase 2b — direct Anthropic API for low-latency premium chats.
+      // Code-complete and typecheck-verified; end-to-end probe deferred
+      // until ANTHROPIC_API_KEY is available in .env.
+      const { ClaudeAPIBackend } = await import('./claude-api-backend.js');
+      return new ClaudeAPIBackend();
     }
   }
 }
