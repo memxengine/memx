@@ -19,9 +19,17 @@
  * Phase 3.
  */
 
+import type { TrailDatabase } from '@trail/db';
+
 export type ChatBackendId = 'claude-cli' | 'openrouter' | 'claude-api';
 
 export interface ChatBackendInput {
+  /** F159 Phase 2 — DB handle for backends that route tool calls in-
+   *  process (OpenRouter, Claude-API). The CLI backend ignores this
+   *  because its tool calls go through the MCP subprocess + env-var
+   *  context. Required so the OpenRouter tool router can resolve KB
+   *  + tenant scope. */
+  trail: TrailDatabase;
   systemPrompt: string;
   userMessage: string;
   /** F144 — prior turn-pairs for this session (oldest first). */

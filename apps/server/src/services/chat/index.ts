@@ -30,12 +30,13 @@ export async function createChatBackend(id: ChatBackendId): Promise<ChatBackend>
     case 'claude-cli':
       return new ClaudeCLIChatBackend();
     case 'openrouter': {
-      // Phase 2 — dynamic import keeps OpenRouter SDK off the cold path.
-      throw new Error(`OpenRouterChatBackend not yet implemented (F159 Phase 2)`);
+      // F159 Phase 2a — landed.
+      const { OpenRouterChatBackend } = await import('./openrouter-backend.js');
+      return new OpenRouterChatBackend();
     }
     case 'claude-api': {
-      // Phase 2 — direct Anthropic API for low-latency premium chats.
-      throw new Error(`ClaudeAPIBackend not yet implemented (F159 Phase 2)`);
+      // Phase 2b — direct Anthropic API for low-latency premium chats.
+      throw new Error(`ClaudeAPIBackend not yet implemented (F159 Phase 2b)`);
     }
   }
 }

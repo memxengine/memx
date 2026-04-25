@@ -152,6 +152,7 @@ chatRoutes.post('/chat', async (c) => {
   // adds cost stamping into chat_turns.
   try {
     const result = await runChat({
+      trail,
       systemPrompt,
       userMessage: body.message,
       history: priorTurns,
