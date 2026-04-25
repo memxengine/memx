@@ -38,7 +38,8 @@
  *     over the rest of the KB so long-tail Neurons still get revisited.)
  */
 import { documents, knowledgeBases, type TrailDatabase } from '@trail/db';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq, sql } from 'drizzle-orm';
+import pLimit from 'p-limit';
 import { runLint, type LintReport } from '@trail/core';
 import { broadcaster } from './broadcast.js';
 import {
@@ -60,6 +61,14 @@ const SKIP_CONTRADICTIONS = process.env.TRAIL_LINT_SKIP_CONTRADICTIONS === '1';
 const SAMPLE_SIZE = Number(process.env.TRAIL_CONTRADICTION_SAMPLE_SIZE ?? 500);
 const RECENT_FRACTION = clamp01(
   Number(process.env.TRAIL_CONTRADICTION_RECENT_FRACTION ?? 0.6),
+);
+// F119 — parallelism cap for contradiction-scan. Default 2 keeps Haiku
+// rate-limit-safe on Anthropic's per-account quota; Pro+ tenants can
+// raise via env (or per-tenant column when F122 lands). 1 = pre-F119
+// serial behaviour for debugging.
+const CONTRADICTION_PARALLELISM = Math.max(
+  1,
+  Number(process.env.TRAIL_CONTRADICTION_PARALLELISM ?? 2),
 );
 
 function clamp01(n: number): number {
@@ -323,14 +332,20 @@ async function runOrphansStale(trail: TrailDatabase, kb: ScannedKB): Promise<Lin
 }
 
 async function runContradictions(trail: TrailDatabase, kb: ScannedKB): Promise<number> {
-  // At N≈8k a full sequential pass exceeds 24h wall-clock (each doc =
-  // top-K × 1-3s Haiku call × K=5 → ~7.5s per doc → ~16h at 8k). Past that
-  // the scheduler can't keep up and backs up indefinitely. SAMPLE_SIZE
-  // caps the per-pass workload; the sample is biased toward recent edits
-  // (highest contradiction yield) with a random tail so long-idle Neurons
-  // still get revisited occasionally.
+  // F118 — round-robin coverage via `last_contradiction_scan_at`.
+  // Order ASC NULLS FIRST so never-scanned + oldest-scanned Neurons
+  // come first; SAMPLE_SIZE caps how many we scan this pass. Across
+  // multiple 24h passes every Neuron eventually gets coverage instead
+  // of the same recent-edit hot-set every time.
+  //
+  // F119 — parallelise scanDocForContradictions via p-limit. Each
+  // scan is top-K × Haiku-call (~1-3s each); without parallelism a
+  // 500-Neuron pass takes ~25 min serial. With CONTRADICTION_PARALLELISM=2
+  // it's ~12 min; raise the env knob for Pro+ tenants on dedicated nodes.
+  // p-limit guarantees we never exceed the cap so Anthropic's per-key
+  // rate-limit isn't tripped.
   const neurons = await trail.db
-    .select({ id: documents.id, updatedAt: documents.updatedAt })
+    .select({ id: documents.id })
     .from(documents)
     .where(
       and(
@@ -341,27 +356,50 @@ async function runContradictions(trail: TrailDatabase, kb: ScannedKB): Promise<n
         eq(documents.status, 'ready'),
       ),
     )
-    .orderBy(desc(documents.updatedAt))
+    // ASC NULLS FIRST — SQLite default for ASC sort is NULLS-first;
+    // explicit clause so we don't depend on default behaviour.
+    .orderBy(sql`${documents.lastContradictionScanAt} ASC NULLS FIRST`)
+    .limit(SAMPLE_SIZE > 0 ? SAMPLE_SIZE : 100_000)
     .all();
 
   if (neurons.length === 0) return 0;
 
-  const sample = sampleNeurons(neurons.map((n) => n.id), SAMPLE_SIZE, RECENT_FRACTION);
-  if (sample.length < neurons.length) {
+  const sampleIds = neurons.map((n) => n.id);
+  if (SAMPLE_SIZE > 0 && sampleIds.length === SAMPLE_SIZE) {
     console.log(
-      `[lint-scheduler] KB "${kb.name}" — sampling ${sample.length}/${neurons.length} Neurons (recent=${RECENT_FRACTION})`,
+      `[lint-scheduler] KB "${kb.name}" — round-robin scanning ${sampleIds.length} oldest Neurons (parallelism=${CONTRADICTION_PARALLELISM})`,
+    );
+  } else {
+    console.log(
+      `[lint-scheduler] KB "${kb.name}" — scanning all ${sampleIds.length} Neurons (parallelism=${CONTRADICTION_PARALLELISM})`,
     );
   }
 
   const checker = makeContradictionChecker();
-  for (const id of sample) {
-    try {
-      await scanDocForContradictions(trail, id, checker);
-    } catch (err) {
-      console.error(`[lint-scheduler] contradiction scan failed for ${id}:`, err);
-    }
-  }
-  return sample.length;
+  const limit = pLimit(CONTRADICTION_PARALLELISM);
+  let completed = 0;
+  await Promise.all(
+    sampleIds.map((id) =>
+      limit(async () => {
+        try {
+          await scanDocForContradictions(trail, id, checker);
+        } catch (err) {
+          console.error(`[lint-scheduler] contradiction scan failed for ${id}:`, err);
+        } finally {
+          // Always stamp — even on error — so a flaky Neuron doesn't
+          // monopolise the next pass via NULLS-FIRST ordering. Errors
+          // are still logged above for diagnosis.
+          await trail.db
+            .update(documents)
+            .set({ lastContradictionScanAt: new Date().toISOString() })
+            .where(eq(documents.id, id))
+            .run();
+          completed++;
+        }
+      }),
+    ),
+  );
+  return completed;
 }
 
 /**

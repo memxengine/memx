@@ -1,0 +1,15 @@
+-- F118 — last_contradiction_scan_at on documents.
+--
+-- Enables round-robin contradiction-scan coverage across multiple passes.
+-- Without this column the scheduler picks a recent-biased random sample
+-- each pass; the same Neurons get scanned over and over while long-idle
+-- Neurons may never be checked. With this column, the scheduler orders
+-- by `last_contradiction_scan_at ASC NULLS FIRST` so unscanned + oldest-
+-- scanned Neurons come first, giving every Neuron eventual coverage.
+--
+-- Combined with F119 parallelism (p-limit wrapper), a daily 24h pass at
+-- N=10k Neurons completes within 10-20 min instead of 5-6 hours.
+--
+-- Nullable — pre-F118 rows have no scan history; the NULLS FIRST sort
+-- treats them as oldest, so they get scanned first after deploy.
+ALTER TABLE `documents` ADD COLUMN `last_contradiction_scan_at` text;

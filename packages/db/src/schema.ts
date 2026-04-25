@@ -139,6 +139,11 @@ export const documents = sqliteTable(
     // 0 for sources where extraction is free (text/markdown/SVG passthrough).
     // F156 Credits-Based Metering will deduct on this column when it lands.
     extractCostCents: integer('extract_cost_cents').notNull().default(0),
+    // F118 — round-robin contradiction-scan coverage. Scheduler orders
+    // by this column ASC NULLS FIRST so never-scanned + oldest-scanned
+    // Neurons get visited first across passes. Stamped after each
+    // scanDocForContradictions completes.
+    lastContradictionScanAt: text('last_contradiction_scan_at'),
     createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
     updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
   },
