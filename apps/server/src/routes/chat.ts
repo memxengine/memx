@@ -2,7 +2,6 @@ import { Hono } from 'hono';
 import { documents, knowledgeBases, chatSessions, chatTurns, type TrailDatabase } from '@trail/db';
 import { and, asc, eq, like } from 'drizzle-orm';
 import { requireAuth, getTenant, getUser, getTrail } from '../middleware/auth.js';
-import { spawnClaude, extractAssistantText } from '../services/claude.js';
 import { ChatRequestSchema } from '@trail/shared';
 import { resolveKbId } from '@trail/core';
 import {
@@ -15,13 +14,18 @@ import {
 import { recordAccess } from '../services/access-tracker.js';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { runChat, buildSystemPrompt, type PriorTurn } from '../services/chat/index.js';
 
-const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY ?? '';
-const CHAT_MODEL = process.env.CHAT_MODEL ?? 'claude-haiku-4-5-20251001';
-// Chat with tool use needs headroom. A typical turn does 0-2 tool calls +
-// the final composition; bump to 60s default timeout, 5 max turns.
+// F159 Phase 1 bumped default from 5 to 8. Chat with tool use needs
+// headroom: a typical compound query (search → read → search → read →
+// answer) is already 4 turns; one extra for self-correction is 5;
+// no headroom for the model to refine. 8 gives space while 60s
+// timeout still bounds wall-clock.
+//
+// CHAT_MODEL + ANTHROPIC_API_KEY now live inside the chat backends —
+// see services/chat/{chain,claude-cli-backend}.ts.
 const CHAT_TIMEOUT_MS = Number(process.env.CHAT_TIMEOUT_MS ?? 60_000);
-const CHAT_MAX_TURNS = Number(process.env.CHAT_MAX_TURNS ?? 5);
+const CHAT_MAX_TURNS = Number(process.env.CHAT_MAX_TURNS ?? 8);
 // How many historical turn-pairs to replay into each new turn. 10 turns
 // = 5 exchanges, which is ~2500 tokens at typical verbosity — trivial
 // against Haiku's 200k context but plenty for "what did you just offer
@@ -42,8 +46,11 @@ const MCP_SERVER_PATH = resolve(THIS_DIR, '../../../../apps/mcp/src/index.ts');
 
 // Whitelist of trail MCP tools the chat LLM is allowed to call. All
 // read-only — write/delete stay out so chat never mutates state without
-// going through the Queue.
-const CHAT_ALLOWED_TOOLS = [
+// going through the Queue. The CLI backend joins this on `,` for the
+// `--allowedTools` flag; OpenRouter / Claude-API backends iterate it
+// to build their `tools: [...]` array — so we keep the list shape and
+// let backends format as needed.
+const CHAT_ALLOWED_TOOL_LIST: ReadonlyArray<string> = [
   'mcp__trail__guide',
   'mcp__trail__search',
   'mcp__trail__read',
@@ -52,7 +59,7 @@ const CHAT_ALLOWED_TOOLS = [
   'mcp__trail__queue_summary',
   'mcp__trail__recent_activity',
   'mcp__trail__trail_stats',
-].join(',');
+];
 
 export const chatRoutes = new Hono();
 
@@ -115,40 +122,12 @@ chatRoutes.post('/chat', async (c) => {
     ? await loadPriorTurns(trail, body.sessionId, tenant.id, CHAT_HISTORY_TURNS)
     : [];
 
-  // F89 shift: tool-equipped chat doesn't need to refuse on empty context —
-  // the LLM can now call search/count/queue_summary to answer metadata
-  // questions even when FTS returns nothing. Context-less runs just get a
-  // smaller system prompt.
-  const hasContext = context.trim().length > 0;
-
   // Name the Trail the user is currently in so Claude doesn't pass a
   // guessed slug to tools. All structural tools accept an optional
   // knowledge_base arg, but when omitted they default to the Trail scoped
   // via env (TRAIL_KNOWLEDGE_BASE_ID) — which is always the *current* KB.
   const currentTrailName = kbs.length === 1 ? kbs[0]!.name : null;
-
-  const systemPrompt = `You are a knowledgeable assistant with access to tools that query the user's Trail (knowledge base). Answer their question accurately.
-
-${currentTrailName ? `## Current Trail\nThe user is currently viewing the Trail called **"${currentTrailName}"**. Always call tools WITHOUT a \`knowledge_base\` argument so they default to this Trail automatically.\n\n` : ''}${
-  hasContext
-    ? `## Wiki Context (from content search)\n${context}\n\n`
-    : ''
-}## Tools available
-- **count_neurons / count_sources** — exact counts with optional filters
-- **queue_summary** — curation queue state
-- **trail_stats** — one-shot overview (Neurons, Sources, pending, oldest/newest)
-- **recent_activity** — last N wiki events
-- **search** — browse or FTS5 search wiki + sources
-- **read** — fetch a specific document's full content
-
-## Instructions
-- Answer in the same language as the question
-- For *structural* questions (counts, lists, queue state) call a tool — don't guess from context
-- For *content* questions prefer the wiki context above; only call tools if the context doesn't cover it
-- Be concise (max 300 words)
-- Use **bold** for key terms
-- Reference wiki pages with [[page-name]] links where relevant
-- If tools and context both come up empty, say so honestly`;
+  const systemPrompt = buildSystemPrompt({ currentTrailName, context });
 
   // F30 — server-side render of [[wiki-links]] into `[display](href)`
   // markdown. Consumers (widget, API clients, non-admin integrators)
@@ -166,61 +145,25 @@ ${currentTrailName ? `## Current Trail\nThe user is currently viewing the Trail 
       resolveKbSlug: (slug) => tenantKbSlugMap.get(slug) ?? null,
     });
 
-  // Dev default: claude -p subprocess. Prod will flip to direct API once stable.
-  if (ANTHROPIC_API_KEY && process.env.TRAIL_CHAT_BACKEND === 'api') {
-    try {
-      const answer = await callAnthropicAPI(systemPrompt, priorTurns, body.message);
-      return c.json({ answer, renderedAnswer: renderAnswer(answer), citations });
-    } catch (err) {
-      console.error('[chat] API error, falling back to CLI:', (err as Error).message);
-    }
-  }
-
-  // The MCP config passed via --mcp-config bootstraps a `trail` MCP server
-  // the CLI can use inside this turn. Spawning it cold adds ~500ms — worth it
-  // for tool-equipped answers that previously fell back to "I don't know".
-  const mcpConfig = {
-    mcpServers: {
-      trail: {
-        command: 'bun',
-        args: ['run', MCP_SERVER_PATH],
-      },
-    },
-  };
-
-  const args = [
-    '-p',
-    buildCliPrompt(systemPrompt, priorTurns, body.message),
-    '--dangerously-skip-permissions',
-    '--max-turns',
-    String(CHAT_MAX_TURNS),
-    '--output-format',
-    'json',
-    '--mcp-config',
-    JSON.stringify(mcpConfig),
-    '--allowedTools',
-    CHAT_ALLOWED_TOOLS,
-    ...(CHAT_MODEL ? ['--model', CHAT_MODEL] : []),
-  ];
-
-  // The MCP subprocess reads tenant/KB/user from env to scope every query to
-  // the right rows. Without these it refuses to run (see requireContext in
-  // apps/mcp).
-  const spawnEnv = {
-    TRAIL_TENANT_ID: tenant.id,
-    TRAIL_KNOWLEDGE_BASE_ID: resolvedKbId ?? kbs[0]!.id,
-    TRAIL_USER_ID: user.id,
-  };
-
-  const started = Date.now();
+  // F159 Phase 1: route the run through the new ChatBackend interface.
+  // Phase 1 always resolves to a single-step Claude-CLI chain — same
+  // bytes out as the pre-F159 hand-rolled spawnClaude call. Phase 2
+  // adds OpenRouter + Claude-API backends + chain fallback; Phase 3
+  // adds cost stamping into chat_turns.
   try {
-    const raw = await spawnClaude(args, { timeoutMs: CHAT_TIMEOUT_MS, env: spawnEnv });
-    const answer = extractAssistantText(raw);
-    const latencyMs = Date.now() - started;
-    // F144 — persist the turn pair. Session is auto-created on first turn
-    // if the client didn't pass one; subsequent turns append to the same
-    // session. Out-of-band so a DB hiccup doesn't swallow the already-
-    // computed answer — but we do surface the sessionId in the response.
+    const result = await runChat({
+      systemPrompt,
+      userMessage: body.message,
+      history: priorTurns,
+      maxTurns: CHAT_MAX_TURNS,
+      timeoutMs: CHAT_TIMEOUT_MS,
+      tenantId: tenant.id,
+      knowledgeBaseId: primaryKbId,
+      userId: user.id,
+      mcpServerPath: MCP_SERVER_PATH,
+      toolNames: CHAT_ALLOWED_TOOL_LIST,
+    });
+    const { answer } = result;
     const sessionId = await persistTurnPair(
       trail,
       tenant.id,
@@ -230,9 +173,19 @@ ${currentTrailName ? `## Current Trail\nThe user is currently viewing the Trail 
       body.message,
       answer,
       citations,
-      latencyMs,
+      result.elapsedMs,
     );
-    return c.json({ answer, renderedAnswer: renderAnswer(answer), citations, sessionId });
+    return c.json({
+      answer,
+      renderedAnswer: renderAnswer(answer),
+      citations,
+      sessionId,
+      // F159 — surface backend + model on every reply so the admin UI
+      // can render a small chip ("answered by gemini-2.5-flash") when
+      // we want to show the user which model they got.
+      backend: result.backendUsed,
+      model: result.modelUsed,
+    });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[chat] Error:', msg);
@@ -345,16 +298,14 @@ async function buildKbSlugMap(trail: TrailDatabase, tenantId: string): Promise<M
   return map;
 }
 
-interface PriorTurn {
-  role: 'user' | 'assistant';
-  content: string;
-}
-
 /**
  * Load up to `limit` most-recent turns for a session, returned in
  * chronological order (oldest first) so they replay as a natural
  * conversation. Scoped by sessionId + tenantId via a join so a crafted
  * sessionId from another tenant can't leak turns.
+ *
+ * Truncates per-turn content to CHAT_HISTORY_MAX_CHARS_PER_TURN so a
+ * curator pasting a wall of text doesn't blow the prompt budget.
  */
 async function loadPriorTurns(
   trail: TrailDatabase,
@@ -386,61 +337,6 @@ async function loadPriorTurns(
 function truncateForHistory(content: string): string {
   if (content.length <= CHAT_HISTORY_MAX_CHARS_PER_TURN) return content;
   return content.slice(0, CHAT_HISTORY_MAX_CHARS_PER_TURN) + '…';
-}
-
-/**
- * Build the single-string prompt for the `claude -p` CLI path. The CLI
- * has no multi-turn message API, so we inline the history as a
- * transcript before the new question. Claude reliably treats this as
- * conversation context when the headings + roles are explicit.
- */
-function buildCliPrompt(
-  systemPrompt: string,
-  history: PriorTurn[],
-  currentMessage: string,
-): string {
-  if (history.length === 0) {
-    return `${systemPrompt}\n\n## User Question\n${currentMessage}`;
-  }
-  const transcript = history
-    .map((t) => `${t.role === 'user' ? 'User' : 'Assistant'}: ${t.content}`)
-    .join('\n\n');
-  return `${systemPrompt}\n\n## Prior Conversation (oldest first — use this to resolve short follow-ups like "yes", "do it", "show me")\n${transcript}\n\n## User Question (current turn)\n${currentMessage}`;
-}
-
-async function callAnthropicAPI(
-  system: string,
-  history: PriorTurn[],
-  userMessage: string,
-): Promise<string> {
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': ANTHROPIC_API_KEY,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model: CHAT_MODEL || 'claude-haiku-4-5-20251001',
-      max_tokens: 1024,
-      system,
-      // Multi-turn: replay history as proper role-tagged messages so the
-      // API sees the conversation structure natively.
-      messages: [
-        ...history.map((t) => ({ role: t.role, content: t.content })),
-        { role: 'user', content: userMessage },
-      ],
-    }),
-  });
-  if (!res.ok) {
-    const bodyText = await res.text();
-    throw new Error(`Anthropic API ${res.status}: ${bodyText.slice(0, 200)}`);
-  }
-  const data = (await res.json()) as { content: Array<{ type: string; text: string }> };
-  return data.content
-    .filter((c) => c.type === 'text')
-    .map((c) => c.text)
-    .join('\n');
 }
 
 interface Citation {
