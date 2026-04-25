@@ -1,0 +1,23 @@
+[Unit]
+Description=Trail admin (Vite dev-server for the curator UI)
+Documentation=https://github.com/broberg-ai/trail
+After=network-online.target trail-engine.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+
+WorkingDirectory=__REPO__
+ExecStart=__REPO__/scripts/trail-launchd-admin.sh
+
+Restart=always
+RestartSec=10
+
+StandardOutput=append:__HOME__/.trail/admin.log
+StandardError=append:__HOME__/.trail/admin.log
+
+# Vite is heavier than the engine — JS bundling, file watching.
+MemoryMax=1G
+
+[Install]
+WantedBy=default.target

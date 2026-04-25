@@ -1,0 +1,38 @@
+[Unit]
+Description=Trail engine (knowledge-base server)
+Documentation=https://github.com/broberg-ai/trail
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+
+# scripts/install-systemd.sh substitutes __REPO__ at install time so the
+# unit ends up with absolute paths to this clone.
+WorkingDirectory=__REPO__
+ExecStart=__REPO__/scripts/trail-launchd-engine.sh
+
+# Always restart on exit, regardless of code. Trail engine's SIGTERM
+# handler runs cleanup-then-exit-0, which a "Restart=on-failure" rule
+# would treat as a clean shutdown and not restart. We want it back up
+# no matter how it died — graceful or crash.
+Restart=always
+
+# Don't restart faster than every 10 seconds. Prevents a misconfigured
+# env from cascading into a crash-loop.
+RestartSec=10
+
+# Logs go to ~/.trail/engine.log to match `trail logs`. systemd appends
+# in journald too — use `journalctl --user -u trail-engine -f` for
+# structured journalctl-style following.
+StandardOutput=append:__HOME__/.trail/engine.log
+StandardError=append:__HOME__/.trail/engine.log
+
+# Modest resource caps so a runaway scan doesn't take the whole box.
+# Engine on a quiet KB sits at <100MB; under heavy ingest can spike.
+# Adjust if you legitimately have very large brains.
+MemoryMax=2G
+TasksMax=512
+
+[Install]
+WantedBy=default.target

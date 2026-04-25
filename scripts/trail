@@ -3,12 +3,26 @@
 # trail — global CLI for starting the trail engine + admin locally.
 #
 # Commands:
-#   trail start      launch engine (58021) and admin (58031) in the background
-#   trail stop       kill both
-#   trail restart    stop + start
-#   trail status     show running state
-#   trail logs       tail both logs; -f to follow
-#   trail url        print the admin URL
+#   trail start              launch engine (58021) + admin (58031)
+#   trail stop               kill both
+#   trail restart            stop + start
+#   trail status             show running state
+#   trail logs               tail both logs; -f to follow
+#   trail url                print the admin URL
+#   trail install-daemon     install OS-native auto-restart supervisor
+#                            (launchd on macOS, systemd on Linux). After
+#                            this, start/stop/restart route through the
+#                            supervisor automatically — same UX, but
+#                            crashes auto-restart and the processes
+#                            survive Mac sleep/wake/logout.
+#   trail uninstall-daemon   remove the supervisor; back to manual mode.
+#
+# Adaptive routing: when a supervisor is detected (via launchctl/systemctl
+# probe), every start/stop/restart command transparently routes through
+# it. When no supervisor is installed, the script falls back to the
+# original nohup-based foreground spawning. The CLI surface is identical
+# either way — Christian's request: "trail start fortsat virker, men den
+# skal bare virke adaptivt".
 #
 # State lives under ~/.trail/ — PID files, log files, and a generated
 # TRAIL_INGEST_TOKEN if none exists in <repo>/buddy/.env or <repo>/.env.
@@ -84,8 +98,91 @@ port_free() {
   ! lsof -iTCP:"$1" -sTCP:LISTEN -nP >/dev/null 2>&1
 }
 
+# ── Supervisor detection (launchd / systemd / none) ────────────────────
+# Returns one of: launchd | systemd | none
+detect_supervisor() {
+  case "$(uname -s)" in
+    Darwin)
+      # Capture launchctl output in a variable first — chaining via
+      # `cmd && cmd | grep` interacts oddly with `set -o pipefail` in
+      # subshells (debugged 2026-04-25). The two-step shape is robust
+      # across bash 3.2 (macOS default) and 5.x (Homebrew).
+      if command -v launchctl >/dev/null 2>&1; then
+        local lc_out
+        lc_out="$(launchctl list 2>/dev/null || true)"
+        if [[ "$lc_out" == *"dk.broberg.trail.engine"* ]]; then
+          echo "launchd"
+          return
+        fi
+      fi
+      ;;
+    Linux)
+      if command -v systemctl >/dev/null 2>&1; then
+        local sd_out
+        sd_out="$(systemctl --user list-unit-files 2>/dev/null || true)"
+        if [[ "$sd_out" == *"trail-engine.service"* ]]; then
+          echo "systemd"
+          return
+        fi
+      fi
+      ;;
+  esac
+  echo "none"
+}
+
+detect_os() {
+  case "$(uname -s)" in
+    Darwin) echo "macos" ;;
+    Linux)  echo "linux" ;;
+    MINGW*|MSYS*|CYGWIN*) echo "windows" ;;
+    *) echo "unknown" ;;
+  esac
+}
+
+# Probe both ports until they answer or the timeout expires. Used by the
+# supervisor-routed start commands; manual mode has its own probe loop
+# tied to the spawned PIDs.
+_wait_until_up() {
+  local engine_up=0 admin_up=0
+  for _ in $(seq 1 30); do
+    (( !engine_up )) && \
+      [[ "$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$ENGINE_PORT/api/v1/knowledge-bases" 2>/dev/null || echo 000)" != "000" ]] && \
+      engine_up=1 && echo "  ✓ engine  :$ENGINE_PORT"
+    (( !admin_up )) && \
+      [[ "$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$ADMIN_PORT/" 2>/dev/null || echo 000)" != "000" ]] && \
+      admin_up=1 && echo "  ✓ admin   :$ADMIN_PORT"
+    (( engine_up && admin_up )) && return 0
+    sleep 0.5
+  done
+  return 1
+}
+
 # ── Commands ────────────────────────────────────────────────────────
 cmd_start() {
+  local supervisor
+  supervisor="$(detect_supervisor)"
+
+  case "$supervisor" in
+    launchd)
+      # launchd's KeepAlive=true means the services were already started
+      # when the plist was loaded. `kickstart` is a no-op if running, or
+      # a fresh start if for some reason they're down.
+      local uid
+      uid="$(id -u)"
+      launchctl kickstart "gui/$uid/dk.broberg.trail.engine" 2>/dev/null || true
+      launchctl kickstart "gui/$uid/dk.broberg.trail.admin"  2>/dev/null || true
+      echo "trail: started via launchd (engine :$ENGINE_PORT, admin :$ADMIN_PORT)"
+      _wait_until_up && echo "  open → http://127.0.0.1:$ADMIN_PORT"
+      return
+      ;;
+    systemd)
+      systemctl --user start trail-engine.service trail-admin.service
+      echo "trail: started via systemd (engine :$ENGINE_PORT, admin :$ADMIN_PORT)"
+      _wait_until_up && echo "  open → http://127.0.0.1:$ADMIN_PORT"
+      return
+      ;;
+  esac
+
   if is_running "$ENGINE_PID_FILE" && is_running "$ADMIN_PID_FILE"; then
     echo "trail: already running (engine :$ENGINE_PORT, admin :$ADMIN_PORT)"
     exit 0
@@ -175,6 +272,30 @@ cmd_start() {
 }
 
 cmd_stop() {
+  local supervisor
+  supervisor="$(detect_supervisor)"
+
+  case "$supervisor" in
+    launchd)
+      # `kill` (no -9) sends SIGTERM. KeepAlive=true would respawn —
+      # that's intended for crashes. To stop FOR REAL while leaving the
+      # plist installed, unload it. To stop ONCE (knowing supervisor
+      # will restart), use kill. Convention: trail stop = "really stop"
+      # → unload. trail restart = "kick" → kickstart -k.
+      local uid
+      uid="$(id -u)"
+      launchctl bootout "gui/$uid/dk.broberg.trail.admin"  2>/dev/null || true
+      launchctl bootout "gui/$uid/dk.broberg.trail.engine" 2>/dev/null || true
+      echo "trail: stopped via launchd (use 'trail start' to bring back up)"
+      return
+      ;;
+    systemd)
+      systemctl --user stop trail-admin.service trail-engine.service
+      echo "trail: stopped via systemd"
+      return
+      ;;
+  esac
+
   local stopped=0
   for pidfile in "$ENGINE_PID_FILE" "$ADMIN_PID_FILE"; do
     if is_running "$pidfile"; then
@@ -208,10 +329,40 @@ cmd_stop() {
 }
 
 cmd_status() {
+  local supervisor
+  supervisor="$(detect_supervisor)"
+
+  case "$supervisor" in
+    launchd)
+      local uid
+      uid="$(id -u)"
+      local engine_pid admin_pid
+      engine_pid="$(launchctl list 2>/dev/null | awk '/dk\.broberg\.trail\.engine$/{print $1}')"
+      admin_pid="$(launchctl list 2>/dev/null | awk '/dk\.broberg\.trail\.admin$/{print $1}')"
+      [[ -z "$engine_pid" || "$engine_pid" == "-" ]] && engine_pid="—"
+      [[ -z "$admin_pid"  || "$admin_pid"  == "-" ]] && admin_pid="—"
+      printf "supervisor: launchd (gui/%s)\n" "$uid"
+      printf "engine :%-5s  pid %s\n" "$ENGINE_PORT" "$engine_pid"
+      printf "admin  :%-5s  pid %s\n" "$ADMIN_PORT" "$admin_pid"
+      return
+      ;;
+    systemd)
+      printf "supervisor: systemd --user\n"
+      systemctl --user is-active trail-engine.service >/dev/null 2>&1 \
+        && printf "engine :%-5s  active\n"  "$ENGINE_PORT" \
+        || printf "engine :%-5s  inactive\n" "$ENGINE_PORT"
+      systemctl --user is-active trail-admin.service >/dev/null 2>&1 \
+        && printf "admin  :%-5s  active\n"  "$ADMIN_PORT" \
+        || printf "admin  :%-5s  inactive\n" "$ADMIN_PORT"
+      return
+      ;;
+  esac
+
   local engine_state="stopped"
   local admin_state="stopped"
   is_running "$ENGINE_PID_FILE" && engine_state="running (pid $(cat "$ENGINE_PID_FILE"))"
   is_running "$ADMIN_PID_FILE" && admin_state="running (pid $(cat "$ADMIN_PID_FILE"))"
+  printf "supervisor: none (manual nohup)\n"
   printf "engine :%-5s  %s\n" "$ENGINE_PORT" "$engine_state"
   printf "admin  :%-5s  %s\n" "$ADMIN_PORT" "$admin_state"
 }
@@ -231,19 +382,92 @@ cmd_url() {
 }
 
 cmd_restart() {
+  local supervisor
+  supervisor="$(detect_supervisor)"
+
+  case "$supervisor" in
+    launchd)
+      # kickstart -k = stop the running process (KeepAlive respawns it).
+      # Faster than bootout+bootstrap and survives plist updates only on
+      # next install. For schema/route changes during dev: this is the
+      # "I just edited a file" command.
+      local uid
+      uid="$(id -u)"
+      echo "trail: restarting via launchd…"
+      launchctl kickstart -k "gui/$uid/dk.broberg.trail.engine" || true
+      launchctl kickstart -k "gui/$uid/dk.broberg.trail.admin"  || true
+      _wait_until_up && echo "  open → http://127.0.0.1:$ADMIN_PORT"
+      return
+      ;;
+    systemd)
+      echo "trail: restarting via systemd…"
+      systemctl --user restart trail-engine.service trail-admin.service
+      _wait_until_up && echo "  open → http://127.0.0.1:$ADMIN_PORT"
+      return
+      ;;
+  esac
+
   cmd_stop || true
   sleep 1
   cmd_start
 }
 
+cmd_install_daemon() {
+  local os
+  os="$(detect_os)"
+  case "$os" in
+    macos)
+      echo "trail: detected macOS — installing launchd plist…"
+      bash "$REPO/scripts/install-launchd.sh"
+      ;;
+    linux)
+      echo "trail: detected Linux — installing user-mode systemd unit…"
+      bash "$REPO/scripts/install-systemd.sh"
+      ;;
+    windows)
+      cat <<EOF >&2
+trail: Windows is not yet supported by trail install-daemon.
+
+Recommended setup for Windows users:
+  1. Run trail under WSL2 (Linux subsystem) — then 'trail install-daemon'
+     uses the systemd path natively.
+  2. Or run 'trail start' manually each session and use Task Scheduler
+     to bring it up at login.
+
+If you build a Windows-native supervisor (NSSM, services.msc), please
+contribute the script back to infra/windows/. See infra/launchd/ and
+infra/systemd/ for how the macOS + Linux variants are structured.
+EOF
+      exit 1
+      ;;
+    *)
+      echo "trail: unknown OS — install a supervisor manually." >&2
+      echo "  See infra/launchd/ (macOS) or infra/systemd/ (Linux) for templates." >&2
+      exit 1
+      ;;
+  esac
+}
+
+cmd_uninstall_daemon() {
+  local os
+  os="$(detect_os)"
+  case "$os" in
+    macos)   bash "$REPO/scripts/uninstall-launchd.sh" ;;
+    linux)   bash "$REPO/scripts/uninstall-systemd.sh" ;;
+    *)       echo "trail: nothing to uninstall on this OS." >&2 ;;
+  esac
+}
+
 # ── Dispatch ────────────────────────────────────────────────────────
 case "${1:-help}" in
-  start)   cmd_start ;;
-  stop)    cmd_stop ;;
-  restart) cmd_restart ;;
-  status)  cmd_status ;;
-  logs)    shift; cmd_logs "$@" ;;
-  url)     cmd_url ;;
+  start)             cmd_start ;;
+  stop)              cmd_stop ;;
+  restart)           cmd_restart ;;
+  status)            cmd_status ;;
+  logs)              shift; cmd_logs "$@" ;;
+  url)               cmd_url ;;
+  install-daemon)    cmd_install_daemon ;;
+  uninstall-daemon)  cmd_uninstall_daemon ;;
   help|--help|-h)
     cat <<EOF
 trail — knowledge infrastructure engine, local dev CLI
@@ -251,12 +475,19 @@ trail — knowledge infrastructure engine, local dev CLI
 Usage: trail <command>
 
 Commands:
-  start      launch engine + admin in the background
-  stop       stop both
-  restart    stop + start
-  status     show running state
-  logs [-f]  show recent logs (or follow with -f)
-  url        print the admin URL
+  start              launch engine + admin (routes via supervisor if installed)
+  stop               stop both
+  restart            stop + start (or supervisor-kickstart if installed)
+  status             show running state + supervisor mode
+  logs [-f]          show recent logs (or follow with -f)
+  url                print the admin URL
+  install-daemon     install OS-native auto-restart supervisor:
+                       macOS  → launchd (~/Library/LaunchAgents)
+                       Linux  → systemd --user (~/.config/systemd/user)
+                     After install, start/stop/restart route through the
+                     supervisor automatically. Crashes auto-restart;
+                     services survive sleep/wake/logout.
+  uninstall-daemon   remove the supervisor; revert to manual nohup mode.
 
 Ports: \$TRAIL_PORT (engine, default 58021), \$TRAIL_ADMIN_PORT (admin, default 58031)
 State: ~/.trail/ (pids, logs, generated token)
