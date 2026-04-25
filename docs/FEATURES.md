@@ -306,6 +306,14 @@ User-paid LLM-omkostninger via credits-valuta. Hver tier inkluderer en generøs 
 |---|---------|--------|-------|------|
 | F156 | [Credits-Based LLM Metering](features/F156-credits-based-llm-metering.md) | Planned | 2 | [plan](features/F156-credits-based-llm-metering.md) |
 
+### F157 — Trail iOS App
+
+Dedicated native iPhone + iPad app der gør telefonen til Trail's primære capture-flade og passive consumption-overflade. MVP top 5: (1) **Voice → Neuron** via Apple's `SFSpeechRecognizer` med on-device STT for privacy + speed, push-to-talk UI, transcript-edit-then-send med F19-policy-baseret auto-godkendelse; (2) **Camera scan → Source** via `VNDocumentCameraViewController` (samme API som Apple Notes), multi-page PDF-assembly, multipart upload til F08 PDF-pipelinen; (3) **Home Screen Widget** med pending queue-count + last-accessed Neuron, WidgetKit `TimelineProvider` poll'er hver 15min, iOS 17 interaktiv `Open Queue`-knap; (4) **Voice-to-voice chat** der kæder Speech → `/api/v1/chat` (F144 multi-turn memory) → `AVSpeechSynthesizer` neural voices; (5) **Shortcuts + Siri** via `AppIntents` — `AddToTrailIntent` og `AskTrailIntent` med Trail-picker via `TrailEntity`. Auth: F111.1 Bearer token paste-on-launch, gemt i iCloud Keychain (`kSecAttrSynchronizable`). Connector: ny `ios-app` i `packages/shared/src/connectors.ts`. Server-side ændringer: ÉN linje (connector-registrering); ingen nye endpoints. Repo-layout: nyt top-level `apps/ios/Trail.xcodeproj` med tre targets (main, TrailWidget, TrailIntents); ikke en pnpm workspace. Distinct fra F147 Share Extension (system share-sheet target — vil leve som fjerde target i samme Xcode-projekt) og F146 Local-first desktop native app (Mac/Win/Linux med lokal compute via `claude -p`). Non-goals: offline mode, lokal LLM-kompilering, Android, in-app Neuron-editor, OAuth, push notifications, Apple Watch, IAP — alt sammen Iteration 2+. Depends on F111.1 ✅, F144 ✅, F95 ✅, soft-dep F33 (Fly prod). Large effort (3-4 uger MVP over 4 faser: scaffold+auth → capture → widget+chat+shortcuts → App Store submission).
+
+| # | Feature | Status | Phase | Plan |
+|---|---------|--------|-------|------|
+| F157 | [Trail iOS App](features/F157-trail-ios-app.md) | Planned | 2 | [plan](features/F157-trail-ios-app.md) |
+
 ---
 
 **Se også:** [`NON-GOALS.md`](./NON-GOALS.md) — kuratert register over bevidst fravalg pr. F-plan (parked / declined / promoted / covered-by).

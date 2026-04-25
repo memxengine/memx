@@ -195,6 +195,7 @@ Multi-tenant SaaS, billing, richer pipelines, first 3rd-party adapters.
 | F49 | Slack Ingest Pipeline | Could |
 | ~~F50~~ | ~~Web Clipper Browser Extension~~ — shipped as F111 (local); Chrome store TBD | — |
 | F147 | Share Extension (iOS + Android) — mobile share sheet target | Should |
+| F157 | [Trail iOS App](./features/F157-trail-ios-app.md) — dedicated native iPhone+iPad: voice→Neuron, camera scan→Source, Home Screen widget, voice-to-voice chat, Shortcuts/Siri intents | Should |
 
 ### Widget Growth
 
