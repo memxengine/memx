@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>dk.broberg.trail.engine</string>
+
+  <!-- launchd substitutes __REPO__ + __HOME__ at install time
+       (scripts/install-launchd.sh) so the file ends up with absolute
+       paths to this clone. -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>__REPO__/scripts/trail-launchd-engine.sh</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>__REPO__</string>
+
+  <!-- Start at user login + after this plist is loaded. -->
+  <key>RunAtLoad</key>
+  <true/>
+
+  <!-- Always restart on exit, regardless of code. Trail engine's
+       SIGTERM handler runs cleanup-then-exit-0, which a "Crashed=true
+       only" rule would treat as a clean shutdown and NOT restart. We
+       want trail to come back up no matter how it died — graceful or
+       crash. To stop it permanently: `bash scripts/uninstall-launchd.sh`
+       (which `launchctl unload`s the plist). -->
+  <key>KeepAlive</key>
+  <true/>
+
+  <!-- Don't restart faster than every 10 seconds. Prevents a
+       misconfigured env from cascading into a crash-loop that
+       hammers the CPU. -->
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+
+  <!-- Logs go to ~/.trail/engine.log (same path as `trail logs`
+       expects). launchd appends; the file is recreated only when
+       deleted manually. -->
+  <key>StandardOutPath</key>
+  <string>__HOME__/.trail/engine.log</string>
+  <key>StandardErrorPath</key>
+  <string>__HOME__/.trail/engine.log</string>
+
+  <!-- macOS may put background processes to sleep aggressively; this
+       hint asks the throttler to leave us alone. Engine is a network
+       server, not idle work. -->
+  <key>ProcessType</key>
+  <string>Interactive</string>
+</dict>
+</plist>
