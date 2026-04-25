@@ -322,6 +322,14 @@ No-work-at-rest principle for contradiction-scan. Adds `documents.last_contradic
 |---|---------|--------|-------|------|
 | F158 | [Idempotent Contradiction-Lint](features/F158-idempotent-contradiction-lint.md) | Done | 1 | [plan](features/F158-idempotent-contradiction-lint.md) |
 
+### F159 — Pluggable Chat Backends
+
+Mirror af F149's pluggable ingest pattern, anvendt på chat-routen. Abstraherer `apps/server/src/routes/chat.ts` bag et `ChatBackend`-interface med to live implementeringer: `ClaudeCLIBackend` (nuværende `claude -p`-subprocess, default for dev / Max-Plan-Mac) og `OpenRouterBackend` (production-path: Gemini Flash / GLM / Qwen / Claude Sonnet via API, kræver INGEN `claude`-binary). Per-tenant + per-KB backend-valg via nye `chat_backend`/`chat_model`/`chat_fallback_chain` kolonner på `knowledge_bases` (migration 0021). Live runtime fallback-chain på backend-fejl (mirror af F149's pattern, samme `isFallbackEligible()` error-taxonomy). Cost-stamping i `chat_turns.cost_cents` via OpenRouter `usage.cost`; Claude-CLI ruller NULL (Max-Plan flat fee). Default chain efter Phase 4 flip: `[claude-cli, openrouter:gemini-flash, openrouter:claude-sonnet]` — Christian's Mac vinder step 1, Fly.io-prod fallthrough'er til Gemini automatisk. **MCP-tool-as-OpenAI-function adapter** (`mcpToolsToFunctionSpecs()` + in-process `invokeTrailMcpTool()` router) bevarer F89's 8 chat-tools på begge backends; tenant-scope reenforced på router-niveau så crafted tool-calls ikke kan leak'e cross-tenant. Refactor af `chat.ts` fra ~250 linjer til ~80 linjer; alt LLM-spawning-logik flyttes til backend-klasser. Også: lift af 8 chat-tool handlers fra `apps/mcp/src/` til ny `packages/core/src/mcp-tools/` så MCP-subprocess + in-process router deler én sandhed. **Unblocks F33 (Fly.io prod deploy)** — uden pluggable chat 500'er hver `/chat`-request i prod siden `claude` CLI ikke findes på Fly. Lights up F151's chat-cost-dimension og F156's credit-burn på chat-turns. 4 phases: interface+CLI-lift → OpenRouter-backend+adapter → per-KB chain config + cost stamping → default-chain flip (efter 24h dev-soak). Depends on F149 ✅, F144 ✅, F89 ✅, soft-dep F151+F156. Medium effort (4-6 dage). Status: Planned.
+
+| # | Feature | Status | Phase | Plan |
+|---|---------|--------|-------|------|
+| F159 | [Pluggable Chat Backends](features/F159-pluggable-chat-backends.md) | Planned | 1 | [plan](features/F159-pluggable-chat-backends.md) |
+
 ---
 
 **Se også:** [`NON-GOALS.md`](./NON-GOALS.md) — kuratert register over bevidst fravalg pr. F-plan (parked / declined / promoted / covered-by).

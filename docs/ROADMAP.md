@@ -129,6 +129,7 @@ The remaining Phase 1 scope, ordered by leverage and dependency.
 | F152 | Runtime Model Switcher UI (per-KB model-dropdown, chain-preview, F151 recommendation-badge) | F149, F151, F18 | Small |
 | F153 | Continuous online backup of `trail.db` to Cloudflare R2 (VACUUM INTO + gzip + R2 multipart upload, `backup-scheduler` service, admin panel, stopped-server restore CLI) | — | Small |
 | F158 | ~~Idempotent Contradiction-Lint~~ — **Done 2026-04-25** (signature-skip → 0 LLM calls when brain at rest; saves ~1740 Haiku-calls/day on quiet 348-Neuron fleet) | F32, F118 | Small |
+| F159 | [Pluggable Chat Backends](./features/F159-pluggable-chat-backends.md) — F149 mirror for chat: ClaudeCLIBackend + OpenRouterBackend, per-KB chain config, cost stamping. **Unblocks F33** (Fly.io prod chat needs no `claude` CLI). | F149, F144 | Medium |
 
 ### Pipelines + Adapters — widen the ingest surface
 
