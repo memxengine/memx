@@ -51,6 +51,23 @@ export interface PipelineInput {
     mediaType: 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif',
     filename: string,
   ) => Promise<{ markdown: string; costCents: number; model: string } | null>;
+  /**
+   * F47 — transcribe an audio file via OpenAI Whisper (or pluggable
+   * provider). Returns text + auto-detected language + duration so
+   * the audio pipeline can render a markdown shell with metadata
+   * AND stamp `extract_cost_cents` based on duration × Whisper price.
+   */
+  transcribeAudio?: (
+    bytes: Buffer,
+    filename: string,
+    contentType?: string,
+  ) => Promise<{
+    text: string;
+    language: string;
+    durationSeconds: number;
+    costCents: number;
+    model: string;
+  } | null>;
 }
 
 export interface ExtractedImage {

@@ -11,16 +11,18 @@ import { docxPipeline } from './docx/pipeline.js';
 import { pptxPipeline } from './pptx/pipeline.js';
 import { xlsxPipeline } from './xlsx/pipeline.js';
 import { imagePipeline } from './image/pipeline.js';
+import { audioPipeline } from './audio/pipeline.js';
 
 // Register on first import. Order = registry insertion order; ties on
 // `accepts()` score break by registration order (PDF first wins among
 // formats that all return 0.95 for the same extension — none of which
-// happens with the five built-ins, but documented behaviour for F46+).
+// happens with the six built-ins, but documented behaviour for F46+).
 registerPipeline(pdfPipeline);
 registerPipeline(docxPipeline);
 registerPipeline(pptxPipeline);
 registerPipeline(xlsxPipeline);
 registerPipeline(imagePipeline);
+registerPipeline(audioPipeline);
 
 // ── Public API ──────────────────────────────────────────────────────────
 export * from './interface.js';

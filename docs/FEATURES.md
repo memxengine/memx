@@ -65,7 +65,7 @@ Status reflects the engine (this repo). Landing-site and CMS-adapter work lives 
 | F44 | [Usage Metering](#f44-usage-metering) | Idea | 2 | — |
 | F45 | [@webhouse/cms Adapter (Strategic)](#f45-webhouse-cms-adapter) | Idea | 2 | [features/F45-webhouse-cms-adapter.md](features/F45-webhouse-cms-adapter.md) |
 | F46 | [Video Transcription Pipeline](#f46-video-pipeline) | Idea | 2 | — |
-| F47 | [Audio Transcription Pipeline](#f47-audio-pipeline) | Idea | 2 | — |
+| F47 | [Audio Transcription Pipeline](features/F47-audio-transcription-pipeline.md) | Done | 1 | [plan](features/F47-audio-transcription-pipeline.md) |
 | F48 | [Email Ingest Pipeline](#f48-email-pipeline) | Idea | 2 | — |
 | F49 | [Slack Ingest Pipeline](#f49-slack-pipeline) | Idea | 2 | — |
 | F50 | [Web Clipper Browser Extension](#f50-web-clipper-extension) | Idea | 2 | — |

@@ -7,6 +7,7 @@ import { storage, sourcePath } from '../lib/storage.js';
 import { chunkText, storeChunks } from '../services/chunker.js';
 import { triggerIngest } from '../services/ingest.js';
 import { createVisionBackend, describeImageAsSource } from '../services/vision.js';
+import { transcribeAudio } from '../services/transcription.js';
 import { resolveKbId } from '@trail/core';
 
 const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
@@ -20,6 +21,7 @@ const DOCX_TIMEOUT_MS = Number(process.env.TRAIL_DOCX_TIMEOUT_MS ?? 60_000);
 const PPTX_TIMEOUT_MS = Number(process.env.TRAIL_PPTX_TIMEOUT_MS ?? 90_000);
 const XLSX_TIMEOUT_MS = Number(process.env.TRAIL_XLSX_TIMEOUT_MS ?? 60_000);
 const IMAGE_TIMEOUT_MS = Number(process.env.TRAIL_IMAGE_TIMEOUT_MS ?? 30_000);
+const AUDIO_TIMEOUT_MS = Number(process.env.TRAIL_AUDIO_TIMEOUT_MS ?? 180_000);
 
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -43,6 +45,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
 const ALLOWED_EXTENSIONS = new Set([
   'pdf', 'docx', 'pptx', 'doc', 'ppt',
   'png', 'jpg', 'jpeg', 'webp', 'gif', 'svg',
+  'wav', 'mp3', 'm4a', 'ogg', 'flac', 'aac',
   'html', 'htm', 'xlsx', 'xls', 'csv',
   'md', 'txt',
 ]);
@@ -209,7 +212,9 @@ export async function processFileAsync(
         ? XLSX_TIMEOUT_MS
         : ext === 'png' || ext === 'jpg' || ext === 'jpeg' || ext === 'webp' || ext === 'gif' || ext === 'svg'
           ? IMAGE_TIMEOUT_MS
-          : DOCX_TIMEOUT_MS;
+          : ext === 'wav' || ext === 'mp3' || ext === 'm4a' || ext === 'ogg' || ext === 'flac' || ext === 'aac'
+            ? AUDIO_TIMEOUT_MS
+            : DOCX_TIMEOUT_MS;
 
   const { pipeline, result } = await withTimeout(
     dispatch({
@@ -220,6 +225,7 @@ export async function processFileAsync(
       imageUrlPrefix: `/api/v1/documents/${docId}/images`,
       describeImage: createVisionBackend() ?? undefined,
       describeImageAsSource,
+      transcribeAudio,
     }),
     timeoutMs,
     `${ext} extract "${filename}"`,
@@ -245,6 +251,12 @@ export async function processFileAsync(
     const cost = result.extractCostCents ?? 0;
     console.log(
       `[image] ${filename}: ${result.markdown.length} chars described, cost=${cost}¢` +
+        (result.extractModel ? ` (${result.extractModel})` : ''),
+    );
+  } else if (pipeline.name === 'audio') {
+    const cost = result.extractCostCents ?? 0;
+    console.log(
+      `[audio] ${filename}: ${result.markdown.length} chars transcribed, cost=${cost}¢` +
         (result.extractModel ? ` (${result.extractModel})` : ''),
     );
   }

@@ -104,8 +104,15 @@ cmd_start() {
   token="$(resolve_token)"
 
   echo "trail: launching engine + admin…"
+  # Source repo-root .env into the engine's process environment so
+  # provider-keys (OPENAI_API_KEY for F47 Whisper, OPENROUTER_API_KEY
+  # for F149/F25, ANTHROPIC_API_KEY when set, R2 backup creds for F153,
+  # tenant_secrets master key) are visible to the bun process. Bun's
+  # own auto-load looks at the cwd's .env which is apps/server/ — not
+  # repo root — so we must export here explicitly.
   (
     cd "$REPO" && \
+    if [[ -f .env ]]; then set -a; source .env; set +a; fi && \
     TRAIL_DEV_AUTH=1 \
     TRAIL_DATA_DIR="$REPO/data" \
     TRAIL_INGEST_TOKEN="$token" \

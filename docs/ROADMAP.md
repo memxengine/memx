@@ -190,7 +190,7 @@ Multi-tenant SaaS, billing, richer pipelines, first 3rd-party adapters.
 | # | Feature | Priority |
 |---|---------|----------|
 | F46 | Video Transcription Pipeline | Should |
-| F47 | Audio Transcription Pipeline | Should |
+| F47 | ~~Audio Transcription Pipeline~~ — **Done 2026-04-25** (OpenAI Whisper-1, drop-in via F28, cost stamped on extract_cost_cents; verified end-to-end with Sanne's 3-min Danish wav: 1248 chars, 2¢) | Should |
 | F48 | Email Ingest Pipeline | Could |
 | F49 | Slack Ingest Pipeline | Could |
 | ~~F50~~ | ~~Web Clipper Browser Extension~~ — shipped as F111 (local); Chrome store TBD | — |

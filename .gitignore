@@ -162,3 +162,10 @@ data/
 # which IS committed.
 docs/assets/sound/*.mp3
 docs/assets/sound/**/*.mp3
+
+# F47 — large audio fixtures kept out of git. Verify-script falls back
+# to the source path under ~/Documents/Projects/Sanne Andersen/ when
+# the local copy is absent.
+apps/server/test-fixtures/*.wav
+apps/server/test-fixtures/*.mp3
+apps/server/test-fixtures/*.m4a
