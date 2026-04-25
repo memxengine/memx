@@ -157,8 +157,8 @@ Ship'er Trail til "markedets bedste Karpathy-LLM-Wiki-killer" via ~34 features f
 
 | # | Feature | Status | Phase | Plan |
 |---|---------|--------|-------|------|
-| F118 | [Contradiction-Scan Sampling](features/F118-contradiction-scan-sampling.md) | Planned | 2 | [plan](features/F118-contradiction-scan-sampling.md) |
-| F119 | [Parallel Contradiction-Scan Runner](features/F119-parallel-contradiction-runner.md) | Planned | 2 | [plan](features/F119-parallel-contradiction-runner.md) |
+| F118 | [Contradiction-Scan Sampling](features/F118-contradiction-scan-sampling.md) | Done | 2 | [plan](features/F118-contradiction-scan-sampling.md) |
+| F119 | [Parallel Contradiction-Scan Runner](features/F119-parallel-contradiction-runner.md) | Done | 2 | [plan](features/F119-parallel-contradiction-runner.md) |
 | F120 | [Anthropic API Migration](features/F120-anthropic-api-migration.md) | Planned | 2 | [plan](features/F120-anthropic-api-migration.md) |
 
 **Commercialization (billing + plan limits):**
