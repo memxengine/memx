@@ -306,6 +306,33 @@
         "da": "Large Language Model — den AI der gør det tunge arbejde i Trail. To specifikke opgaver: (1) Kompilér Neuroner fra Kilder under ingest (læs Kilden, udtræk koncepter + påstande, skriv struktureret markdown med herkomst); (2) Lint Neuroner for modsigelser, foreslå forældreløs→Kilde-links, oversæt handlings-labels mellem EN/DA. Trail kører LLM'en via den lokale Claude Code CLI — ingen Anthropic API-nøgle krævet, Max-abonnements-afregning. Kuratoren er altid den endelige autoritet: LLM'en foreslår, Kuratoren beslutter."
       },
       "relatedTerms": ["ingest", "neuron", "source", "curator", "lint"]
+    },
+    {
+      "id": "peer",
+      "label": { "en": "Peer", "da": "Peer" },
+      "definition": {
+        "en": "An OTHER Neuron in the same Trail that's structurally related to a given Neuron — typically a candidate for cross-checks like contradiction-lint. When Trail asks \"does this Neuron contradict any of its peers?\", \"peers\" = the top-K most semantically similar Neurons retrieved via FTS. Peers are not edges (those are wiki-backlinks); they're a per-query similarity-set assembled when needed and discarded after use.",
+        "da": "En ANDEN Neuron i samme Trail der er strukturelt relateret til en given Neuron — typisk en kandidat til cross-checks som contradiction-lint. Når Trail spørger \"modsiger denne Neuron nogen af sine peers?\", er \"peers\" = de top-K mest semantisk lignende Neuroner hentet via FTS. Peers er ikke edges (det er wiki-backlinks); de er et per-query similarity-sæt sammensat når der er brug for det og kasseret efter brug."
+      },
+      "relatedTerms": ["neuron", "fts", "top-k", "lint", "neuron-link"]
+    },
+    {
+      "id": "fts",
+      "label": { "en": "FTS", "da": "FTS" },
+      "definition": {
+        "en": "Full-Text Search — the keyword-based search engine indexed over every Neuron's content + title + tags. Trail uses SQLite's FTS5 module (built in, no external service). FTS powers (1) the search bar in admin, (2) chat's context-retrieval (which Neurons relate to this question?), (3) lint's peer-discovery (which Neurons might contradict this one?). FTS is keyword-fast, not semantic — it matches words, not meanings. Auto-syncs via DB triggers when Neurons are created/edited/archived, so the index is always fresh.",
+        "da": "Full-Text Search — den nøgleord-baserede søgemaskine indekseret over hver Neurons indhold + titel + tags. Trail bruger SQLite's FTS5-modul (indbygget, ingen ekstern service). FTS driver (1) søgebjælken i admin, (2) chattens kontekst-hentning (hvilke Neuroner relaterer dette spørgsmål til?), (3) lint's peer-opdagelse (hvilke Neuroner kunne modsige denne?). FTS er nøgleord-hurtig, ikke semantisk — den matcher ord, ikke betydninger. Auto-syncer via DB-triggere når Neuroner oprettes/redigeres/arkiveres, så indekset er altid frisk."
+      },
+      "relatedTerms": ["search", "chat", "lint", "peer", "top-k"]
+    },
+    {
+      "id": "top-k",
+      "label": { "en": "Top-K", "da": "Top-K" },
+      "definition": {
+        "en": "The K best matches from a similarity search — the standard way to limit how many results a query returns. Trail uses top-K = 5 by default for contradiction-lint: when scanning a Neuron, take the 5 most-related peers (via FTS) and pair-compare. Higher K = better coverage but more LLM calls (cost grows linearly). Lower K = faster + cheaper but might miss contradictions hiding in less-obvious peers. K is tunable via the TRAIL_CONTRADICTION_TOPK env-var.",
+        "da": "De K bedste resultater fra en lighedssøgning — standardmåden at begrænse hvor mange resultater en forespørgsel returnerer. Trail bruger top-K = 5 som standard til contradiction-lint: når en Neuron scannes, tag de 5 mest relaterede peers (via FTS) og parvis-sammenlign. Højere K = bedre dækning men flere LLM-kald (cost vokser lineært). Lavere K = hurtigere + billigere men kan misse modsigelser der gemmer sig i mindre oplagte peers. K er justérbar via TRAIL_CONTRADICTION_TOPK env-variablen."
+      },
+      "relatedTerms": ["peer", "fts", "lint", "llm"]
     }
   ]
 }
