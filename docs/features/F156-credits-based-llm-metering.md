@@ -24,9 +24,51 @@ Både alternativer er dårlige. Det rigtige svar er at **brugeren betaler for si
 
 ## Solution
 
-Introducér **credits** som enheden for tenant's LLM-forbrug. **1 credit = $0.01 LLM-cost**, målt direkte fra OpenRouter's `usage.cost` felt på den faktiske API-response (F149 leverer dette per turn). Ingen separat multiplier-tabel — credits *er* cost, blot opskaleret til en hel-tals-enhed brugeren kan tælle. Alle ingest-jobs og ressource-tunge compile-cascades forbruger credits. Chat, lint, tag-aggregering, glossary og andre "baggrunds-features" forbruger **ikke** credits — de er inkluderet i abonnementet.
+Introducér **credits** som enheden for tenant's LLM-forbrug. **1 credit = $0.01 LLM-cost**, målt direkte fra OpenRouter's `usage.cost` felt på den faktiske API-response (F149 leverer dette per turn). Ingen separat multiplier-tabel — credits *er* cost, blot opskaleret til en hel-tals-enhed brugeren kan tælle. Alle ingest-jobs og ressource-tunge compile-cascades forbruger credits. **Chat forbruger også credits** (revideret 2026-04-25 sammen med F159 pluggable chat backends — den nye arkitektur gør det muligt at måle chat-cost ægte; default-modellen Gemini Flash holder per-turn-cost på ~0.1 credits så Hobby-tier ikke depleter på normal brug — se canonical-tabellen nedenfor). Lint, tag-aggregering, glossary og andre passive "baggrunds-features" forbruger **ikke** credits — de er inkluderet i abonnementet.
 
 Hver plan inkluderer en månedlig grundkvote. Løber tenant tør → de kan købe credits-pakker som one-time-purchase via Stripe Checkout. Pakker udløber aldrig og akkumulerer.
+
+### Chat credit-burn — canonical pricing-table (editable)
+
+Chat-pricing per backend × model lever som canonical i `apps/server/src/data/chat-pricing.yaml`. Tabellen er hot-reloadable og udgør sandheden for både F159's `runChat()` cost-stamping og F156's credit-decrement. Ændringer her ændrer alle tenants's chat-cost øjeblikkeligt — brugen er bevidst minimal; vi rør den når en ny model kommer eller en provider ændrer pricing.
+
+```yaml
+# apps/server/src/data/chat-pricing.yaml — F156 + F159 canonical
+# Per-turn-estimater bruges KUN til UI-fremvisning (preview "den her chat
+# vil koste ~0.1 credits"). Den faktiske credit-burn er den observerede
+# cost fra OpenRouter usage.cost — denne tabel er for transparens, ikke
+# debitering.
+models:
+  google/gemini-2.5-flash:
+    typical_in_tokens: 1500       # system + context + history + user msg
+    typical_out_tokens: 600       # assistant answer
+    credits_per_turn_estimate: 0.1
+    notes: "default for alle tiers; ~1000 chats per Hobby-credit-pulje (100c)"
+  google/gemini-2.5-pro:
+    credits_per_turn_estimate: 0.4
+  anthropic/claude-haiku-4-5:
+    credits_per_turn_estimate: 1.5
+  anthropic/claude-sonnet-4-6:
+    credits_per_turn_estimate: 6.0
+    notes: "premium chat; ~16 chats per Hobby-credit-pulje"
+
+# Per-tier hard caps på daglige chat-turns (bygger oven på credit-balance).
+# Forhindrer en Hobby-tenant i at brænde alle 100 månedlige credits af
+# på én Sonnet-eftermiddag — credit-systemet alene tillader det, men det
+# er ikke en god UX (depletion uden warning).
+tier_caps:
+  hobby:    { daily_chat_turns_max: 50,   default_model: "google/gemini-2.5-flash" }
+  starter:  { daily_chat_turns_max: 200,  default_model: "google/gemini-2.5-flash" }
+  pro:      { daily_chat_turns_max: 2000, default_model: "google/gemini-2.5-flash" }
+  business: { daily_chat_turns_max: null, default_model: "google/gemini-2.5-flash" }
+
+# Soft alerts (in-app banner + email — F156 §"Notifications").
+alerts:
+  warn_at_pct: 80    # "Du har brugt 80% af månedens chat-credits"
+  block_at_pct: 100  # "Du er løbet tør — opgrader eller køb pakke"
+```
+
+**Default-model er Gemini Flash på alle tiers** — også Pro+. Premium-modeller er bevidste opgraderinger via F152's runtime model switcher (udvidet til chat i F159), ikke usynlig drift. Anti-burn-disciplinen ligger her: man flipper til Sonnet pr. Trail når kvaliteten kræver det, ikke som default.
 
 ### Hvordan credits beregnes per ingest
 
