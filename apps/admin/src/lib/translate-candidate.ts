@@ -16,6 +16,31 @@ import type { CandidateAction, QueueCandidate } from '@trail/shared';
 import { api } from '../api';
 import { useLocale } from './i18n';
 
+/**
+ * F90 follow-up (2026-04-25) — single-flight translate queue.
+ *
+ * Pre-fix bug: every visible candidate fired its own `/translate`
+ * request on mount. Each request goes through `claude -p` server-side
+ * and takes 30-80s. Browser HTTP/1.1 limits 6 concurrent connections
+ * per origin, so 6+ pending translates BLOCKED ALL OTHER API CALLS to
+ * the engine — admin UI sat with "Henter…" for >1 minute waiting on a
+ * connection slot, even though the underlying queries are 3-8ms.
+ *
+ * Fix: every translate goes through a serial promise-chain. At most
+ * one HTTP/1.1 connection is held by translation work; the other five
+ * slots stay free for fast `documents`/`queue`/`tags` calls. Total
+ * translation time across N candidates is identical (still serial
+ * server-side via the LLM bottleneck), but the UX is no longer broken
+ * — interactive panels render instantly while translation backfills
+ * in the background.
+ */
+let translateChain: Promise<unknown> = Promise.resolve();
+function enqueueTranslate<T>(call: () => Promise<T>): Promise<T> {
+  const next = translateChain.then(call, call);
+  translateChain = next.catch(() => undefined); // never break the chain
+  return next;
+}
+
 export interface LocalisedBundle {
   title: string;
   content: string;
@@ -62,8 +87,10 @@ export function useCandidateBundle(candidate: QueueCandidate): LocalisedBundle {
     if (!needsTitle && !needsContent && !needsActions) return;
 
     let cancelled = false;
-    api<{ locale: string; title: string; content: string; actions: CandidateAction[] }>(
-      `/api/v1/queue/${encodeURIComponent(candidate.id)}/translate?locale=${locale}`,
+    enqueueTranslate(() =>
+      api<{ locale: string; title: string; content: string; actions: CandidateAction[] }>(
+        `/api/v1/queue/${encodeURIComponent(candidate.id)}/translate?locale=${locale}`,
+      ),
     )
       .then((r) => {
         if (cancelled) return;
