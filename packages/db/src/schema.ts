@@ -76,6 +76,12 @@ export const knowledgeBases = sqliteTable(
     ingestBackend: text('ingest_backend'),
     ingestModel: text('ingest_model'),
     ingestFallbackChain: text('ingest_fallback_chain'),
+    // F159 Phase 3 — per-KB chat-backend overrides. NULL means
+    // resolveChatChain falls back to env defaults. chatFallbackChain
+    // is JSON-encoded ChainStep[] when set.
+    chatBackend: text('chat_backend'),
+    chatModel: text('chat_model'),
+    chatFallbackChain: text('chat_fallback_chain'),
     createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
     updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
   },
@@ -547,6 +553,12 @@ export const chatTurns = sqliteTable(
     tokensIn: integer('tokens_in'),
     tokensOut: integer('tokens_out'),
     latencyMs: integer('latency_ms'),
+    // F159 Phase 3 — per-turn cost + audit. NULL on Claude-CLI rows
+    // (Max-Plan flat fee — no per-call cost). Populated by
+    // OpenRouter / Claude-API backends from usage data.
+    costCents: integer('cost_cents'),
+    backendUsed: text('backend_used'),
+    modelUsed: text('model_used'),
     createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
   },
   (table) => [

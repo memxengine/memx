@@ -148,6 +148,13 @@
       "when": 1778600000000,
       "tag": "0020_documents_lint_signature",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "6",
+      "when": 1777127867344,
+      "tag": "0021_chat_backend_columns",
+      "breakpoints": true
     }
   ]
 }

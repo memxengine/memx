@@ -83,9 +83,18 @@ chatRoutes.post('/chat', async (c) => {
   // Scope to either a specific KB (validating it belongs to this tenant) or all
   // the tenant's KBs. The old code fetched by id alone without a tenant check,
   // which was fine single-tenant but dangerous when F40.2 lands — fixing now.
+  // F159 Phase 3: include the chat-backend override columns so resolveChatChain
+  // can honour per-KB curator settings.
+  const kbColumns = {
+    id: knowledgeBases.id,
+    name: knowledgeBases.name,
+    chatBackend: knowledgeBases.chatBackend,
+    chatModel: knowledgeBases.chatModel,
+    chatFallbackChain: knowledgeBases.chatFallbackChain,
+  };
   const kbs = resolvedKbId
     ? await trail.db
-        .select({ id: knowledgeBases.id, name: knowledgeBases.name })
+        .select(kbColumns)
         .from(knowledgeBases)
         .where(
           and(
@@ -95,7 +104,7 @@ chatRoutes.post('/chat', async (c) => {
         )
         .all()
     : await trail.db
-        .select({ id: knowledgeBases.id, name: knowledgeBases.name })
+        .select(kbColumns)
         .from(knowledgeBases)
         .where(eq(knowledgeBases.tenantId, tenant.id))
         .all();
@@ -150,6 +159,9 @@ chatRoutes.post('/chat', async (c) => {
   // bytes out as the pre-F159 hand-rolled spawnClaude call. Phase 2
   // adds OpenRouter + Claude-API backends + chain fallback; Phase 3
   // adds cost stamping into chat_turns.
+  // F159 Phase 3: per-KB chain override loaded above; pass through.
+  const primaryKb = kbs.find((k) => k.id === primaryKbId) ?? kbs[0]!;
+
   try {
     const result = await runChat({
       trail,
@@ -163,6 +175,11 @@ chatRoutes.post('/chat', async (c) => {
       userId: user.id,
       mcpServerPath: MCP_SERVER_PATH,
       toolNames: CHAT_ALLOWED_TOOL_LIST,
+      kb: {
+        chatBackend: primaryKb.chatBackend,
+        chatModel: primaryKb.chatModel,
+        chatFallbackChain: primaryKb.chatFallbackChain,
+      },
     });
     const { answer } = result;
     const sessionId = await persistTurnPair(
@@ -175,6 +192,9 @@ chatRoutes.post('/chat', async (c) => {
       answer,
       citations,
       result.elapsedMs,
+      result.costCents,
+      result.backendUsed,
+      result.modelUsed,
     );
     return c.json({
       answer,
@@ -211,6 +231,12 @@ async function persistTurnPair(
   assistantAnswer: string,
   citations: Citation[],
   latencyMs: number,
+  // F159 Phase 3 — backend audit + cost stamping. NULL on Claude-CLI
+  // turns (Max-Plan flat fee). Pre-F159 callers (none post-refactor)
+  // would pass undefined and the columns stay NULL.
+  costCents: number | null = null,
+  backendUsed: string | null = null,
+  modelUsed: string | null = null,
 ): Promise<string | null> {
   try {
     let sessionId = incomingSessionId;
@@ -264,6 +290,9 @@ async function persistTurnPair(
         content: assistantAnswer,
         citations: citationsJson,
         latencyMs,
+        costCents,
+        backendUsed,
+        modelUsed,
         createdAt: new Date().toISOString(),
       })
       .run();
