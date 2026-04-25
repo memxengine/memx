@@ -105,7 +105,6 @@ export function ChatPanel() {
   const [saveTarget, setSaveTarget] = useState<LocalTurn | null>(null);
   const [saveTitle, setSaveTitle] = useState('');
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [saveBusy, setSaveBusy] = useState(false);
   const [toast, setToast] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false); // mobile drawer
   const [renameTarget, setRenameTarget] = useState<ChatSession | null>(null);
@@ -229,34 +228,44 @@ export function ChatPanel() {
     [turns],
   );
 
-  const confirmSave = useCallback(async () => {
+  const confirmSave = useCallback(() => {
     const turn = saveTarget;
-    if (!turn || !turn.content || saveBusy) return;
+    if (!turn || !turn.content) return;
     const title = saveTitle.trim();
     if (!title) {
       setSaveError('Title is required');
       return;
     }
     const paired = findUserTurn(turns, turn);
-    setSaveBusy(true);
+
+    // Optimistic close: dialog dismisses instantly, the turn is marked as
+    // saved, and a confirmation toast appears. The /queue/candidates POST
+    // fires in the background — the curator can keep chatting / scroll
+    // while the round-trip completes. On failure we revert the savedAs
+    // marker + raise an error toast so the curator knows to retry.
+    setSaveTarget(null);
     setSaveError(null);
-    try {
-      await saveChatAsNeuron({
-        kbId,
-        question: paired?.content ?? '',
-        answer: turn.content,
-        citations: turn.citations,
-        title,
-      });
-      setTurns((prev) => prev.map((t) => (t.id === turn.id ? { ...t, savedAs: title } : t)));
-      setToast({ kind: 'success', text: 'Saved to queue — review in Queue tab.' });
-      setSaveTarget(null);
-    } catch (err) {
-      setSaveError(err instanceof ApiError ? err.message : String(err));
-    } finally {
-      setSaveBusy(false);
-    }
-  }, [saveTarget, saveTitle, kbId, turns, saveBusy]);
+    setTurns((prev) => prev.map((t) => (t.id === turn.id ? { ...t, savedAs: title } : t)));
+    setToast({ kind: 'success', text: 'Sent to queue — review in Queue tab.' });
+
+    void (async () => {
+      try {
+        await saveChatAsNeuron({
+          kbId,
+          question: paired?.content ?? '',
+          answer: turn.content,
+          citations: turn.citations,
+          title,
+        });
+      } catch (err) {
+        setTurns((prev) =>
+          prev.map((t) => (t.id === turn.id ? { ...t, savedAs: undefined } : t)),
+        );
+        const msg = err instanceof ApiError ? err.message : String(err);
+        setToast({ kind: 'error', text: `Save failed: ${msg}. Try again.` });
+      }
+    })();
+  }, [saveTarget, saveTitle, kbId, turns]);
 
   const confirmRename = useCallback(async () => {
     if (!renameTarget) return;
@@ -421,23 +430,16 @@ export function ChatPanel() {
       <Modal
         open={saveTarget !== null}
         title="Save as Neuron"
-        // Block backdrop-close while the queue POST is in flight — the modal
-        // is showing progress, closing it would strand the user not knowing
-        // whether the save landed.
-        onClose={() => {
-          if (!saveBusy) setSaveTarget(null);
-        }}
+        onClose={() => setSaveTarget(null)}
         footer={
           <>
-            <ModalButton onClick={() => setSaveTarget(null)} disabled={saveBusy}>
-              Cancel
-            </ModalButton>
+            <ModalButton onClick={() => setSaveTarget(null)}>Cancel</ModalButton>
             <ModalButton
               variant="primary"
               onClick={confirmSave}
-              disabled={!saveTitle.trim() || saveBusy}
+              disabled={!saveTitle.trim()}
             >
-              {saveBusy ? 'Sending…' : 'Send to queue'}
+              Send to queue
             </ModalButton>
           </>
         }
