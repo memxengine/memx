@@ -240,7 +240,7 @@ Tre-lags-forsvar mod broken wiki-links: ingest-prompten lærer LLM'en slug-konve
 
 | # | Feature | Status | Phase | Plan |
 |---|---------|--------|-------|------|
-| F148 | [Link Integrity](features/F148-link-integrity.md) | Planned | 1 | [plan](features/F148-link-integrity.md) |
+| F148 | [Link Integrity](features/F148-link-integrity.md) | Shipped | 1 | [plan](features/F148-link-integrity.md) |
 
 ### F149 — Pluggable Ingest Backends
 
@@ -256,7 +256,7 @@ Curator-facing UI for F148's `broken_links`-findings. Ny route `/kb/:kbId/link-c
 
 | # | Feature | Status | Phase | Plan |
 |---|---------|--------|-------|------|
-| F150 | [Admin Link-Report Panel](features/F150-admin-link-report-panel.md) | Planned | 1 | [plan](features/F150-admin-link-report-panel.md) |
+| F150 | [Admin Link-Report Panel](features/F150-admin-link-report-panel.md) | Shipped | 1 | [plan](features/F150-admin-link-report-panel.md) |
 
 ### F151 — Cost & Quality Dashboard
 

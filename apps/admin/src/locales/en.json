@@ -6,6 +6,7 @@
     "chat": "Chat",
     "search": "Search",
     "queue": "Queue",
+    "linkCheck": "Links",
     "sources": "Sources",
     "cost": "Cost",
     "settings": "Settings",
@@ -513,6 +514,31 @@
       "ambientEnabled": "Play ambient loops while I work",
       "ambientVolume": "Volume"
     }
+  },
+  "linkReport": {
+    "title": "Link Check",
+    "subtitle": "Broken [[wiki-links]] in this Trail's Neurons. Accept the suggested fix to rewrite the link, dismiss to mark as intentional, or rescan to recheck after bulk edits.",
+    "rescan": "Rescan now",
+    "rescanning": "Rescanning…",
+    "rescanResult": "Scanned {docs} Neurons — {open} open, {resolved} resolved",
+    "empty": "No broken links — your Trail is intact.",
+    "col": {
+      "from": "From",
+      "linkText": "Broken link",
+      "suggestedFix": "Suggested fix",
+      "reportedAt": "Reported",
+      "actions": "Actions"
+    },
+    "action": {
+      "accept": "Accept",
+      "dismiss": "Dismiss",
+      "reopen": "Reopen"
+    },
+    "noSuggestion": "—",
+    "accepted": "Rewrote link",
+    "acceptDismissed": "Link no longer present — dismissed instead",
+    "loadFailed": "Could not load findings",
+    "actionFailed": "Action failed"
   },
   "work": {
     "title": "Work",

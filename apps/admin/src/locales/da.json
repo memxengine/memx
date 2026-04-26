@@ -6,6 +6,7 @@
     "chat": "Chat",
     "search": "Søg",
     "queue": "Kø",
+    "linkCheck": "Links",
     "sources": "Kilder",
     "cost": "Omkostning",
     "settings": "Indstillinger",
@@ -513,6 +514,31 @@
       "ambientEnabled": "Afspil ambient-loops mens jeg arbejder",
       "ambientVolume": "Lydstyrke"
     }
+  },
+  "linkReport": {
+    "title": "Link-tjek",
+    "subtitle": "Brudte [[wiki-links]] i Neuronerne i dette Trail. Accepter det foreslåede fix for at omskrive linket, afvis for at markere som tilsigtet, eller kør scan igen efter masse-redigeringer.",
+    "rescan": "Kør scan nu",
+    "rescanning": "Scanner…",
+    "rescanResult": "Scannede {docs} Neuroner — {open} åbne, {resolved} løste",
+    "empty": "Ingen brudte links — dit Trail er intakt.",
+    "col": {
+      "from": "Fra",
+      "linkText": "Brudt link",
+      "suggestedFix": "Foreslået fix",
+      "reportedAt": "Rapporteret",
+      "actions": "Handlinger"
+    },
+    "action": {
+      "accept": "Accepter",
+      "dismiss": "Afvis",
+      "reopen": "Genåbn"
+    },
+    "noSuggestion": "—",
+    "accepted": "Omskrev link",
+    "acceptDismissed": "Linket findes ikke længere — afvist i stedet",
+    "loadFailed": "Kunne ikke hente findings",
+    "actionFailed": "Handling fejlede"
   },
   "work": {
     "title": "Arbejde",

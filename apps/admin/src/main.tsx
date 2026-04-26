@@ -16,6 +16,7 @@ import { SettingsTrailPanel } from './panels/settings-trail';
 import { SettingsAccountPanel } from './panels/settings-account';
 import { CostPanel } from './panels/cost';
 import { QualityComparePanel } from './panels/quality-compare';
+import { LinkReportPanel } from './panels/link-report';
 import { NotFound } from './panels/not-found';
 import { initTheme } from './theme';
 import './index.css';
@@ -39,6 +40,7 @@ function Main() {
           <Route path="/kb/:kbId/search" component={SearchPanel} />
           <Route path="/kb/:kbId/chat" component={ChatPanel} />
           <Route path="/kb/:kbId/cost" component={CostPanel} />
+          <Route path="/kb/:kbId/link-check" component={LinkReportPanel} />
           <Route path="/kb/:kbId/settings" component={SettingsTrailPanel} />
           <Route path="/settings" component={SettingsAccountPanel} />
           <Route path="/glossary" component={GlossaryPanel} />

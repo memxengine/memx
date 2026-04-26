@@ -907,3 +907,49 @@ export interface FxRate {
 export function getFxRate(from: string, to: string): Promise<FxRate> {
   return api<FxRate>(`/api/v1/fx/rate?from=${from}&to=${to}`);
 }
+
+// ── F150 — Link-Report panel ────────────────────────────────────────────
+
+export type LinkFindingStatus = 'open' | 'auto_fixed' | 'dismissed';
+
+export interface LinkFinding {
+  id: string;
+  fromDocumentId: string;
+  fromFilename: string;
+  fromTitle: string | null;
+  linkText: string;
+  suggestedFix: string | null;
+  status: LinkFindingStatus;
+  reportedAt: string;
+}
+
+export function getLinkCheckFindings(kbId: string): Promise<{ findings: LinkFinding[] }> {
+  return api(`/api/v1/knowledge-bases/${encodeURIComponent(kbId)}/link-check`);
+}
+
+export interface LinkRescanSummary {
+  docsScanned: number;
+  openRecorded: number;
+  resolved: number;
+}
+
+export function rescanLinkCheck(kbId: string): Promise<LinkRescanSummary> {
+  return api(
+    `/api/v1/knowledge-bases/${encodeURIComponent(kbId)}/link-check/rescan`,
+    { method: 'POST' },
+  );
+}
+
+export function acceptLinkFix(
+  id: string,
+): Promise<{ accepted: true; newVersion: number; wikiEventId: string | null }> {
+  return api(`/api/v1/link-check/${encodeURIComponent(id)}/accept`, { method: 'POST' });
+}
+
+export function dismissLinkFinding(id: string): Promise<{ dismissed: true }> {
+  return api(`/api/v1/link-check/${encodeURIComponent(id)}/dismiss`, { method: 'POST' });
+}
+
+export function reopenLinkFinding(id: string): Promise<{ reopened: true }> {
+  return api(`/api/v1/link-check/${encodeURIComponent(id)}/reopen`, { method: 'POST' });
+}

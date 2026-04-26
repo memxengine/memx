@@ -2,7 +2,7 @@ import { Hono, type Context } from 'hono';
 import { and, desc, eq } from 'drizzle-orm';
 import { brokenLinks, documents } from '@trail/db';
 import { requireAuth, getTenant, getUser, getTrail } from '../middleware/auth.js';
-import { runLint, resolveKbId, type Actor } from '@trail/core';
+import { runLint, resolveKbId, submitCuratorEdit, VersionConflictError, type Actor } from '@trail/core';
 import { INGEST_USER_ID } from '../bootstrap/ingest-user.js';
 import { broadcaster } from '../services/broadcast.js';
 import { rescanDocLinks, runFullLinkCheck } from '../services/link-checker.js';
@@ -205,4 +205,117 @@ lintRoutes.post('/link-check/:id/reopen', async (c) => {
   // target now exists, the scan will clear the row automatically.
   await rescanDocLinks(trail, row.fromDocumentId);
   return c.json({ reopened: true });
+});
+
+/**
+ * F150 — accept the suggested fix. str_replace `[[<linkText>]]` →
+ * `<suggestedFix>` (already a `[[...]]`-shape) in source-doc.content,
+ * version-bump via the same submitCuratorEdit path the editor uses
+ * (so wiki_backlinks, queue history, and SSE events fire identically),
+ * flip the row to status='auto_fixed'.
+ *
+ * Edge cases:
+ *  - finding has no suggested_fix          → 400
+ *  - finding is already dismissed/auto_fixed → 400
+ *  - the [[link]] is no longer in content   → 409 + auto-dismiss
+ *    (curator edited the doc since the finding landed)
+ *  - parallel curator edit raced us         → 409 (VersionConflictError)
+ */
+lintRoutes.post('/link-check/:id/accept', async (c) => {
+  const trail = getTrail(c);
+  const tenant = getTenant(c);
+  const user = getUser(c);
+  const id = c.req.param('id');
+
+  const finding = await trail.db
+    .select({
+      id: brokenLinks.id,
+      fromDocumentId: brokenLinks.fromDocumentId,
+      linkText: brokenLinks.linkText,
+      suggestedFix: brokenLinks.suggestedFix,
+      status: brokenLinks.status,
+    })
+    .from(brokenLinks)
+    .where(and(eq(brokenLinks.id, id), eq(brokenLinks.tenantId, tenant.id)))
+    .get();
+  if (!finding) return c.json({ error: 'Finding not found' }, 404);
+  if (finding.status !== 'open') {
+    return c.json({ error: `Finding is ${finding.status}` }, 400);
+  }
+  if (!finding.suggestedFix) {
+    return c.json({ error: 'No suggested fix available' }, 400);
+  }
+
+  const doc = await trail.db
+    .select({
+      id: documents.id,
+      content: documents.content,
+      title: documents.title,
+      tags: documents.tags,
+      version: documents.version,
+    })
+    .from(documents)
+    .where(and(eq(documents.id, finding.fromDocumentId), eq(documents.tenantId, tenant.id)))
+    .get();
+  if (!doc || !doc.content) {
+    return c.json({ error: 'Source doc not found or empty' }, 404);
+  }
+
+  const oldLink = `[[${finding.linkText}]]`;
+  if (!doc.content.includes(oldLink)) {
+    // Link was already rewritten or doc changed since finding. Flip to
+    // dismissed so the row exits the open list rather than blocking
+    // curator on a stale suggestion forever.
+    await trail.db
+      .update(brokenLinks)
+      .set({ status: 'dismissed', fixedAt: new Date().toISOString() })
+      .where(eq(brokenLinks.id, id))
+      .run();
+    return c.json(
+      { error: 'Link no longer present; finding dismissed', dismissed: true },
+      409,
+    );
+  }
+
+  const newContent = doc.content.replaceAll(oldLink, finding.suggestedFix);
+
+  try {
+    const result = await submitCuratorEdit(
+      trail,
+      tenant.id,
+      doc.id,
+      {
+        content: newContent,
+        title: doc.title ?? undefined,
+        tags: doc.tags ?? undefined,
+        expectedVersion: doc.version,
+      },
+      { id: user.id, kind: 'user' },
+    );
+
+    await trail.db
+      .update(brokenLinks)
+      .set({ status: 'auto_fixed', fixedAt: new Date().toISOString() })
+      .where(eq(brokenLinks.id, id))
+      .run();
+
+    return c.json({
+      accepted: true,
+      newVersion: doc.version + 1,
+      wikiEventId: result.wikiEventId,
+    });
+  } catch (err) {
+    if (err instanceof VersionConflictError) {
+      return c.json(
+        {
+          error: 'version_conflict',
+          message: err.message,
+          currentVersion: err.currentVersion,
+          expectedVersion: err.expectedVersion,
+        },
+        409,
+      );
+    }
+    throw err;
+  }
 });
