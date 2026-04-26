@@ -164,13 +164,13 @@ Output-postprocessing per audience i `chat.ts`:
 | tool | strip til ren tekst (`[[Zoneterapi]]` → `Zoneterapi`) | strip "Kilder:"-sektion fra body | beriges m/ titles + excerpts |
 | public | strip eller resolve via `linkBase`-param | strip "Kilder:"-sektion fra body | minimal — kun titles |
 
-### SDK — `packages/sdk`
+### SDK — `packages/sdk` → `@trailmem/sdk` på npm
 
-Ny pnpm-workspace-pakke. Layout:
+Ny pnpm-workspace-pakke. NPM-org `@trailmem/` er reserveret af Christian (ægte `@trail/` var taget på npm). Layout:
 
 ```
 packages/sdk/
-├── package.json           — @trail/sdk, exports both ESM + CJS
+├── package.json           — @trailmem/sdk, exports both ESM + CJS
 ├── src/
 │   ├── client.ts          — TrailClient class
 │   ├── types.ts           — alle response/request shapes
@@ -185,7 +185,7 @@ packages/sdk/
 API-shape:
 
 ```typescript
-import { TrailClient } from '@trail/sdk';
+import { TrailClient } from '@trailmem/sdk';
 
 const trail = new TrailClient({
   baseUrl: 'https://app.trailmem.com',  // eller localhost:58021 i dev
@@ -205,7 +205,7 @@ const { answer, sessionId } = await trail.chat('Jeg sover ikke godt', { audience
 
 Public types fanger turnsUsed/turnsLimit (F156 turn-cap), error-koder (`session_turn_cap_reached`), og audience-enum.
 
-Built i monorepo via Turbo. Publishing til npm som `@trail/sdk` er **ikke** del af F160 v1 — det er en separat senere beslutning. Indtil da kan integrators i monorepo eller adjacent-monorepo importere via path-reference, eller npm-installere direkte fra GitHub.
+Built i monorepo via Turbo. Publishing til npm som `@trailmem/sdk` er **ikke** del af F160 v1 — det er en separat senere beslutning. Indtil da kan integrators i monorepo eller adjacent-monorepo importere via path-reference, eller npm-installere direkte fra GitHub.
 
 ### Trail integration-doc
 
@@ -214,7 +214,7 @@ Built i monorepo via Turbo. Publishing til npm som `@trail/sdk` er **ikke** del 
 - **3 sektioner** (én per lag) med fuld endpoint-spec, audience-matrix, eksempler.
 - **Cost-eksempler** ("1000 chats/måned koster X credits på Lag 3, Y på Lag 2, Z på Lag 1").
 - **Anti-patterns:** "Brug ikke Lag 2 hvis du allerede har site-LLM — det er bare ekstra omkostning."
-- **`@trail/sdk` quick-start** når SDK-pakken lander.
+- **`@trailmem/sdk` quick-start** når SDK-pakken lander.
 
 ## Rollout
 
@@ -246,11 +246,11 @@ Fasevis så vi får Sanne-andersen unblocked først.
 - [ ] `TrailClient` med metoder for `search`, `retrieve`, `chat`
 - [ ] Types-eksport for alle responses + audiences
 - [ ] README.md quick-start + 3-layer-eksempler
-- [ ] `apps/admin` skifter sin egen api.ts til at importere fra `@trail/sdk` (eat your own dogfood — fanger fejl tidligt)
+- [ ] `apps/admin` skifter sin egen api.ts til at importere fra `@trailmem/sdk` (eat your own dogfood — fanger fejl tidligt)
 
 ### Phase 4 — Followups (out of v1 scope)
 
-- npm publish af `@trail/sdk`
+- npm publish af `@trailmem/sdk`
 - Browser-bundle-target for F29 widget
 - `format: "facts"` flag på chat hvis reel use-case opstår
 - Per-key rate-limit på retrieve (F44 territorium)
