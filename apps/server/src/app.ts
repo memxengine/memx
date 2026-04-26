@@ -51,15 +51,47 @@ export function createApp(trail: TrailDatabase): Hono<AppBindings> {
 
   app.use('*', logger());
   const adminOrigin = process.env.APP_URL ?? 'http://localhost:3030';
+  // F111.2 — `TRAIL_ALLOWED_ORIGINS` (CSV) lets operators whitelist
+  // additional origins (e.g. an integration site on localhost:3001
+  // during dev, or a customer subdomain in prod) without editing
+  // code. Each entry is validated at boot: must parse as a URL with
+  // scheme + host (+ optional port), no path/query. Invalid entries
+  // log a warning and are dropped — boot continues with the rest, so
+  // a typo in one entry doesn't take the engine down.
+  const configuredExtraOrigins = (process.env.TRAIL_ALLOWED_ORIGINS ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .filter((s) => {
+      try {
+        const u = new URL(s);
+        if (u.pathname && u.pathname !== '/') {
+          console.warn(`[cors] dropping TRAIL_ALLOWED_ORIGINS entry with path: ${s}`);
+          return false;
+        }
+        return true;
+      } catch {
+        console.warn(`[cors] dropping invalid TRAIL_ALLOWED_ORIGINS entry: ${s}`);
+        return false;
+      }
+    })
+    .map((s) => s.replace(/\/$/, ''));
+  if (configuredExtraOrigins.length > 0) {
+    console.log(
+      `[cors] extra origins from TRAIL_ALLOWED_ORIGINS: ${configuredExtraOrigins.join(', ')}`,
+    );
+  }
   app.use(
     '/api/*',
     cors({
       origin: (origin) => {
-        // Allow configured APP_URL, localhost variants, and browser extensions
+        // Allow configured APP_URL, localhost variants, browser extensions,
+        // and any origins from TRAIL_ALLOWED_ORIGINS env (F111.2).
         const allowed = [
           process.env.APP_URL ?? 'http://localhost:3030',
           'http://localhost:3030',
           'http://127.0.0.1:3030',
+          ...configuredExtraOrigins,
         ];
         if (allowed.includes(origin)) return origin;
         if (origin.startsWith('chrome-extension://')) return origin;

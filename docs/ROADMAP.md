@@ -130,6 +130,7 @@ The remaining Phase 1 scope, ordered by leverage and dependency.
 | F153 | Continuous online backup of `trail.db` to Cloudflare R2 (VACUUM INTO + gzip + R2 multipart upload, `backup-scheduler` service, admin panel, stopped-server restore CLI) | — | Small |
 | F158 | ~~Idempotent Contradiction-Lint~~ — **Done 2026-04-25** (signature-skip → 0 LLM calls when brain at rest; saves ~1740 Haiku-calls/day on quiet 348-Neuron fleet) | F32, F118 | Small |
 | F159 | [Pluggable Chat Backends](./features/F159-pluggable-chat-backends.md) — F149 mirror for chat: ClaudeCLIBackend + OpenRouterBackend, per-KB chain config, cost stamping. **Unblocks F33** (Fly.io prod chat needs no `claude` CLI). | F149, F144 | Medium |
+| F111.2 | [Admin API-key panel + multi-origin CORS](./features/F111.2-admin-api-keys-cors.md) — admin UI til at generere/liste/revoke `trail_<64hex>` Bearer keys, `TRAIL_ALLOWED_ORIGINS` env-CSV til at whitelist'e externe sites uden code-edits, `docs/INTEGRATION-API.md` som kontrakt for cc-sessioner i andre repos. **Unblocks Sanne Andersen integration** — første eksterne integrations-customer kan kalde `/api/v1/chat` fra deres localhost-site uden at vi mocker. | F111.1 | Small |
 
 ### Pipelines + Adapters — widen the ingest surface
 

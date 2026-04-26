@@ -117,6 +117,7 @@
     "error": "Noget gik galt.",
     "tryAgain": "Prøv igen",
     "copyId": "Kopiér ID",
+    "copy": "Kopiér",
     "copied": "Kopieret!",
     "time": {
       "now": "nu",
@@ -518,7 +519,29 @@
       "plan": "Plan",
       "ambient": "Ambient lyd",
       "ambientEnabled": "Afspil ambient-loops mens jeg arbejder",
-      "ambientVolume": "Lydstyrke"
+      "ambientVolume": "Lydstyrke",
+      "apiKeys": {
+        "title": "API-nøgler",
+        "subtitle": "Bearer tokens til integration af Trail med eksterne sites og scripts.",
+        "empty": "Du har endnu ikke oprettet nogen API-nøgler.",
+        "create": "Generér ny API-nøgle",
+        "createTitle": "Generér ny API-nøgle",
+        "createHint": "Giv nøglen et beskrivende navn så du kan huske hvad den bruges til.",
+        "namePlaceholder": "fx sanne-andersen.dk-prod",
+        "nameRequired": "Navn er påkrævet",
+        "revealTitle": "API-nøgle oprettet",
+        "revealWarning": "Du ser denne nøgle KUN ÉN GANG. Kopiér den nu til din password manager eller din integrations config.",
+        "copyFailed": "Kunne ikke tilgå udklipsholderen — markér nøglen ovenfor og kopiér den manuelt.",
+        "acknowledge": "Jeg har gemt den",
+        "revoke": "Tilbagekald",
+        "revokeTitle": "Tilbagekald API-nøgle?",
+        "revokeBody": "Tilbagekald {name}? Eksisterende integrationer der bruger denne nøgle vil få 401.",
+        "confirmRevoke": "Tilbagekald",
+        "colName": "Navn",
+        "colLastUsed": "Sidst brugt",
+        "colCreated": "Oprettet",
+        "neverUsed": "Aldrig"
+      }
     }
   },
   "linkReport": {

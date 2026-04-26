@@ -117,6 +117,7 @@
     "error": "Something went wrong.",
     "tryAgain": "Try again",
     "copyId": "Copy ID",
+    "copy": "Copy",
     "copied": "Copied!",
     "time": {
       "now": "now",
@@ -518,7 +519,29 @@
       "plan": "Plan",
       "ambient": "Ambient audio",
       "ambientEnabled": "Play ambient loops while I work",
-      "ambientVolume": "Volume"
+      "ambientVolume": "Volume",
+      "apiKeys": {
+        "title": "API Keys",
+        "subtitle": "Bearer tokens for integrating Trail with external sites and scripts.",
+        "empty": "You haven't created any API keys yet.",
+        "create": "Generate new API key",
+        "createTitle": "Generate new API key",
+        "createHint": "Give the key a descriptive name so you remember what it's for.",
+        "namePlaceholder": "e.g. sanne-andersen.dk-prod",
+        "nameRequired": "Name is required",
+        "revealTitle": "API key created",
+        "revealWarning": "You will see this key only ONCE. Copy it now into your password manager or your integration's config.",
+        "copyFailed": "Couldn't access the clipboard — select the key above and copy it manually.",
+        "acknowledge": "I have saved it",
+        "revoke": "Revoke",
+        "revokeTitle": "Revoke API key?",
+        "revokeBody": "Revoke {name}? Existing integrations using this key will get 401.",
+        "confirmRevoke": "Revoke",
+        "colName": "Name",
+        "colLastUsed": "Last used",
+        "colCreated": "Created",
+        "neverUsed": "Never"
+      }
     }
   },
   "linkReport": {
