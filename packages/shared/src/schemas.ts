@@ -34,6 +34,12 @@ export const KnowledgeBaseSchema = z.object({
   lintPolicy: z.enum(['trusting', 'strict']).default('trusting'),
   sourceCount: z.number().int().optional(),
   wikiPageCount: z.number().int().optional(),
+  // F160 Phase 2 — per-KB persona overrides for tool/public chat audiences.
+  // Both nullable; null means "use base template only". When set, the text
+  // is appended to the resolved persona-template under "## KB-specific
+  // persona". curator audience never reads these.
+  chatPersonaTool: z.string().nullable().optional(),
+  chatPersonaPublic: z.string().nullable().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -52,6 +58,11 @@ export const UpdateKBSchema = z.object({
   description: z.string().max(500).nullable().optional(),
   language: z.string().optional(),
   lintPolicy: LintPolicyEnum.optional(),
+  // F160 Phase 2 — per-KB persona overrides. Send null to clear, omit
+  // to leave unchanged. Each capped at 4000 chars to keep system-prompt
+  // size sane (a 4KB persona will already crowd the context budget).
+  chatPersonaTool: z.string().max(4000).nullable().optional(),
+  chatPersonaPublic: z.string().max(4000).nullable().optional(),
 });
 
 // ── Sources & Wiki Pages ──────────────────────────────────────────────────────

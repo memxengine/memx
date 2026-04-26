@@ -505,7 +505,17 @@
       "descriptionLabel": "Description",
       "descriptionPlaceholder": "One or two sentences about what this Trail contains.",
       "languageLabel": "Language",
-      "languageHint": "Language used for LLM-generated content on this Trail — Neuron compilation from Sources AND F96 action-recommender reasoning. The admin chrome stays in whatever language you picked in the top-right switcher; only the content follows this setting."
+      "languageHint": "Language used for LLM-generated content on this Trail — Neuron compilation from Sources AND F96 action-recommender reasoning. The admin chrome stays in whatever language you picked in the top-right switcher; only the content follows this setting.",
+      "personas": {
+        "title": "Chat personas (external integrations)",
+        "subtitle": "When this Trail is queried via Bearer-token chat (e.g. an embedded widget or a site-LLM orchestrator), these snippets are appended to the base persona-template. Leave empty to use the defaults.",
+        "toolLabel": "Tool persona",
+        "toolPlaceholder": "ALWAYS speak about this domain from a clinical-neutral position; never recommend booking or actions.",
+        "toolHint": "For site-LLMs that fetch Trail content as one tool among many. Keep prose factual — your orchestrator handles tone + actions.",
+        "publicLabel": "Public persona",
+        "publicPlaceholder": "Du er Sanne Andersen, zoneterapeut i Aalborg. Booking via sanne-andersen.dk/book. Tone: varm, dansk, du-form.",
+        "publicHint": "For chat widgets that render Trail's answer directly to end-users. Establish identity, voice, and what to suggest as a natural next step."
+      }
     },
     "account": {
       "title": "Account",

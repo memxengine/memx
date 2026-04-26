@@ -30,6 +30,10 @@ export function SettingsTrailPanel() {
   const [description, setDescription] = useState('');
   const [language, setLanguage] = useState<string>('da');
   const [lintPolicy, setLintPolicy] = useState<'trusting' | 'strict'>('trusting');
+  // F160 Phase 2 — per-KB persona overrides for tool/public chat audiences.
+  // Empty string in the UI maps to null on save (= "clear back to default").
+  const [chatPersonaTool, setChatPersonaTool] = useState('');
+  const [chatPersonaPublic, setChatPersonaPublic] = useState('');
 
   useEffect(() => {
     listKnowledgeBases()
@@ -43,6 +47,8 @@ export function SettingsTrailPanel() {
           setDescription(match.description ?? '');
           setLanguage(match.language ?? 'da');
           setLintPolicy(match.lintPolicy ?? 'trusting');
+          setChatPersonaTool(match.chatPersonaTool ?? '');
+          setChatPersonaPublic(match.chatPersonaPublic ?? '');
         }
       })
       .catch((err: ApiError) => setError(err.message));
@@ -62,7 +68,9 @@ export function SettingsTrailPanel() {
     (nameChanged ||
       (kb.description ?? '') !== description ||
       (kb.language ?? 'da') !== language ||
-      (kb.lintPolicy ?? 'trusting') !== lintPolicy);
+      (kb.lintPolicy ?? 'trusting') !== lintPolicy ||
+      (kb.chatPersonaTool ?? '') !== chatPersonaTool ||
+      (kb.chatPersonaPublic ?? '') !== chatPersonaPublic);
 
   const onSave = async () => {
     if (!kb || busy || !dirty || !nameValid) return;
@@ -73,6 +81,10 @@ export function SettingsTrailPanel() {
         description: description.trim() === '' ? null : description,
         language,
         lintPolicy,
+        // Empty string maps to null on the wire = "clear back to default
+        // template". Server PATCH treats null + empty equivalently.
+        chatPersonaTool: chatPersonaTool.trim() === '' ? null : chatPersonaTool,
+        chatPersonaPublic: chatPersonaPublic.trim() === '' ? null : chatPersonaPublic,
       });
       setKb(updated);
       setToast({ kind: 'success', text: t('settings.savedToast') });
@@ -217,6 +229,51 @@ export function SettingsTrailPanel() {
           </div>
           <p class="mt-1.5 text-[11px] text-[color:var(--color-fg-subtle)] max-w-md">
             {t(`kbs.lintPolicy.${lintPolicy}Hint`)}
+          </p>
+        </section>
+
+        <section class="pt-2 border-t border-[color:var(--color-border)]">
+          <div class="mb-3">
+            <h2 class="text-sm font-medium">{t('settings.trail.personas.title')}</h2>
+            <p class="mt-1 text-[11px] text-[color:var(--color-fg-subtle)] max-w-md">
+              {t('settings.trail.personas.subtitle')}
+            </p>
+          </div>
+
+          <label class="block mb-2">
+            <span class="text-sm font-medium">{t('settings.trail.personas.toolLabel')}</span>
+            <span class="ml-2 text-[11px] font-mono uppercase tracking-wider text-[color:var(--color-fg-subtle)]">
+              audience: tool
+            </span>
+          </label>
+          <textarea
+            value={chatPersonaTool}
+            onInput={(e) => setChatPersonaTool((e.target as HTMLTextAreaElement).value)}
+            placeholder={t('settings.trail.personas.toolPlaceholder')}
+            maxLength={4000}
+            rows={4}
+            class="w-full px-3 py-2 rounded-md border border-[color:var(--color-border)] bg-transparent text-sm font-mono leading-relaxed resize-y focus:outline-none focus:border-[color:var(--color-accent)] transition"
+          />
+          <p class="mt-1 mb-4 text-[11px] text-[color:var(--color-fg-subtle)]">
+            {t('settings.trail.personas.toolHint')}
+          </p>
+
+          <label class="block mb-2">
+            <span class="text-sm font-medium">{t('settings.trail.personas.publicLabel')}</span>
+            <span class="ml-2 text-[11px] font-mono uppercase tracking-wider text-[color:var(--color-fg-subtle)]">
+              audience: public
+            </span>
+          </label>
+          <textarea
+            value={chatPersonaPublic}
+            onInput={(e) => setChatPersonaPublic((e.target as HTMLTextAreaElement).value)}
+            placeholder={t('settings.trail.personas.publicPlaceholder')}
+            maxLength={4000}
+            rows={5}
+            class="w-full px-3 py-2 rounded-md border border-[color:var(--color-border)] bg-transparent text-sm font-mono leading-relaxed resize-y focus:outline-none focus:border-[color:var(--color-accent)] transition"
+          />
+          <p class="mt-1 text-[11px] text-[color:var(--color-fg-subtle)]">
+            {t('settings.trail.personas.publicHint')}
           </p>
         </section>
 

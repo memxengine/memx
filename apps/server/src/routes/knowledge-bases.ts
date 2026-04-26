@@ -221,6 +221,21 @@ kbRoutes.patch('/knowledge-bases/:id', async (c) => {
   if (body.description !== undefined) updates.description = body.description;
   if (body.language !== undefined) updates.language = body.language;
   if (body.lintPolicy !== undefined) updates.lintPolicy = body.lintPolicy;
+  // F160 Phase 2 — accept persona overrides on PATCH so curators can
+  // edit them via the Settings → Trail panel. Empty-string is treated
+  // as "clear back to default" by normalising to null.
+  if (body.chatPersonaTool !== undefined) {
+    updates.chatPersonaTool =
+      body.chatPersonaTool && body.chatPersonaTool.trim().length > 0
+        ? body.chatPersonaTool
+        : null;
+  }
+  if (body.chatPersonaPublic !== undefined) {
+    updates.chatPersonaPublic =
+      body.chatPersonaPublic && body.chatPersonaPublic.trim().length > 0
+        ? body.chatPersonaPublic
+        : null;
+  }
 
   await trail.db.update(knowledgeBases).set(updates).where(eq(knowledgeBases.id, kbId)).run();
 

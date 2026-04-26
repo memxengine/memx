@@ -104,6 +104,10 @@ export function updateKnowledgeBase(
     description?: string | null;
     language?: string;
     lintPolicy?: 'trusting' | 'strict';
+    /** F160 — null clears back to default; omit to leave unchanged. */
+    chatPersonaTool?: string | null;
+    /** F160 — null clears back to default; omit to leave unchanged. */
+    chatPersonaPublic?: string | null;
   },
 ): Promise<KnowledgeBase> {
   return api(`/api/v1/knowledge-bases/${encodeURIComponent(kbId)}`, {

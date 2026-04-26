@@ -505,7 +505,17 @@
       "descriptionLabel": "Beskrivelse",
       "descriptionPlaceholder": "En eller to sætninger om hvad denne Trail indeholder.",
       "languageLabel": "Sprog",
-      "languageHint": "Sproget som LLM-genereret indhold på denne Trail bruger — både Neuron-kompilering fra Kilder OG F96 action-recommender-begrundelser. Admin-UI'et kører stadig på det sprog du har valgt i sprog-skifteren øverst; kun indholdet følger denne indstilling."
+      "languageHint": "Sproget som LLM-genereret indhold på denne Trail bruger — både Neuron-kompilering fra Kilder OG F96 action-recommender-begrundelser. Admin-UI'et kører stadig på det sprog du har valgt i sprog-skifteren øverst; kun indholdet følger denne indstilling.",
+      "personas": {
+        "title": "Chat-personas (eksterne integrationer)",
+        "subtitle": "Når denne Trail bliver spurgt via Bearer-token-chat (fx en indlejret widget eller en site-LLM-orchestrator), bliver disse tekststykker tilføjet base-templaten. Lad stå tomt for at bruge default.",
+        "toolLabel": "Tool-persona",
+        "toolPlaceholder": "Tal ALTID om dette emne fra en klinisk-neutral position; foreslå aldrig booking eller handlinger.",
+        "toolHint": "Til site-LLM'er der henter Trail-indhold som ét værktøj blandt flere. Hold prose faktuel — din orchestrator styrer tone + handlinger.",
+        "publicLabel": "Public-persona",
+        "publicPlaceholder": "Du er Sanne Andersen, zoneterapeut i Aalborg. Booking via sanne-andersen.dk/book. Tone: varm, dansk, du-form.",
+        "publicHint": "Til chat-widgets der renderer Trail's svar direkte til slutbrugere. Etablér identitet, stemme, og hvad der naturligt kan foreslås som næste skridt."
+      }
     },
     "account": {
       "title": "Konto",
