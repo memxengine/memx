@@ -1,9 +1,9 @@
 import { createClient, type Client as LibSqlClient } from '@libsql/client';
 import { drizzle } from 'drizzle-orm/libsql';
-import { migrate } from 'drizzle-orm/libsql/migrator';
 import { mkdirSync } from 'node:fs';
 import { dirname, join, isAbsolute, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { runMigrationsByHash } from './migrate-runner.js';
 import * as schema from './schema.js';
 import type {
   TrailDatabase,
@@ -64,7 +64,10 @@ export class LibsqlTrailDatabase implements TrailDatabase {
     this.assertOpen();
     const here = dirname(fileURLToPath(import.meta.url));
     const migrationsFolder = join(here, '..', 'drizzle');
-    await migrate(this.db, { migrationsFolder });
+    // Hash-based runner — see migrate-runner.ts for why drizzle's stock
+    // libsql migrator was replaced (timestamp-ordering bug + whole-file
+    // execute bug both bit us in April 2026).
+    await runMigrationsByHash(this.client, migrationsFolder);
   }
 
   async initFTS(): Promise<void> {

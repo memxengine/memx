@@ -36,6 +36,9 @@ export type {
 // ── Factory ────────────────────────────────────────────────────────
 export { createLibsqlDatabase, LibsqlTrailDatabase } from './libsql-adapter.js';
 
+// ── Hash-based migration runner (escape-hatch for tools/probes) ────
+export { runMigrationsByHash } from './migrate-runner.js';
+
 // ── F153 Backup primitive ──────────────────────────────────────────
 export { snapshotDb } from './backup.js';
 export type { SnapshotResult, SnapshotOptions } from './backup.js';
