@@ -16,6 +16,13 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runChat, buildSystemPrompt, type PriorTurn } from '../services/chat/index.js';
 import { consumeCredits } from '../services/credits.js';
+import {
+  parseAudienceParam,
+  defaultAudienceForAuth,
+  type Audience,
+} from '../services/audience.js';
+import { stripForAudience } from '../services/chat/postprocess.js';
+import type { AppBindings } from '../app.js';
 
 // F159 Phase 1 bumped default from 5 to 8. Chat with tool use needs
 // headroom: a typical compound query (search → read → search → read →
@@ -71,7 +78,7 @@ const CHAT_ALLOWED_TOOL_LIST: ReadonlyArray<string> = [
   'mcp__trail__trail_stats',
 ];
 
-export const chatRoutes = new Hono();
+export const chatRoutes = new Hono<AppBindings>();
 
 chatRoutes.use('*', requireAuth);
 
@@ -101,6 +108,9 @@ chatRoutes.post('/chat', async (c) => {
     chatBackend: knowledgeBases.chatBackend,
     chatModel: knowledgeBases.chatModel,
     chatFallbackChain: knowledgeBases.chatFallbackChain,
+    // F160 Phase 2 — per-KB persona overrides for tool/public audiences.
+    chatPersonaTool: knowledgeBases.chatPersonaTool,
+    chatPersonaPublic: knowledgeBases.chatPersonaPublic,
   };
   const kbs = resolvedKbId
     ? await trail.db
@@ -166,7 +176,29 @@ chatRoutes.post('/chat', async (c) => {
   // knowledge_base arg, but when omitted they default to the Trail scoped
   // via env (TRAIL_KNOWLEDGE_BASE_ID) — which is always the *current* KB.
   const currentTrailName = kbs.length === 1 ? kbs[0]!.name : null;
-  const systemPrompt = buildSystemPrompt({ currentTrailName, context });
+
+  // F160 Phase 2 — pick audience + per-KB persona override before
+  // building the system prompt. Default audience: `tool` for Bearer
+  // (external integrations), `curator` for session-cookie (admin UI).
+  // Caller can always override via body.audience.
+  const authType = c.get('authType');
+  const audience: Audience =
+    parseAudienceParam(body.audience ?? null) ?? defaultAudienceForAuth(authType);
+  const primaryKbForPrompt = resolvedKbId
+    ? (kbs.find((k) => k.id === resolvedKbId) ?? kbs[0]!)
+    : kbs[0]!;
+  const kbPersonaOverride =
+    audience === 'tool'
+      ? primaryKbForPrompt.chatPersonaTool
+      : audience === 'public'
+        ? primaryKbForPrompt.chatPersonaPublic
+        : null;
+  const systemPrompt = buildSystemPrompt({
+    currentTrailName,
+    context,
+    audience,
+    kbPersonaOverride,
+  });
 
   // F30 — server-side render of [[wiki-links]] into `[display](href)`
   // markdown. Consumers (widget, API clients, non-admin integrators)
@@ -211,7 +243,9 @@ chatRoutes.post('/chat', async (c) => {
         chatFallbackChain: primaryKb.chatFallbackChain,
       },
     });
-    const { answer } = result;
+    // F160 Phase 2 — strip wiki-links + "Kilder:"-section for tool /
+    // public audiences. Admin (curator) keeps the raw markdown.
+    const answer = stripForAudience(result.answer, audience);
     const sessionId = await persistTurnPair(
       trail,
       tenant.id,
@@ -233,7 +267,12 @@ chatRoutes.post('/chat', async (c) => {
     const turnsUsed = sessionId ? await countUserTurns(trail, sessionId, tenant.id) : 1;
     return c.json({
       answer,
-      renderedAnswer: renderAnswer(answer),
+      // For tool / public audience there are no `[[wiki-links]]` left in
+      // the answer (postprocess stripped them), so renderedAnswer is
+      // identical content but kept for response-shape stability across
+      // audiences. Admin curator gets the rewriteWikiLinks pass that
+      // resolves to admin-paths.
+      renderedAnswer: audience === 'curator' ? renderAnswer(answer) : answer,
       citations,
       sessionId,
       // F159 — surface backend + model on every reply so the admin UI
@@ -243,6 +282,9 @@ chatRoutes.post('/chat', async (c) => {
       model: result.modelUsed,
       turnsUsed,
       turnsLimit: CHAT_MAX_TURNS_PER_SESSION,
+      // F160 — echo back the resolved audience so the client knows
+      // which template was used (useful for debugging integrations).
+      audience,
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

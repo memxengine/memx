@@ -82,6 +82,13 @@ export const knowledgeBases = sqliteTable(
     chatBackend: text('chat_backend'),
     chatModel: text('chat_model'),
     chatFallbackChain: text('chat_fallback_chain'),
+    // F160 Phase 2 — per-KB persona overrides for audience-aware chat.
+    // Both NULL (default) means "use base template unchanged". When
+    // set, the text is appended to the resolved tool/public persona-
+    // template under a "## KB-specific persona" header. curator
+    // audience has no per-KB override — admin tone is shared.
+    chatPersonaTool: text('chat_persona_tool'),
+    chatPersonaPublic: text('chat_persona_public'),
     createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
     updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
   },

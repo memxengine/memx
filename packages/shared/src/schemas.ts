@@ -375,6 +375,11 @@ export const ChatRequestSchema = z.object({
   // chat endpoint creates a new session and returns its id so the client
   // can append subsequent turns to it.
   sessionId: z.string().optional(),
+  // F160 — audience-aware chat. Controls which persona-template the
+  // server uses to shape prose tone + which output post-processing
+  // applies. Default: `tool` for Bearer auth, `curator` for session.
+  // External integrations explicitly pass `tool` or `public`.
+  audience: z.enum(['curator', 'tool', 'public']).optional(),
 });
 
 export const ChatResponseSchema = z.object({

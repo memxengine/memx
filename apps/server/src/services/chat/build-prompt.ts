@@ -1,16 +1,31 @@
 /**
  * F159 Phase 1 — prompt construction helpers.
+ * F160 Phase 2 — audience-aware persona templates with per-KB overrides.
  *
- * Lifted verbatim from the pre-F159 chat.ts so both the CLI backend
- * (today) and the OpenRouter / Claude-API backends (Phase 2) can share
- * the same exact prompt shape. Identical bytes in === identical bytes
- * out — no behaviour drift between backends.
+ * `buildSystemPrompt` is the system-role text the chat-LLM sees first.
+ * Three audiences (curator / tool / public) map to three persona-template
+ * markdown files in `apps/server/src/data/personas/`. Each template
+ * contains a `{{TRAIL_CONTEXT}}` placeholder that gets replaced with
+ * the per-call wiki-context block (or removed entirely when the call
+ * has no retrieved context to share).
  *
- * `buildSystemPrompt` is the system-role text Claude sees first; for
- * the OpenRouter / Claude-API backends this becomes `system:` on the
- * messages array directly. For the CLI backend it gets concatenated
- * into the `-p` prompt by `buildCliPrompt`.
+ * Per-KB persona overrides (knowledge_bases.chat_persona_tool /
+ * chat_persona_public) are appended to the resolved template under a
+ * `## KB-specific persona` header so curators can sharpen tone without
+ * rewriting the whole template. `curator` audience has no per-KB
+ * override — admin tone is shared across all KBs the curator owns.
+ *
+ * Template files are read fresh on every call. They are tiny (~2KB),
+ * filesystem reads are sub-millisecond, and not caching keeps the
+ * dev-edit loop instant. If this ever shows up in profiling we can
+ * add an in-process cache with mtime invalidation; until then,
+ * simplicity wins.
  */
+
+import { readFileSync } from 'node:fs';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import type { Audience } from '../audience.js';
 
 export interface PriorTurn {
   role: 'user' | 'assistant';
@@ -24,32 +39,61 @@ export interface SystemPromptInput {
   /** Pre-formatted "Wiki Context (from content search)" block, or
    *  empty string when retrieveContext found nothing. */
   context: string;
+  /**
+   * F160 — which persona-template to load. Defaults to `curator` for
+   * back-compat with pre-F160 callers (admin chat). External Bearer
+   * routes pass `tool` or `public` explicitly.
+   */
+  audience?: Audience;
+  /**
+   * F160 — per-KB persona override appended under "## KB-specific
+   * persona". Pass null/undefined when KB has no override (default).
+   * Ignored entirely for `curator` audience — see module header.
+   */
+  kbPersonaOverride?: string | null;
 }
 
-export function buildSystemPrompt({ currentTrailName, context }: SystemPromptInput): string {
-  const hasContext = context.trim().length > 0;
-  return `You are a knowledgeable assistant with access to tools that query the user's Trail (knowledge base). Answer their question accurately.
+const THIS_DIR = dirname(fileURLToPath(import.meta.url));
+const PERSONA_DIR = resolve(THIS_DIR, '../../data/personas');
 
-${currentTrailName ? `## Current Trail\nThe user is currently viewing the Trail called **"${currentTrailName}"**. Always call tools WITHOUT a \`knowledge_base\` argument so they default to this Trail automatically.\n\n` : ''}${
-    hasContext
-      ? `## Wiki Context (from content search)\n${context}\n\n`
-      : ''
-  }## Tools available
-- **count_neurons / count_sources** — exact counts with optional filters
-- **queue_summary** — curation queue state
-- **trail_stats** — one-shot overview (Neurons, Sources, pending, oldest/newest)
-- **recent_activity** — last N wiki events
-- **search** — browse or FTS5 search wiki + sources
-- **read** — fetch a specific document's full content
+function loadTemplate(audience: Audience): string {
+  const file = `chat-${audience}.md`;
+  return readFileSync(resolve(PERSONA_DIR, file), 'utf8');
+}
 
-## Instructions
-- Answer in the same language as the question
-- For *structural* questions (counts, lists, queue state) call a tool — don't guess from context
-- For *content* questions prefer the wiki context above; only call tools if the context doesn't cover it
-- Be concise (max 300 words)
-- Use **bold** for key terms
-- Reference wiki pages with [[page-name]] links where relevant
-- If tools and context both come up empty, say so honestly`;
+export function buildSystemPrompt({
+  currentTrailName,
+  context,
+  audience = 'curator',
+  kbPersonaOverride = null,
+}: SystemPromptInput): string {
+  const template = loadTemplate(audience);
+
+  // Build the {{TRAIL_CONTEXT}} substitution. For audiences that don't
+  // need a heavy "Current Trail" section we still want the wiki-context
+  // block when present — that's where the LLM gets its facts. Curator
+  // audience also gets the explicit Trail name so its MCP tool calls
+  // default to the right KB; tool/public audiences typically don't have
+  // tool access in the same way (they're called via /chat which lets
+  // tools fire, but the trail-name is already implicit in the kbId
+  // scope of the request).
+  const trailLine = currentTrailName && audience === 'curator'
+    ? `## Current Trail\nThe user is currently viewing the Trail called **"${currentTrailName}"**. Always call tools WITHOUT a \`knowledge_base\` argument so they default to this Trail automatically.\n\n`
+    : '';
+  const contextBlock = context.trim().length > 0
+    ? `## Wiki Context (from content search)\n${context}`
+    : '';
+  const trailContext = `${trailLine}${contextBlock}`.trim();
+
+  let prompt = template.replace('{{TRAIL_CONTEXT}}', trailContext);
+
+  // Append per-KB persona override (tool + public only). Curator audience
+  // gets the override stripped intentionally — admin tone is global.
+  if (audience !== 'curator' && kbPersonaOverride && kbPersonaOverride.trim()) {
+    prompt += `\n\n## KB-specific persona\n\n${kbPersonaOverride.trim()}`;
+  }
+
+  return prompt;
 }
 
 /**
