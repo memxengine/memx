@@ -18,6 +18,7 @@
     "@trail/pipelines": "workspace:*",
     "@trail/shared": "workspace:*",
     "@trail/storage": "workspace:*",
+    "@trailmem/sdk": "workspace:*",
     "drizzle-orm": "^0.45.2",
     "hono": "^4.6.0",
     "p-limit": "^7.3.0",

@@ -1,0 +1,19 @@
+{
+  "name": "@trailmem/sdk",
+  "version": "0.0.1",
+  "description": "TypeScript client for the Trail HTTP API. Three-tier integration contract: retrieval (Lag 1), knowledge-prose (Lag 2), and render-ready chat (Lag 3).",
+  "license": "FSL-1.1-Apache-2.0",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist .turbo"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

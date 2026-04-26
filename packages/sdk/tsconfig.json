@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    /* The SDK targets any modern runtime: Node 18+, Bun, Deno,
+       Cloudflare Workers, and browsers. All have global `fetch`,
+       `URLSearchParams`, and `RequestInit` from the Web Fetch
+       standard. We add DOM types only for these globals — there
+       are no DOM-specific APIs used in the SDK. */
+    "lib": ["ES2022", "DOM"]
+  },
+  "include": ["src/**/*"]
+}
