@@ -35,6 +35,16 @@ import { CenteredLoader } from '../components/centered-loader';
  * stable UUID, so a Neuron rename doesn't break the citation link.
  */
 
+/**
+ * F156 Phase 1 — fallback turn-cap used when restoring an existing
+ * session before any chat response has landed (server-side
+ * CHAT_MAX_TURNS_PER_SESSION default). The first chat response
+ * overwrites this with the server's authoritative value, so this
+ * only matters for the brief "loaded history, haven't asked yet"
+ * window.
+ */
+const CHAT_TURN_LIMIT_FALLBACK = 6;
+
 interface LocalTurn {
   id: string;
   role: 'user' | 'assistant';
@@ -110,6 +120,11 @@ export function ChatPanel() {
   const [renameTarget, setRenameTarget] = useState<ChatSession | null>(null);
   const [renameTitle, setRenameTitle] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<ChatSession | null>(null);
+  // F156 Phase 1 — per-session turn budget. Updated from every chat
+  // response. `used >= limit` blocks the input + shows the hard
+  // "start ny chat" prompt; `used === limit - 1` shows the soft
+  // warning "1 svar tilbage". Null until the first response lands.
+  const [turnBudget, setTurnBudget] = useState<{ used: number; limit: number } | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   const reloadSessions = useCallback(() => {
@@ -127,14 +142,25 @@ export function ChatPanel() {
   useEffect(() => {
     if (!activeId) {
       setTurns([]);
+      setTurnBudget(null);
       return;
     }
     setTurnsLoading(true);
     getChatSession(activeId)
       .then((d) => {
-        setTurns(d.turns.map(turnFromRow));
+        const localTurns = d.turns.map(turnFromRow);
+        setTurns(localTurns);
+        // Re-derive the turn budget from history so a returning
+        // curator sees "5/6 — 1 svar tilbage" before they type. The
+        // server still authoritative-counts on the next POST; this
+        // is a hint, not a gate.
+        const userCount = localTurns.filter((t) => t.role === 'user').length;
+        setTurnBudget({ used: userCount, limit: CHAT_TURN_LIMIT_FALLBACK });
       })
-      .catch(() => setTurns([]))
+      .catch(() => {
+        setTurns([]);
+        setTurnBudget(null);
+      })
       .finally(() => setTurnsLoading(false));
   }, [activeId]);
 
@@ -198,8 +224,29 @@ export function ChatPanel() {
       if (res.sessionId && res.sessionId !== activeId) {
         setActiveId(res.sessionId);
       }
+      // F156 Phase 1 — server is authoritative on turn budget. The
+      // count it returns is post-persist (this turn already counted).
+      if (typeof res.turnsUsed === 'number' && typeof res.turnsLimit === 'number') {
+        setTurnBudget({ used: res.turnsUsed, limit: res.turnsLimit });
+      }
       reloadSessions();
     } catch (err) {
+      // F156 Phase 1 — 429 + session_turn_cap_reached means the server
+      // refused before running the LLM. Pin the budget at the cap so the
+      // banner switches to the hard-limit prompt, drop the optimistic
+      // assistant placeholder rather than showing a generic error.
+      if (
+        err instanceof ApiError &&
+        err.status === 429 &&
+        err.code === 'session_turn_cap_reached'
+      ) {
+        const used = Number(err.body?.turnsUsed ?? CHAT_TURN_LIMIT_FALLBACK);
+        const limit = Number(err.body?.turnsLimit ?? CHAT_TURN_LIMIT_FALLBACK);
+        setTurnBudget({ used, limit });
+        setTurns((prev) => prev.filter((t) => t.id !== localAid && t.id !== localQid));
+        setInput(q);
+        return;
+      }
       const msg = err instanceof ApiError ? err.message : String(err);
       setTurns((prev) =>
         prev.map((t) => (t.id === localAid ? { ...t, error: msg, pending: false } : t)),
@@ -214,6 +261,7 @@ export function ChatPanel() {
     setActiveId(null);
     setTurns([]);
     setInput('');
+    setTurnBudget(null);
     setSidebarOpen(false);
   }, []);
 
@@ -324,6 +372,13 @@ export function ChatPanel() {
 
   const activeSession = sessions?.find((s) => s.id === activeId) ?? null;
 
+  // F156 Phase 1 — derive cap-state from the budget. atTurnLimit blocks
+  // the input + button; oneTurnLeft shows the soft warning. Both are
+  // false until the first response (or session restore) sets the
+  // budget.
+  const atTurnLimit = !!turnBudget && turnBudget.used >= turnBudget.limit;
+  const oneTurnLeft = !!turnBudget && !atTurnLimit && turnBudget.used === turnBudget.limit - 1;
+
   return (
     <div class="page-shell">
       <div class="flex gap-6 min-h-[calc(100vh-10rem)]">
@@ -381,19 +436,40 @@ export function ChatPanel() {
             class="sticky bottom-0 bg-[color:var(--color-bg)]/90 backdrop-blur-sm pt-4 pb-6"
             onSubmit={(e) => {
               e.preventDefault();
+              if (atTurnLimit) return;
               ask();
             }}
           >
+            {turnBudget && atTurnLimit ? (
+              <div class="mb-3 rounded-md border border-[color:var(--color-warning)]/40 bg-[color:var(--color-warning)]/10 px-4 py-3 text-sm flex items-center justify-between gap-3">
+                <span>
+                  Denne chat har nået sin grænse på {turnBudget.limit} svar.
+                  Start en ny chat for at fortsætte.
+                </span>
+                <button
+                  type="button"
+                  onClick={startNewChat}
+                  class="px-3 py-1.5 rounded-md bg-[color:var(--color-accent)] text-[color:var(--color-accent-fg)] font-medium text-xs hover:brightness-105 active:scale-[0.98] transition whitespace-nowrap"
+                >
+                  Start ny chat
+                </button>
+              </div>
+            ) : turnBudget && oneTurnLeft ? (
+              <div class="mb-3 rounded-md border border-[color:var(--color-fg-subtle)]/30 bg-[color:var(--color-bg-card)]/60 px-4 py-2 text-xs text-[color:var(--color-fg-muted)]">
+                1 svar tilbage i denne chat ({turnBudget.used}/{turnBudget.limit}).
+              </div>
+            ) : null}
             <div class="flex gap-2">
               <textarea
                 rows={2}
-                placeholder="Ask the Trail…"
+                placeholder={atTurnLimit ? 'Start en ny chat for at fortsætte…' : 'Ask the Trail…'}
                 value={input}
-                disabled={busy}
+                disabled={busy || atTurnLimit}
                 onInput={(e) => setInput((e.currentTarget as HTMLTextAreaElement).value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
+                    if (atTurnLimit) return;
                     ask();
                   }
                 }}
@@ -401,7 +477,7 @@ export function ChatPanel() {
               />
               <button
                 type="submit"
-                disabled={!input.trim() || busy}
+                disabled={!input.trim() || busy || atTurnLimit}
                 class="px-5 py-2 rounded-md bg-[color:var(--color-accent)] text-[color:var(--color-accent-fg)] font-medium text-sm hover:brightness-105 active:scale-[0.98] disabled:bg-[color:var(--color-border)] disabled:text-[color:var(--color-fg-muted)] disabled:cursor-not-allowed transition"
               >
                 {busy ? '…' : 'Ask'}

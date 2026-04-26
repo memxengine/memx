@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { documents, knowledgeBases, chatSessions, chatTurns, type TrailDatabase } from '@trail/db';
-import { and, asc, eq, like } from 'drizzle-orm';
+import { and, asc, eq, like, sql } from 'drizzle-orm';
 import { requireAuth, getTenant, getUser, getTrail } from '../middleware/auth.js';
 import { ChatRequestSchema } from '@trail/shared';
 import { resolveKbId } from '@trail/core';
@@ -15,6 +15,7 @@ import { recordAccess } from '../services/access-tracker.js';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runChat, buildSystemPrompt, type PriorTurn } from '../services/chat/index.js';
+import { consumeCredits } from '../services/credits.js';
 
 // F159 Phase 1 bumped default from 5 to 8. Chat with tool use needs
 // headroom: a typical compound query (search → read → search → read →
@@ -33,6 +34,15 @@ const CHAT_MAX_TURNS = Number(process.env.CHAT_MAX_TURNS ?? 8);
 // to bound the worst-case (a curator pasting a wall of text).
 const CHAT_HISTORY_TURNS = Number(process.env.CHAT_HISTORY_TURNS ?? 10);
 const CHAT_HISTORY_MAX_CHARS_PER_TURN = 2000;
+
+// F156 Phase 1 — per-session conversation cap. After N user-turns in
+// the same chat_session, the next prompt is rejected and the UI prompts
+// the curator to start a new chat. Distinct from CHAT_MAX_TURNS (which
+// caps tool-iterations *within* one assistant response). Default 6 is
+// a development knob; hard limits per tier land with F156 Phase 4 +
+// the tier_caps table. Env-tunable so we can flip it during testing
+// without redeploying.
+const CHAT_MAX_TURNS_PER_SESSION = Number(process.env.CHAT_MAX_TURNS_PER_SESSION ?? 6);
 
 // Resolve the trail MCP entrypoint from this file's location, not from
 // `process.cwd()`. Early version did the latter and broke when the engine
@@ -113,6 +123,26 @@ chatRoutes.post('/chat', async (c) => {
     return c.json({
       answer: 'No knowledge bases found for this tenant. Create a wiki first and add sources.',
     });
+  }
+
+  // F156 Phase 1 — gate before any LLM work. Count user-turns already
+  // persisted in this session; if at/over the cap, reject 429 so the
+  // UI can render the "start ny chat" prompt without burning a Gemini
+  // call. Tenant-scoped via join — a sessionId from another tenant
+  // returns 0 here and falls into the normal new-session path below.
+  if (body.sessionId) {
+    const userTurnCount = await countUserTurns(trail, body.sessionId, tenant.id);
+    if (userTurnCount >= CHAT_MAX_TURNS_PER_SESSION) {
+      return c.json(
+        {
+          error: 'Session turn limit reached',
+          code: 'session_turn_cap_reached',
+          turnsUsed: userTurnCount,
+          turnsLimit: CHAT_MAX_TURNS_PER_SESSION,
+        },
+        429,
+      );
+    }
   }
 
   const { context, citations } = await retrieveContext(
@@ -196,6 +226,11 @@ chatRoutes.post('/chat', async (c) => {
       result.backendUsed,
       result.modelUsed,
     );
+    // F156 Phase 1 — surface where this session sits relative to its
+    // turn-cap so the UI can show the soft warning at N-1 and the
+    // hard "start ny chat" prompt at N. Counted AFTER the persist
+    // above so the freshly-landed user-turn is included.
+    const turnsUsed = sessionId ? await countUserTurns(trail, sessionId, tenant.id) : 1;
     return c.json({
       answer,
       renderedAnswer: renderAnswer(answer),
@@ -206,6 +241,8 @@ chatRoutes.post('/chat', async (c) => {
       // we want to show the user which model they got.
       backend: result.backendUsed,
       model: result.modelUsed,
+      turnsUsed,
+      turnsLimit: CHAT_MAX_TURNS_PER_SESSION,
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -281,10 +318,11 @@ async function persistTurnPair(
         createdAt: now,
       })
       .run();
+    const assistantTurnId = `ctn_${crypto.randomUUID().slice(0, 12)}`;
     await trail.db
       .insert(chatTurns)
       .values({
-        id: `ctn_${crypto.randomUUID().slice(0, 12)}`,
+        id: assistantTurnId,
         sessionId,
         role: 'assistant',
         content: assistantAnswer,
@@ -296,11 +334,26 @@ async function persistTurnPair(
         createdAt: new Date().toISOString(),
       })
       .run();
-    // F156 Phase 0 deliberately does NOT call consumeCredits here. Per
-    // plan-doc Non-Goals: "Ikke credits for chat, lint, tag-extraction,
-    // translation, glossary." Chat cost stays absorbed as background.
-    // chat_turns.cost_cents is still stamped (F159) for the cost panel
-    // breakdown — it's just not deducted.
+    // F156 Phase 1 — chat now consumes credits. Pricing-table revision
+    // 2026-04-25: with F159's pluggable backends we can measure chat
+    // cost honestly via OpenRouter usage.cost (Gemini Flash default
+    // ≈ 0.1 credits/turn so Hobby-tier doesn't deplete on normal use).
+    // Skip when costCents is null/0 — that's the Claude-CLI Max-Plan
+    // path, where Christian's tenant pays $0 per turn.
+    if (costCents != null && costCents > 0) {
+      try {
+        await consumeCredits(trail, tenantId, {
+          costCents,
+          feature: 'chat',
+          relatedChatTurnId: assistantTurnId,
+        });
+      } catch (err) {
+        console.error(
+          '[chat] consumeCredits failed:',
+          err instanceof Error ? err.message : err,
+        );
+      }
+    }
     return sessionId;
   } catch (err) {
     console.error('[chat] persist-turn failed:', err instanceof Error ? err.message : err);
@@ -372,6 +425,37 @@ async function loadPriorTurns(
 function truncateForHistory(content: string): string {
   if (content.length <= CHAT_HISTORY_MAX_CHARS_PER_TURN) return content;
   return content.slice(0, CHAT_HISTORY_MAX_CHARS_PER_TURN) + '…';
+}
+
+/**
+ * Count user-turns persisted for a session, scoped via join to tenant
+ * so a sessionId from another tenant returns 0 (and the gate falls
+ * through to the new-session path). Returns 0 on read errors so a
+ * transient DB hiccup doesn't lock the curator out of chatting.
+ */
+async function countUserTurns(
+  trail: TrailDatabase,
+  sessionId: string,
+  tenantId: string,
+): Promise<number> {
+  try {
+    const row = await trail.db
+      .select({ n: sql<number>`count(*)` })
+      .from(chatTurns)
+      .innerJoin(chatSessions, eq(chatSessions.id, chatTurns.sessionId))
+      .where(
+        and(
+          eq(chatTurns.sessionId, sessionId),
+          eq(chatTurns.role, 'user'),
+          eq(chatSessions.tenantId, tenantId),
+        ),
+      )
+      .get();
+    return Number(row?.n ?? 0);
+  } catch (err) {
+    console.error('[chat] countUserTurns failed:', err instanceof Error ? err.message : err);
+    return 0;
+  }
 }
 
 interface Citation {

@@ -25,27 +25,47 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!response.ok) {
     let message = `${response.status} ${response.statusText}`;
+    let body: Record<string, unknown> | undefined;
     try {
-      const body = await response.json();
+      body = (await response.json()) as Record<string, unknown>;
       if (body.error) {
         message = typeof body.error === 'string' ? body.error : JSON.stringify(body.error);
       }
     } catch {
       // ignore
     }
-    throw new ApiError(response.status, message);
+    throw new ApiError(response.status, message, body);
   }
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
 }
 
 export class ApiError extends Error {
+  /**
+   * Optional structured code from the server's error body — e.g.
+   * F156 emits `code: 'session_turn_cap_reached'` on a 429 so the
+   * chat panel can branch on identity rather than matching message
+   * text. Undefined when the server didn't include one.
+   */
+  public readonly code?: string;
+  /**
+   * The raw parsed JSON body when the server returned one. Lets a
+   * caller pull additional fields (e.g. `turnsUsed`, `turnsLimit`)
+   * without re-parsing.
+   */
+  public readonly body?: Record<string, unknown>;
+
   constructor(
     public status: number,
     message: string,
+    body?: Record<string, unknown>,
   ) {
     super(message);
     this.name = 'ApiError';
+    this.body = body;
+    if (body && typeof body.code === 'string') {
+      this.code = body.code;
+    }
   }
 }
 
@@ -594,6 +614,15 @@ export interface ChatResponse {
   renderedAnswer?: string;
   citations?: ChatCitation[];
   sessionId?: string;
+  /**
+   * F156 Phase 1 — per-session turn budget. `turnsUsed` is the count
+   * AFTER this turn was persisted; `turnsLimit` is the env-tuned cap
+   * (default 6). UI shows a soft warning at limit-1 and a hard
+   * "start ny chat" prompt at limit. Server emits 429 with code
+   * `session_turn_cap_reached` when a 7th attempt arrives.
+   */
+  turnsUsed?: number;
+  turnsLimit?: number;
 }
 
 export interface ChatSession {

@@ -116,7 +116,7 @@ Credits tracker vi i en ny `tenant_credits`-tabel + `credit_transactions`-logbog
 
 ## Non-Goals
 
-- **Ikke credits for chat, lint, tag-extraction, translation, glossary.** De features er altid inkluderet. Vi absorberer den baggrunds-LLM-cost. Ellers bliver produktet uforudsigeligt dyrt at bruge.
+- **Ikke credits for lint, tag-extraction, translation, glossary.** De passive baggrunds-features er altid inkluderet — vi absorberer LLM-cost'en. (Tidligere stod "chat" på denne liste; chat blev flyttet ud i 2026-04-25 revisionen sammen med F159, fordi pluggable backends gjorde det muligt at måle chat-cost ægte og default-modellen Gemini Flash holder per-turn-cost ≈ 0.1 credits — se canonical-tabellen ovenfor og F156 Phase 1.)
 - **Ikke real-time blocking midt i et igangværende ingest-job.** Hvis et job starter med 3 credits tilbage og bruger 5, lades det gå i minus op til 10 % buffer. Efterfølgende jobs blokeres indtil top-up.
 - **Ikke credit-bytte mellem tenants.** Én tenant kan ikke overføre credits til en anden.
 - **Ikke udløbende credits.** Købte credits lever for evigt. (Enterprise-kontrakter kan have eksplicit udløb, men det er contract-specifikt).
@@ -201,6 +201,59 @@ export async function consumeCredits(
   });
 }
 ```
+
+### Per-session chat turn-cap (F156 Phase 1)
+
+Distinct from `tier_caps.daily_chat_turns_max` — that's a daily quota
+across all of a tenant's chat sessions; this is a cap on how many
+question/answer turns belong to a *single* `chat_sessions` row. Once
+the cap is hit, the curator is prompted to start a new chat instead.
+
+**Hvorfor:** even on Gemini Flash where credit-burn is negligible, a
+chat-session that grows past 6–8 turns has accumulated enough context
+that prompt costs grow faster than answer quality. Capping per session
+nudges the curator to reset; the cleared context window also means
+each new session starts faster and answers more crisply.
+
+```typescript
+// apps/server/src/routes/chat.ts — gate before runChat
+
+const CHAT_MAX_TURNS_PER_SESSION = Number(
+  process.env.CHAT_MAX_TURNS_PER_SESSION ?? 6,
+);
+
+if (body.sessionId) {
+  const userTurnCount = await countUserTurns(trail, body.sessionId, tenant.id);
+  if (userTurnCount >= CHAT_MAX_TURNS_PER_SESSION) {
+    return c.json(
+      {
+        error: 'Session turn limit reached',
+        code: 'session_turn_cap_reached',
+        turnsUsed: userTurnCount,
+        turnsLimit: CHAT_MAX_TURNS_PER_SESSION,
+      },
+      429,
+    );
+  }
+}
+```
+
+The successful response also returns `turnsUsed` (post-persist) and
+`turnsLimit` so the admin chat panel renders:
+
+- `turnsUsed === turnsLimit - 1` → soft warning ("1 svar tilbage").
+- `turnsUsed >= turnsLimit` → hard banner with "Start ny chat" button;
+  composer disabled.
+
+The count query joins `chat_turns → chat_sessions` and filters on
+`chat_sessions.tenant_id = caller`, so a sessionId from another tenant
+returns 0 — a curator can't bypass their own cap by guessing or
+leaking another tenant's session id. Verified end-to-end by
+`apps/server/scripts/verify-f156-phase1-chat.ts`.
+
+Default is 6 (development knob). Phase 4 will move this into
+`tier_caps` so business-tier can have a higher (or no) cap; for now
+all tenants share the env-tuned value.
 
 ### Pre-ingest gate
 
