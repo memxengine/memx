@@ -6,8 +6,30 @@ read — it documents only the endpoints we will support across versions.
 The internal admin API (queue mutations, KB CRUD, lint internals) is not
 listed here because it is not a stable contract.
 
-> Engine version: any post-F156 build. Auth, conversation, and turn-cap
-> behaviour are stable from the F156 Phase 1 release onward.
+> Engine version: any post-F160 Phase 1 build (commit 17c14af onwards).
+
+## Pick your integration layer
+
+Trail eksponerer KB-content i tre lag, hver med sin egen LLM-cost-profil.
+Læs dette først — valg af lag bestemmer cost, latency, og hvor meget
+arbejde du skal gøre selv.
+
+| Lag | Endpoint | LLM på Trail | Hvad du får | Bedst når |
+|---|---|---|---|---|
+| **1. Retrieval** | `GET /search`, `POST /retrieve` | **0** (gratis) | Top-K Neurons + chunks som rå data + en pre-formatteret context-blok | Du har egen site-LLM (eller orchestrator) der vil have facts ind som baggrund |
+| **2. Knowledge-prose** | `POST /chat` (`audience: "tool"`) | 1 | Faktuel prosa + strukturerede citations | Du har LLM, men vil have prose-grundlag fremfor rå chunks |
+| **3. Render-ready** | `POST /chat` (`audience: "public"`) | 1 | Varm slutbruger-tone, du-form, action-orienteret | Direct widget — ingen orchestrator, prose embeddes direkte |
+
+**Beslutningstræ**:
+
+- Bygger du en chat-widget der embedder Trail's svar 1:1 i en simpel side? → **Lag 3**.
+- Har du allerede en LLM på dit site (booking, FAQ, e-commerce-bot)? → **Lag 1**, kald Trail som ét tool i din orchestration.
+- Imellem — vil du have prosa men ikke skrive din egen tone-prompt? → **Lag 2**.
+
+**Standard-anbefaling for moderne sites: Lag 1.** Det giver dig fuld kontrol
+over tonen, lader dig kombinere KB-viden med booking/shop/anden data, og du
+betaler kun for ÉN LLM-call (din egen) per brugerprompt. Trail's value er
+KB-pleje (compile, lint, search-index), ikke per-request-syntese.
 
 ## Authentication
 
@@ -52,6 +74,151 @@ valid `scheme://host[:port]` — invalid entries log a warning at boot
 and are dropped, but the engine still starts on the rest.
 
 ## Endpoints
+
+## Lag 1 — Retrieval (anbefalet for site-LLM-orchestratorer)
+
+### `GET /api/v1/knowledge-bases/:kbId/search`
+
+FTS5-search over en KB. Returnerer både matchende hele documents og
+matchende chunks. Brug det når site-LLM'en vil "hvad er der i KB'en
+om dette emne" som en discovery-query — typisk efterfulgt af en
+`/retrieve`-call på den specifikke query.
+
+**Query parameters**
+
+| Param | Type | Default | Notes |
+|---|---|---|---|
+| `q` | string | required | FTS5-tokens (sanitised server-side; `[`, `]`, etc. neutraliseres). `#kbprefix_00000042` er en seqId-direktelookup. |
+| `audience` | `curator` \| `tool` \| `public` | `tool` for Bearer auth | F160 audience-filter. `tool` og `public` ekskluderer Neurons under `/neurons/heuristics/` og dem tagged `internal`. `curator` returnerer alt — kun for admin-UI. |
+| `limit` | int | `10` | Max 50. |
+| `tag` | string (gentaget) | — | Repeated `?tag=foo&tag=bar` filter (AND-semantics). |
+
+**Response (200)**
+
+```json
+{
+  "documents": [
+    {
+      "id": "doc_...",
+      "knowledgeBaseId": "kb_...",
+      "filename": "zoneterapi.md",
+      "title": "Zoneterapi",
+      "path": "/neurons/zoneterapi.md",
+      "kind": "wiki",
+      "highlight": "...zoneterapi <mark>søvn</mark>...",
+      "rank": 0.92,
+      "seq": 17,
+      "tags": "behandling,grundlag"
+    }
+  ],
+  "chunks": [
+    {
+      "id": "chk_...",
+      "documentId": "doc_...",
+      "knowledgeBaseId": "kb_...",
+      "chunkIndex": 0,
+      "content": "Zoneterapi arbejder med...",
+      "headerBreadcrumb": "Zoneterapi > Effekt og virkning",
+      "highlight": "...",
+      "rank": 0.84
+    }
+  ]
+}
+```
+
+### `POST /api/v1/knowledge-bases/:kbId/retrieve`
+
+Det primære integrations-endpoint for site-LLM-orchestratorer.
+Returnerer top-K chunks med fuld content + en pre-formatteret
+`formattedContext`-streng der kan stuffes direkte ind i din site-LLM's
+prompt — ingen second-pass `read`-kald nødvendigt.
+
+**Request body**
+
+```json
+{
+  "query": "klienten klager over dårlig søvn",
+  "audience": "tool",
+  "maxChars": 2000,
+  "topK": 5,
+  "tagFilter": ["sleep"]
+}
+```
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `query` | string | required | Brugerens spørgsmål eller tematisk kerne. |
+| `audience` | enum | `tool` for Bearer | Samme semantik som `/search`. |
+| `maxChars` | int | `2000` | Hard upper-bound på `formattedContext.length`. Caps ved 8000. |
+| `topK` | int | `5` | Max chunks før truncation. Caps ved 25. |
+| `tagFilter` | string[] | `[]` | AND-filter på Neuron-tags. |
+
+**Response (200)**
+
+```json
+{
+  "chunks": [
+    {
+      "documentId": "doc_...",
+      "seqId": "sanne_00000017",
+      "title": "Zoneterapi",
+      "neuronPath": "/neurons/zoneterapi.md",
+      "content": "Zoneterapi arbejder med...",
+      "headerBreadcrumb": "Zoneterapi > Effekt og virkning",
+      "rank": 0.84
+    }
+  ],
+  "formattedContext": "## Zoneterapi — Effekt og virkning\n\nZoneterapi arbejder med...\n\n## Jing — grundlæggende energi\n\n...",
+  "totalChars": 1843,
+  "hitCount": 3
+}
+```
+
+**Tre vigtige garantier:**
+
+1. **`formattedContext.length === totalChars`** — du kan budgettere uden at parse.
+2. **Højere-rank chunks først** — vi tilføjer indtil næste chunk ville sprænge `maxChars`, så du får de mest relevante chunks fremfor mange laverelevant ones.
+3. **Audience-filter er hård** — heuristic-Neurons og `internal`-tagged docs er aldrig i `tool`/`public`-resultater, end ikke ved direkte seqId-lookup.
+
+**Quickstart eksempel — site-LLM-orchestrator (Anthropic SDK):**
+
+```ts
+async function trailRetrieve(query: string): Promise<string> {
+  const res = await fetch(
+    `${process.env.TRAIL_API_BASE}/api/v1/knowledge-bases/${process.env.TRAIL_KB_ID}/retrieve`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.TRAIL_API_KEY}`,
+      },
+      body: JSON.stringify({ query, audience: 'tool', maxChars: 2000, topK: 5 }),
+    },
+  );
+  if (!res.ok) throw new Error(`Trail ${res.status}`);
+  const data = await res.json();
+  return data.formattedContext;  // klar til at stuffe ind i prompt
+}
+
+// I din orchestrator's tool-definition:
+const tools = [{
+  name: 'trail_retrieve',
+  description: 'Hent relevant viden fra KB om brugerens spørgsmål.',
+  input_schema: {
+    type: 'object',
+    properties: { query: { type: 'string' } },
+    required: ['query'],
+  },
+}];
+
+// Når LLM kalder værktøjet:
+if (toolUse.name === 'trail_retrieve') {
+  const ctx = await trailRetrieve(toolUse.input.query);
+  // Send tilbage som tool_result; LLM bruger ctx som baggrund.
+}
+```
+
+## Lag 2/3 — Chat (LLM på Trail-siden)
 
 ### `POST /api/v1/chat`
 
@@ -186,11 +353,22 @@ chat continues on the soft buffer; ingest jobs gate harder. Future
 versions (F44 Usage Metering) will add per-key telemetry and
 opt-in rate limits.
 
-For a public-facing integration: assume a Hobby-tier tenant has
-~100 credits/month and a default-Flash chat costs ~0.1 credits/turn.
-That's ~1 000 chats per month before top-up. If your integration is
-latency-sensitive, cache the previous turn's answer client-side so
-you can show stale-but-relevant content during the LLM round-trip.
+**Lag 1 retrieval (`/search`, `/retrieve`) bruger ingen credits** —
+det er ren DB-lookup. Det er hovedgrunden til at site-LLM-pattern
+er billigere at drive end direct chat-embed.
+
+**Cost-eksempel** for ~1000 brugerprompts/måned:
+
+| Lag | Trail-side cost | Din site-side cost | Total per chat-turn |
+|---|---|---|---|
+| Lag 1 | 0 credits (DB-lookup) | 1× site-LLM-call (Flash ≈ $0.001) | ~$1/måned |
+| Lag 2 | ~0.1 credits (Trail-LLM) | 1× site-LLM-call | ~$1/måned + 100 Trail-credits |
+| Lag 3 | ~0.1 credits | 0 | ~100 Trail-credits |
+
+Lag 1 og Lag 3 er omtrent ens i total cost — forskellen er hvor LLM-
+syntesen sker. Lag 2 er den dyreste (begge sider kører LLM) og er
+typisk kun værd det hvis du SKAL have prose-grounding men ikke vil
+bygge en orchestrator.
 
 ## Quickstart
 

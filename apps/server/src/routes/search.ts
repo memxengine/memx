@@ -4,8 +4,15 @@ import { and, eq } from 'drizzle-orm';
 import { requireAuth, getTenant, getTrail } from '../middleware/auth.js';
 import { parseTags, canonicaliseTag, parseSeqId, kbPrefix } from '@trail/shared';
 import { resolveKbId } from '@trail/core';
+import {
+  parseAudienceParam,
+  defaultAudienceForAuth,
+  isVisibleToAudience,
+  type Audience,
+} from '../services/audience.js';
+import type { AppBindings } from '../app.js';
 
-export const searchRoutes = new Hono();
+export const searchRoutes = new Hono<AppBindings>();
 
 searchRoutes.use('*', requireAuth);
 
@@ -16,6 +23,14 @@ searchRoutes.get('/knowledge-bases/:kbId/search', async (c) => {
   if (!kbId) return c.json({ error: 'Not found' }, 404);
   const query = c.req.query('q') ?? '';
   const limit = Math.min(Number(c.req.query('limit') ?? 10), 50);
+  // F160 — audience-filter. External Bearer integrations default to
+  // `tool` (heuristics + internal-tagged docs hidden). Admin session
+  // gets `curator` (everything visible). Caller can override via
+  // ?audience=. Garbage values silently fall back to default rather
+  // than erroring — saves a round-trip when a typo'd param shows up.
+  const authType = c.get('authType');
+  const audience: Audience =
+    parseAudienceParam(c.req.query('audience')) ?? defaultAudienceForAuth(authType);
   // F92 — repeated ?tag= params narrow the hit list to Neurons whose
   // `tags` column contains every tag (AND-semantics). Canonicalise
   // here so `Ops`, `ops`, and `OPS` all collapse to the same filter
@@ -38,10 +53,16 @@ searchRoutes.get('/knowledge-bases/:kbId/search', async (c) => {
   // would just narrow away the intended result.
   if (query.trim().startsWith('#')) {
     const hit = await lookupBySeqId(trail, tenant.id, kbId, query.trim());
-    if (hit) return c.json({ documents: [hit], chunks: [] });
-    // Unknown #id — return empty rather than silently fall through so the
-    // curator knows the id didn't resolve (not that "nothing looks like that
-    // word either"). Matches how #tag searches behave elsewhere.
+    // F160 — apply audience filter even on direct seqId hits. An
+    // external Bearer caller probing `#sanne_00000017` shouldn't get a
+    // heuristic Neuron back just because they guessed the right seq.
+    if (hit && isVisibleToAudience(audience, hit.path, hit.tags)) {
+      return c.json({ documents: [hit], chunks: [] });
+    }
+    // Unknown #id (or audience-filtered) — return empty rather than
+    // silently fall through so the curator knows the id didn't resolve
+    // (not that "nothing looks like that word either"). Matches how
+    // #tag searches behave elsewhere.
     return c.json({ documents: [], chunks: [] });
   }
 
@@ -56,32 +77,33 @@ searchRoutes.get('/knowledge-bases/:kbId/search', async (c) => {
   // F92 tag facet. searchDocuments returns a narrow projection that
   // doesn't include the tags column, so we re-hydrate tags here for
   // just the doc IDs in the hit list, then filter + decorate.
-  if (tagFilters.length > 0 && documents.length > 0) {
-    const tagMap = await loadTagsForDocIds(
-      trail,
-      tenant.id,
-      documents.map((d) => d.id),
-    );
-    const filtered = documents.filter((d) => {
-      const docTags = parseTags(tagMap.get(d.id) ?? null).map((t) => t.toLowerCase());
-      return tagFilters.every((t) => docTags.includes(t));
-    });
-    return c.json({
-      documents: filtered.map((d) => ({ ...d, tags: tagMap.get(d.id) ?? null })),
-      chunks,
-    });
-  }
-
-  // Even without a tag filter, decorate docs with their tags so the
-  // search UI can render per-hit chips. Saves a second round-trip.
+  // F160 — for non-curator audience we ALSO need tags to apply the
+  // audience-filter (drops Neurons tagged 'internal'), so always
+  // load them when there's a hit list. The tag-load cost is one
+  // small IN-query against an indexed PK list — cheap.
   if (documents.length > 0) {
     const tagMap = await loadTagsForDocIds(
       trail,
       tenant.id,
       documents.map((d) => d.id),
     );
+    let filtered = documents;
+    // F92 explicit tag filter (AND-semantics).
+    if (tagFilters.length > 0) {
+      filtered = filtered.filter((d) => {
+        const docTags = parseTags(tagMap.get(d.id) ?? null).map((t) => t.toLowerCase());
+        return tagFilters.every((t) => docTags.includes(t));
+      });
+    }
+    // F160 audience-filter. curator path is a no-op (isVisibleToAudience
+    // returns true unconditionally), so admin-UI behaviour is unchanged.
+    if (audience !== 'curator') {
+      filtered = filtered.filter((d) =>
+        isVisibleToAudience(audience, d.path, tagMap.get(d.id) ?? null),
+      );
+    }
     return c.json({
-      documents: documents.map((d) => ({ ...d, tags: tagMap.get(d.id) ?? null })),
+      documents: filtered.map((d) => ({ ...d, tags: tagMap.get(d.id) ?? null })),
       chunks,
     });
   }

@@ -8,6 +8,7 @@ import { kbRoutes } from './routes/knowledge-bases.js';
 import { documentRoutes } from './routes/documents.js';
 import { uploadRoutes } from './routes/uploads.js';
 import { searchRoutes } from './routes/search.js';
+import { retrieveRoutes } from './routes/retrieve.js';
 import { userRoutes } from './routes/user.js';
 import { imageRoutes } from './routes/images.js';
 import { chatRoutes } from './routes/chat.js';
@@ -43,6 +44,14 @@ export interface AppBindings {
     trail: TrailDatabase;
     user?: import('./middleware/auth.js').AuthUser;
     tenant?: import('./middleware/auth.js').AuthTenant;
+    /**
+     * F160 — how the request was authenticated. Lets routes pick
+     * sane defaults for audience-aware behaviour: external Bearer
+     * callers default to `tool` audience (no admin-only docs, no
+     * curator-style prose), session-cookie admin-UI defaults to
+     * `curator`.
+     */
+    authType?: 'bearer' | 'session';
   };
 }
 
@@ -118,6 +127,7 @@ export function createApp(trail: TrailDatabase): Hono<AppBindings> {
   app.route('/api/v1', documentRoutes);
   app.route('/api/v1', uploadRoutes);
   app.route('/api/v1', searchRoutes);
+  app.route('/api/v1', retrieveRoutes);
   app.route('/api/v1', userRoutes);
   app.route('/api/v1', imageRoutes);
   app.route('/api/v1', chatRoutes);

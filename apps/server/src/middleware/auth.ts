@@ -64,6 +64,7 @@ export async function requireAuth(c: Context, next: Next): Promise<Response | vo
       }
       c.set('user', row.user);
       c.set('tenant', row.tenant);
+      c.set('authType', 'bearer');
       // last_used_at is best-effort — don't block the request on it
       trail.db
         .update(apiKeys)
@@ -105,6 +106,7 @@ export async function requireAuth(c: Context, next: Next): Promise<Response | vo
     }
     c.set('user', service.user);
     c.set('tenant', service.tenant);
+    c.set('authType', 'bearer');
     return next();
   }
 
@@ -129,6 +131,7 @@ export async function requireAuth(c: Context, next: Next): Promise<Response | vo
 
   c.set('user', result.user);
   c.set('tenant', result.tenant);
+  c.set('authType', 'session');
   return next();
 }
 
