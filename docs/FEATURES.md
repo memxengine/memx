@@ -330,6 +330,7 @@ Mirror af F149's pluggable ingest pattern, anvendt på chat-routen. Abstraherer 
 | # | Feature | Status | Phase | Plan |
 |---|---------|--------|-------|------|
 | F159 | [Pluggable Chat Backends](features/F159-pluggable-chat-backends.md) | Planned | 1 | [plan](features/F159-pluggable-chat-backends.md) |
+| F160 | [Three-tier integration contract + audience-aware chat](features/F160-three-tier-integration-contract.md) | Planned | 1 | [plan](features/F160-three-tier-integration-contract.md) |
 
 ---
 
