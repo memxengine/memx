@@ -908,6 +908,32 @@ export function getFxRate(from: string, to: string): Promise<FxRate> {
   return api<FxRate>(`/api/v1/fx/rate?from=${from}&to=${to}`);
 }
 
+// ── F156 — Credits ──────────────────────────────────────────────────────
+
+export interface CreditTransaction {
+  id: string;
+  kind: 'consume' | 'monthly_topup' | 'purchase' | 'adjustment' | 'refund';
+  amount: number;
+  balanceAfter: number;
+  feature: 'ingest' | 'chat' | 'lint' | 'extract' | null;
+  relatedIngestJobId: string | null;
+  relatedChatTurnId: string | null;
+  note: string | null;
+  createdAt: string;
+}
+
+export interface CreditsResponse {
+  balance: number;
+  monthlyIncluded: number;
+  lastTopupAt: string | null;
+  updatedAt: string | null;
+  recent: CreditTransaction[];
+}
+
+export function getCredits(): Promise<CreditsResponse> {
+  return api<CreditsResponse>('/api/v1/credits');
+}
+
 // ── F150 — Link-Report panel ────────────────────────────────────────────
 
 export type LinkFindingStatus = 'open' | 'auto_fixed' | 'dismissed';

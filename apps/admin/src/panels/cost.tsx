@@ -6,12 +6,14 @@ import {
   getCostSummary,
   costCsvUrl,
   getCostSources,
+  getCredits,
   getFxRate,
   ApiError,
   type CostSummary,
   type CostSourcesPage,
   type CostSourceSort,
   type CostSortOrder,
+  type CreditsResponse,
   type FxRate,
 } from '../api';
 import { formatCostForLocale } from '../lib/currency';
@@ -72,6 +74,16 @@ export function CostPanel() {
   const [offset, setOffset] = useState(0);
   const [sourcesPage, setSourcesPage] = useState<CostSourcesPage | null>(null);
   const [sourcesLoading, setSourcesLoading] = useState(false);
+
+  // F156 Phase 0 — credits balance card. Tenant-scoped (not KB-scoped),
+  // so loaded once per Cost-panel mount independent of window/kb. Silent
+  // on failure: card hides if the endpoint isn't reachable yet.
+  const [credits, setCredits] = useState<CreditsResponse | null>(null);
+  useEffect(() => {
+    getCredits()
+      .then(setCredits)
+      .catch(() => setCredits(null));
+  }, [kbId]);
 
   // Fetch USD→DKK rate when locale is Danish. Silent on failure —
   // the formatter falls back to USD cents if fxRate stays null.
@@ -216,6 +228,11 @@ export function CostPanel() {
           </a>
         </div>
       </div>
+
+      {/* F156 Phase 0 — Credits card. Tenant-scoped; renders only when
+          the endpoint returned a row (Phase 0 has no UI for buying more
+          — operator seeds via TRAIL_DEV_CREDITS env-var). */}
+      {credits ? <CreditsCard credits={credits} /> : null}
 
       {/* Top-line metrics */}
       <div class="grid grid-cols-3 gap-4">
@@ -395,6 +412,70 @@ export function CostPanel() {
             </tbody>
           </table>
         )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * F156 Phase 0 — credits balance card. Renders the tenant's running
+ * balance + last 5 transactions. No top-up button in v1: dev tenants
+ * are seeded via TRAIL_DEV_CREDITS, paying tenants come in Phase 2 with
+ * Stripe Checkout.
+ */
+function CreditsCard({ credits }: { credits: CreditsResponse }) {
+  const balanceClass =
+    credits.balance < 0
+      ? 'text-red-400'
+      : credits.balance < 100
+        ? 'text-amber-400'
+        : 'text-[color:var(--color-fg)]';
+  const recent = credits.recent.slice(0, 5);
+  return (
+    <div class="p-4 rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-bg-card)]/40">
+      <div class="flex items-end justify-between gap-4">
+        <div>
+          <div class="text-xs font-mono uppercase tracking-wider text-[color:var(--color-fg-muted)] mb-1">
+            {t('cost.credits.balance')}
+          </div>
+          <div class={`text-3xl font-mono ${balanceClass}`}>
+            {credits.balance.toLocaleString()}
+          </div>
+          <div class="text-[11px] font-mono text-[color:var(--color-fg-muted)] mt-1">
+            {credits.monthlyIncluded > 0
+              ? t('cost.credits.monthlyIncluded', {
+                  amount: credits.monthlyIncluded.toLocaleString(),
+                })
+              : t('cost.credits.devSeed')}
+          </div>
+        </div>
+        {recent.length > 0 ? (
+          <div class="text-right text-[11px] font-mono text-[color:var(--color-fg-muted)]">
+            <div class="mb-1 uppercase tracking-wider">{t('cost.credits.recent')}</div>
+            <ul class="space-y-0.5">
+              {recent.map((tx) => (
+                <li key={tx.id} class="flex items-center gap-2 justify-end">
+                  <span class="text-[color:var(--color-fg-subtle)]">
+                    {tx.createdAt.slice(5, 10)}
+                  </span>
+                  <span
+                    class={
+                      tx.amount < 0
+                        ? 'text-red-400/80'
+                        : 'text-[color:var(--color-accent)]'
+                    }
+                  >
+                    {tx.amount > 0 ? '+' : ''}
+                    {tx.amount}
+                  </span>
+                  <span class="text-[color:var(--color-fg-subtle)] uppercase">
+                    {tx.feature ?? tx.kind}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
       </div>
     </div>
   );

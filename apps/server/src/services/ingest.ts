@@ -15,6 +15,7 @@ import { listKbTags } from './tag-aggregate.js';
 import { listKbEntities } from './entity-aggregate.js';
 import { resolveIngestChain } from './ingest/chain.js';
 import { runWithFallback } from './ingest/runner.js';
+import { consumeCredits } from './credits.js';
 
 // F21 — backpressure config loaded once at module load. Tests can set
 // env vars before importing if they need different ceilings.
@@ -734,6 +735,27 @@ GENERAL
       })
       .where(eq(ingestJobs.id, jobId))
       .run();
+
+    // F156 Phase 0 — burn credits matching this job's measured cost.
+    // No-op on Claude-CLI Max-Plan jobs (costCents=0). Best-effort:
+    // a credits-write failure here doesn't fail the ingest (the curator
+    // has the Neurons already); jobId is recorded so a future
+    // reconciliation script can replay missed consumes.
+    if (runnerResult.costCents > 0) {
+      try {
+        await consumeCredits(trail, job.tenantId, {
+          costCents: runnerResult.costCents,
+          feature: 'ingest',
+          relatedIngestJobId: jobId,
+        });
+      } catch (err) {
+        console.error(
+          '[F156 ingest consume] failed for job',
+          jobId,
+          err instanceof Error ? err.message : err,
+        );
+      }
+    }
 
     // Deterministic source→Neuron ref wiring. Every wiki doc stamped with
     // this jobId (by the MCP write tool during the subprocess) is a product

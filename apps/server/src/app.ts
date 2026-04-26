@@ -24,6 +24,7 @@ import { backupRoutes } from './routes/backups.js';
 import { costRoutes } from './routes/cost.js';
 import { fxRoutes } from './routes/fx.js';
 import { chatSettingsRoutes } from './routes/chat-settings.js';
+import { creditsRoutes } from './routes/credits.js';
 
 /**
  * Hono context variables visible to every handler.
@@ -105,6 +106,8 @@ export function createApp(trail: TrailDatabase): Hono<AppBindings> {
   app.route('/api/v1', fxRoutes);
   // F159 — per-KB chat backend overrides (GET + PATCH /knowledge-bases/:kbId/chat-settings).
   app.route('/api/v1', chatSettingsRoutes);
+  // F156 Phase 0 — credits balance + recent transactions for the cost panel card.
+  app.route('/api/v1', creditsRoutes);
 
   return app;
 }

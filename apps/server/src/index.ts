@@ -6,6 +6,7 @@ import { rewriteWikiToNeurons } from './bootstrap/rewrite-wiki-paths.js';
 import { cleanupExternalOrphans } from './bootstrap/F98-cleanup-external-orphans.js';
 import { seedMissingGlossaryNeurons } from './bootstrap/F102-seed-glossary-neurons.js';
 import { recoverPendingSources } from './bootstrap/recover-pending-sources.js';
+import { seedDevCreditsOnBoot } from './bootstrap/dev-credits.js';
 import { recoverIngestJobs, startBackpressureScheduler } from './services/ingest.js';
 import { startContradictionLint } from './services/contradiction-lint.js';
 import { backfillReferences, startReferenceExtractor } from './services/reference-extractor.js';
@@ -44,6 +45,10 @@ await seedMissingGlossaryNeurons(trail);
 // pipelines. Fire-and-forget: the processXAsync helpers own their
 // status transitions.
 await recoverPendingSources(trail);
+// F156 Phase 0 — top up every tenant to TRAIL_DEV_CREDITS if set.
+// Idempotent; only adds the delta needed to reach the target. Phase 2
+// replaces this with Stripe Checkout self-serve top-up.
+await seedDevCreditsOnBoot(trail);
 // F143 — roll any `running` ingest-jobs back to `queued` and kick the
 // scheduler for each KB with work outstanding. Survives restarts without
 // dropping half a 65-file upload batch on the floor.

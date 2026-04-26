@@ -28,6 +28,12 @@
   },
   "cost": {
     "exportCsv": "Eksportér CSV",
+    "credits": {
+      "balance": "Credits",
+      "monthlyIncluded": "{amount} inkluderet pr. måned",
+      "devSeed": "Dev-seed (TRAIL_DEV_CREDITS)",
+      "recent": "Seneste"
+    },
     "total": "Total",
     "ingest_one": "ingest",
     "ingest_other": "ingests",

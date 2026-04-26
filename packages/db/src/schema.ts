@@ -488,6 +488,56 @@ export const tenantSecrets = sqliteTable(
   },
 );
 
+// ── F156 Phase 0 — credits balance + transactions ────────────────────────────
+// Dev-credits foundation. consumeCredits() decrements `balance` + appends
+// a row to credit_transactions in one tx. UI reads `balance` directly;
+// audit trail lives in transactions. Phase 2 layers Stripe Checkout +
+// monthly auto-topup; Phase 4 adds hard-cap enforcement. See F156 plan-
+// doc for full rollout phases.
+
+export const tenantCredits = sqliteTable('tenant_credits', {
+  tenantId: text('tenant_id').primaryKey().references(() => tenants.id, { onDelete: 'cascade' }),
+  // Current balance in credits (1 credit = 1¢ USD of measured LLM cost
+  // per F156 plan-doc §"Hvordan credits beregnes per ingest"). Can go
+  // negative — Phase 4 hard-enforcement isn't shipped yet.
+  balance: integer('balance').notNull().default(0),
+  // Monthly top-up baseline per tier (Hobby 100 / Starter 400 / Pro 2000
+  // / Business 10000). Phase 0 doesn't auto-top-up; the column is here
+  // so Phase 2 can read it without a schema bump.
+  monthlyIncluded: integer('monthly_included').notNull().default(0),
+  lastTopupAt: text('last_topup_at'),
+  // Used by Phase 3 alert system to dedupe "you're running low" emails.
+  lowBalanceAlertedAt: text('low_balance_alerted_at'),
+  updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+});
+
+export const creditTransactions = sqliteTable(
+  'credit_transactions',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+    // 'consume' | 'monthly_topup' | 'purchase' | 'adjustment' | 'refund'
+    kind: text('kind').notNull(),
+    // Negative for consume, positive for top-ups. balance_after is the
+    // post-transaction balance so dashboard reads don't need a SUM.
+    amount: integer('amount').notNull(),
+    balanceAfter: integer('balance_after').notNull(),
+    // 'ingest' | 'chat' | 'lint' | 'extract'. Null for non-consume rows.
+    feature: text('feature'),
+    relatedIngestJobId: text('related_ingest_job_id'),
+    relatedChatTurnId: text('related_chat_turn_id'),
+    relatedStripeId: text('related_stripe_id'),
+    note: text('note'),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (table) => [
+    index('idx_credit_tx_tenant').on(table.tenantId, table.createdAt),
+    index('idx_credit_tx_kind').on(table.tenantId, table.kind, table.createdAt),
+    index('idx_credit_tx_ingest').on(table.relatedIngestJobId),
+    index('idx_credit_tx_chat').on(table.relatedChatTurnId),
+  ],
+);
+
 // ── F111 — API Keys (bearer auth for extensions + external clients) ──────────
 
 export const apiKeys = sqliteTable(

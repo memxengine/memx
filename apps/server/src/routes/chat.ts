@@ -296,6 +296,11 @@ async function persistTurnPair(
         createdAt: new Date().toISOString(),
       })
       .run();
+    // F156 Phase 0 deliberately does NOT call consumeCredits here. Per
+    // plan-doc Non-Goals: "Ikke credits for chat, lint, tag-extraction,
+    // translation, glossary." Chat cost stays absorbed as background.
+    // chat_turns.cost_cents is still stamped (F159) for the cost panel
+    // breakdown — it's just not deducted.
     return sessionId;
   } catch (err) {
     console.error('[chat] persist-turn failed:', err instanceof Error ? err.message : err);

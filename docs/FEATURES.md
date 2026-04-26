@@ -304,7 +304,7 @@ User-paid LLM-omkostninger via credits-valuta. Hver tier inkluderer en generøs 
 
 | # | Feature | Status | Phase | Plan |
 |---|---------|--------|-------|------|
-| F156 | [Credits-Based LLM Metering](features/F156-credits-based-llm-metering.md) | Planned | 2 | [plan](features/F156-credits-based-llm-metering.md) |
+| F156 | [Credits-Based LLM Metering](features/F156-credits-based-llm-metering.md) | In progress | 2 | [plan](features/F156-credits-based-llm-metering.md) |
 
 ### F157 — Trail iOS App
 

@@ -28,6 +28,12 @@
   },
   "cost": {
     "exportCsv": "Export CSV",
+    "credits": {
+      "balance": "Credits",
+      "monthlyIncluded": "{amount} included monthly",
+      "devSeed": "Dev seed (TRAIL_DEV_CREDITS)",
+      "recent": "Recent"
+    },
     "total": "Total",
     "ingest_one": "ingest",
     "ingest_other": "ingests",
