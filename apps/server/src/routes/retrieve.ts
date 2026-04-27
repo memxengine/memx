@@ -183,6 +183,13 @@ retrieveRoutes.post('/knowledge-bases/:kbId/retrieve', async (c) => {
   // we keep adding chunks in order until the next one would exceed.
   // This prefers fewer high-rank chunks over many low-rank ones — site-
   // LLM benefits more from focused context than scattered crumbs.
+  //
+  // Edge case: if the highest-rank chunk alone exceeds maxChars,
+  // include it truncated rather than returning empty. Truncation
+  // preserves the start of the chunk (PDF-pipeline writes section
+  // headers + intro sentences first), so a partial result is still
+  // useful for site-LLM stuffing. Returning nothing on every too-big
+  // chunk would be worse — caller has no way to recover from that.
   const sections: string[] = [];
   const includedChunks: typeof filtered = [];
   let totalChars = 0;
@@ -191,12 +198,25 @@ retrieveRoutes.post('/knowledge-bases/:kbId/retrieve', async (c) => {
       ? `## ${c.title} — ${c.headerBreadcrumb}`
       : `## ${c.title}`;
     const section = `${header}\n\n${c.content}`;
-    // +2 for the section separator (\n\n) we'll add when joining.
-    const projected = totalChars + section.length + (sections.length > 0 ? 2 : 0);
-    if (projected > maxChars) break;
-    sections.push(section);
-    includedChunks.push(c);
-    totalChars = projected;
+    const sep = sections.length > 0 ? 2 : 0;
+    const projected = totalChars + section.length + sep;
+    if (projected <= maxChars) {
+      sections.push(section);
+      includedChunks.push(c);
+      totalChars = projected;
+      continue;
+    }
+    // Doesn't fit. If we already have at least one chunk, stop —
+    // higher-rank chunks already in. If we have NOTHING yet, include
+    // the head of this chunk truncated to maxChars so the caller
+    // gets the most-relevant content, not an empty response.
+    if (sections.length === 0) {
+      const truncated = section.slice(0, maxChars - 1) + '…';
+      sections.push(truncated);
+      includedChunks.push(c);
+      totalChars = truncated.length;
+    }
+    break;
   }
   const formattedContext = sections.join('\n\n');
 
