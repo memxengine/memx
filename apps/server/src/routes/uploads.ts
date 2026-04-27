@@ -58,13 +58,23 @@ export const uploadRoutes = new Hono();
 uploadRoutes.use('*', requireAuth);
 
 uploadRoutes.post('/knowledge-bases/:kbId/documents/upload', async (c) => {
+  // Diagnostic timing — when an upload hangs we need to know which step
+  // ate the wall-clock. `lap()` returns ms since the request started.
+  // Logs are concise + prefixed so a `grep '[upload]'` fishes out the
+  // entire timeline of any single request without noise. Cheap to keep
+  // in prod (5 console.log calls per upload).
+  const t0 = Date.now();
+  const lap = () => `${Date.now() - t0}ms`;
+
   const trail = getTrail(c);
   const user = getUser(c);
   const tenant = getTenant(c);
   const kbId = await resolveKbId(trail, tenant.id, c.req.param('kbId'));
   if (!kbId) return c.json({ error: 'Knowledge base not found' }, 404);
 
+  console.log(`[upload] handler-entry kb=${kbId} ${lap()}`);
   const formData = await c.req.formData();
+  console.log(`[upload] formData-parsed ${lap()}`);
   const file = formData.get('file') as File | null;
   const path = (formData.get('path') as string) ?? '/';
   const metadataRaw = formData.get('metadata') as string | null;
@@ -92,8 +102,10 @@ uploadRoutes.post('/knowledge-bases/:kbId/documents/upload', async (c) => {
     return c.json({ error: `File type .${ext} not allowed` }, 400);
   }
 
+  console.log(`[upload] file=${file.name} size=${(file.size / 1024 / 1024).toFixed(2)}MB ${lap()}`);
   const docId = crypto.randomUUID();
   const buffer = Buffer.from(await file.arrayBuffer());
+  console.log(`[upload] arrayBuffer-loaded docId=${docId} ${lap()}`);
 
   // F162 — dedup. Compute hash BEFORE storage-write so a duplicate-
   // upload doesn't waste disk on a blob we'll reject. Then query
@@ -103,6 +115,7 @@ uploadRoutes.post('/knowledge-bases/:kbId/documents/upload', async (c) => {
   // non-unique index for lookup-speed but no DB UNIQUE so the
   // force=true escape needs no schema gymnastics.
   const contentHash = createHash('sha256').update(buffer).digest('hex');
+  console.log(`[upload] sha256=${contentHash.slice(0, 12)} ${lap()}`);
   const force = c.req.query('force') === 'true';
   if (!force) {
     const existing = await trail.db
@@ -140,6 +153,7 @@ uploadRoutes.post('/knowledge-bases/:kbId/documents/upload', async (c) => {
   }
 
   await storage.put(sourcePath(tenant.id, kbId, docId, ext), buffer, file.type);
+  console.log(`[upload] storage-written ${lap()}`);
 
   const isText = TEXT_EXTENSIONS.has(ext);
   const initialStatus = isText ? 'ready' : 'pending';
@@ -167,6 +181,7 @@ uploadRoutes.post('/knowledge-bases/:kbId/documents/upload', async (c) => {
       seq: sql<number>`COALESCE((SELECT MAX(${documents.seq}) FROM ${documents} WHERE ${documents.knowledgeBaseId} = ${kbId}), 0) + 1`,
     })
     .run();
+  console.log(`[upload] db-row-inserted ${lap()}`);
 
   if (isText) {
     const content = new TextDecoder().decode(buffer);
@@ -223,6 +238,7 @@ uploadRoutes.post('/knowledge-bases/:kbId/documents/upload', async (c) => {
     triggerIngest({ trail, docId, kbId, tenantId: tenant.id, userId: user.id });
   }
 
+  console.log(`[upload] response-ready 201 ${lap()}`);
   return c.json(doc, 201);
 });
 

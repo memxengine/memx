@@ -1,0 +1,116 @@
+#!/usr/bin/env bash
+#
+# trail-upload — upload one or more files to a Trail KB without going
+# through the admin browser UI. Bypasses Vite's dev-proxy entirely;
+# talks directly to the engine on :58021 with a self-minted Bearer key.
+#
+# Use case: large PDFs (25MB+) where Vite's proxy stalls on multipart
+# bodies. Engine itself handles the upload in ~135ms for 25MB; the
+# bottleneck has only ever been Vite. This script removes Vite from
+# the equation.
+#
+# Usage:
+#   bash scripts/trail-upload <kb-slug> <file> [<file> ...]
+#   bash scripts/trail-upload sanne-andersen ~/Downloads/sannes-bog.pdf
+#   bash scripts/trail-upload --force sanne-andersen file1.pdf file2.pdf
+#
+# Auto-detects engine port from launchd plist or defaults to 58021.
+# Auto-mints a temp API key, uploads, then revokes the key. Existing
+# F162 dedup applies — duplicates print a hint without uploading.
+
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+DB_PATH="${TRAIL_DATA_DIR:-$REPO_ROOT/data}/trail.db"
+ENGINE_PORT="${TRAIL_PORT:-58021}"
+ENGINE_BASE="http://127.0.0.1:${ENGINE_PORT}"
+
+FORCE_FLAG=""
+if [[ "${1:-}" == "--force" ]]; then
+  FORCE_FLAG="?force=true"
+  shift
+fi
+
+if [[ $# -lt 2 ]]; then
+  echo "usage: trail-upload [--force] <kb-slug> <file> [<file> ...]" >&2
+  exit 1
+fi
+
+KB_SLUG="$1"
+shift
+
+# Verify engine is up.
+if ! curl -sS -o /dev/null --max-time 3 "${ENGINE_BASE}/api/health"; then
+  echo "engine not reachable on ${ENGINE_BASE}" >&2
+  echo "  start with: trail start  (or trail restart)" >&2
+  exit 1
+fi
+
+# Mint a temp key directly in the DB. Same shape as admin's
+# /api-keys/POST route — random 64hex prefixed with `trail_`,
+# SHA-256 hash stored, name flags it as ephemeral.
+RAW_KEY="trail_$(openssl rand -hex 32)"
+KEY_HASH="$(printf '%s' "$RAW_KEY" | shasum -a 256 | cut -d' ' -f1)"
+KEY_ID="apk_cli_$(date +%s)_$$"
+
+USER_ID="$(sqlite3 "$DB_PATH" "SELECT id FROM users LIMIT 1")"
+TENANT_ID="$(sqlite3 "$DB_PATH" "SELECT tenant_id FROM users WHERE id = '$USER_ID'")"
+if [[ -z "$USER_ID" || -z "$TENANT_ID" ]]; then
+  echo "no user/tenant in DB — has trail been seeded?" >&2
+  exit 1
+fi
+
+sqlite3 "$DB_PATH" \
+  "INSERT INTO api_keys (id, tenant_id, user_id, name, key_hash) \
+   VALUES ('$KEY_ID', '$TENANT_ID', '$USER_ID', 'cli-upload-$(date +%H%M%S)', '$KEY_HASH')"
+
+cleanup() {
+  sqlite3 "$DB_PATH" "UPDATE api_keys SET revoked_at = datetime('now') WHERE id = '$KEY_ID'" 2>/dev/null || true
+}
+trap cleanup EXIT
+
+# Per file — POST + report.
+EXIT_CODE=0
+for FILE in "$@"; do
+  if [[ ! -f "$FILE" ]]; then
+    echo "skip — not a file: $FILE" >&2
+    EXIT_CODE=1
+    continue
+  fi
+  SIZE_MB="$(du -m "$FILE" | cut -f1)"
+  printf '→ %s (%sMB) ... ' "$(basename "$FILE")" "$SIZE_MB"
+
+  RESP_FILE="$(mktemp)"
+  HTTP_CODE="$(curl -sS -X POST \
+    -H "Authorization: Bearer ${RAW_KEY}" \
+    -F "file=@${FILE}" \
+    -o "$RESP_FILE" \
+    -w '%{http_code}' \
+    --max-time 600 \
+    "${ENGINE_BASE}/api/v1/knowledge-bases/${KB_SLUG}/documents/upload${FORCE_FLAG}")"
+
+  case "$HTTP_CODE" in
+    201)
+      DOC_ID="$(grep -oE '"id":"[^"]+"' "$RESP_FILE" | head -n1 | cut -d'"' -f4)"
+      printf 'OK  doc=%s\n' "${DOC_ID:0:12}"
+      ;;
+    409)
+      EXISTING="$(grep -oE '"existingFilename":"[^"]+"' "$RESP_FILE" | head -n1 | cut -d'"' -f4)"
+      printf 'DUPLICATE — already uploaded as "%s" (use --force to upload anyway)\n' "$EXISTING"
+      ;;
+    400|401|404|413)
+      ERR="$(grep -oE '"error":"[^"]+"' "$RESP_FILE" | head -n1 | cut -d'"' -f4)"
+      printf 'FAIL  http=%s  %s\n' "$HTTP_CODE" "$ERR" >&2
+      EXIT_CODE=1
+      ;;
+    *)
+      printf 'FAIL  http=%s\n' "$HTTP_CODE" >&2
+      head -c 200 "$RESP_FILE" >&2
+      echo >&2
+      EXIT_CODE=1
+      ;;
+  esac
+  rm -f "$RESP_FILE"
+done
+
+exit $EXIT_CODE
