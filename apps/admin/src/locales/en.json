@@ -90,6 +90,37 @@
       "status": "Status"
     }
   },
+  "jobs": {
+    "kind": {
+      "visionRerun": "Run Vision"
+    },
+    "abort": "Cancel job",
+    "background": "Run in background",
+    "completed": "Done",
+    "failed": "Failed",
+    "aborted": "Cancelled",
+    "eta": "{time} left",
+    "described": "Described",
+    "decorative": "Empty",
+    "failed_count": "Failed",
+    "cost": "Cost",
+    "estimate": "estimate",
+    "actual": "actual",
+    "titleCompleted": "{kind} — done",
+    "titleFailed": "{kind} — failed",
+    "titleAborted": "{kind} — cancelled",
+    "completedNoResult": "Done.",
+    "completionHeadline": "Done — {described} images got a new description in {elapsed}.",
+    "completionHeadlineNoneDescribed": "Done — no new descriptions added (out of {total} attempts in {elapsed}).",
+    "decorativeLine": "{n} images had nothing meaningful to describe — usually small graphics or empty boxes.",
+    "failedLine": "{n} images couldn't be described — typically because they're too large (over 5 MB). You can try again later.",
+    "costLine": "Cost: {cost}",
+    "sampleGrid": "Examples",
+    "unknownError": "Unknown error.",
+    "abortedSummary": "You cancelled the job. We got to {partial}. Anything already described stays described.",
+    "badgeLabel": "{n} background",
+    "badgeTooltip": "{n} background job(s) running — click to reopen"
+  },
   "common": {
     "loading": "Loading…",
     "cancel": "Cancel",
@@ -303,6 +334,7 @@
     "runVisionHint": "Re-run Vision on this source's images that don't yet have descriptions",
     "bulkRetry": "Retry ({n})",
     "bulkReingest": "Re-ingest ({n})",
+    "bulkRunVision": "Run Vision ({n})",
     "bulkArchive": "Archive ({n})",
     "neuronCount": "{n} Neurons",
     "neuronCountOne": "1 Neuron",
@@ -310,8 +342,12 @@
     "bulk": {
       "retry": "Retry",
       "reingest": "Re-ingest",
-      "archive": "Archive"
+      "archive": "Archive",
+      "runVisionLabel": "{n} sources selected",
+      "runVisionScope": "{n} sources"
     },
+    "runVisionConfirmTitle": "Run Vision?",
+    "runVisionBody": "Vision AI analyses and describes images that don't yet have a description. The job runs in the background — you see live progress, and can switch to running the job in the background while it works.",
     "bulkDoneToast": "{kind} done — {ok} source(s) processed.",
     "bulkPartialToast": "{kind} partial — {ok} done, {failed} failed.",
     "reingestTitle": "Re-run ingest on this source?",

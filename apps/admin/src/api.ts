@@ -521,6 +521,89 @@ export function rerunVisionForDocument(
   return api(`/api/v1/documents/${encodeURIComponent(docId)}/rerun-vision`, { method: 'POST' });
 }
 
+// ── F164 background jobs ─────────────────────────────────────────────────
+
+/** Mirrors apps/server's serializeJob() shape. */
+export interface Job {
+  id: string;
+  tenantId: string;
+  knowledgeBaseId: string | null;
+  userId: string;
+  kind: 'noop' | 'vision-rerun' | 'bulk-vision-rerun';
+  status: 'pending' | 'running' | 'paused' | 'completed' | 'failed' | 'aborted';
+  payload: unknown;
+  progress: JobProgress | null;
+  result: unknown;
+  errorMessage: string | null;
+  parentJobId: string | null;
+  createdAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  lastHeartbeatAt: string | null;
+  abortRequested: boolean;
+  costCentsEstimated: number | null;
+  costCentsActual: number | null;
+}
+
+export interface JobProgress {
+  current: number;
+  total: number;
+  etaMs?: number | null;
+  phase?: string;
+  extra?: {
+    described?: number;
+    decorative?: number;
+    failed?: number;
+    [k: string]: unknown;
+  };
+}
+
+export interface VisionRerunResult {
+  total: number;
+  described: number;
+  decorative: number;
+  failed: number;
+  model: string;
+  sampleImages: Array<{
+    id: string;
+    documentId: string;
+    filename: string;
+    description: string;
+  }>;
+}
+
+export interface SubmitJobArgs {
+  kind: 'vision-rerun' | 'bulk-vision-rerun';
+  payload: unknown;
+  knowledgeBaseId?: string | null;
+  costCentsEstimated?: number;
+}
+
+export function submitJob(args: SubmitJobArgs): Promise<{ id: string }> {
+  return api('/api/v1/jobs', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(args),
+  });
+}
+
+export function getJob(jobId: string): Promise<Job> {
+  return api(`/api/v1/jobs/${encodeURIComponent(jobId)}`);
+}
+
+export function abortJob(jobId: string): Promise<{ ok: boolean }> {
+  return api(`/api/v1/jobs/${encodeURIComponent(jobId)}/abort`, { method: 'POST' });
+}
+
+export function listJobs(filter: { status?: string; kind?: string; limit?: number } = {}): Promise<{ jobs: Job[] }> {
+  const params = new URLSearchParams();
+  if (filter.status) params.set('status', filter.status);
+  if (filter.kind) params.set('kind', filter.kind);
+  if (filter.limit) params.set('limit', String(filter.limit));
+  const qs = params.toString();
+  return api(`/api/v1/jobs${qs ? `?${qs}` : ''}`);
+}
+
 // ── Search ───────────────────────────────────────────────────────
 
 export interface DocumentSearchHit {

@@ -1,5 +1,6 @@
 import type { ComponentChildren } from 'preact';
 import { useEffect, useRef } from 'preact/hooks';
+import { lockBodyScroll } from '../lib/scroll-lock';
 
 /**
  * Ref-stash for the onClose handler so the effect below can capture
@@ -57,13 +58,14 @@ export function Modal({
       );
       first?.focus();
     }, 0);
-    // Prevent body scroll while open.
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    // Prevent body scroll while open. Ref-counted so overlapping modals
+    // (e.g. visionConfirm closing AS jobProgress opens during Run Vision
+    // submit) don't leak a stale overflow value. See lib/scroll-lock.
+    const releaseLock = lockBodyScroll();
     return () => {
       document.removeEventListener('keydown', onKey);
       clearTimeout(handle);
-      document.body.style.overflow = prevOverflow;
+      releaseLock();
     };
   }, [open]);
 

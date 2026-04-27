@@ -9,14 +9,21 @@ const VISION_MODEL = process.env.VISION_MODEL ?? 'claude-haiku-4-5-20251001';
 
 /**
  * F161 — return the active vision-model name so persistImagesFromExtraction
- * can stamp `vision_model` on document_images rows. Falls back to OpenRouter
- * model when ANTHROPIC_API_KEY is missing (matches `createVisionBackend`'s
- * resolution order).
+ * can stamp `vision_model` on document_images rows.
+ *
+ * F164 Phase 3 reordered the chain to Anthropic-direct primary (4x
+ * faster), OpenRouter fallback. We stamp the PRIMARY's model id when
+ * the key is present — even if a specific call falls back to OpenRouter
+ * mid-job, the doc's "predominantly described by" is still Anthropic.
+ * For NULL-key tenants (rare; only if neither key is set) returns
+ * empty string and the stamp falls back to "" which the schema allows.
  */
 export function getActiveVisionModel(): string {
-  return process.env.ANTHROPIC_API_KEY
-    ? VISION_MODEL
-    : process.env.VISION_MODEL_OPENROUTER ?? 'anthropic/claude-haiku-4.5';
+  if (process.env.ANTHROPIC_API_KEY) return VISION_MODEL;
+  if (process.env.OPENROUTER_API_KEY) {
+    return process.env.VISION_MODEL_OPENROUTER ?? 'anthropic/claude-haiku-4.5';
+  }
+  return '';
 }
 const VISION_TIMEOUT_MS = Number(process.env.VISION_TIMEOUT_MS ?? 20_000);
 
@@ -303,79 +310,122 @@ async function describeEmbeddedViaOpenRouter(
 }
 
 /**
- * Returns a vision backend if configuration allows one; otherwise null and the
- * pipeline skips image descriptions. Prefers Anthropic's vision API for this
- * narrow, image-in/text-out use case (claude CLI's image support is clumsier
- * and per-ingest PDF page counts can be high, so batching through the HTTP
- * API is cleaner). Falls through to OpenRouter when Anthropic is unavailable
- * — matching `describeImageAsSource`'s resolution order so a tenant with only
- * an OpenRouter key still gets PDF-embedded image descriptions (otherwise
- * Sanne's 224-image bog-upload landed with 0 descriptions).
+ * Direct Anthropic-API implementation of the embedded-describer. Lifted
+ * out of createVisionBackend so it can be composed with the OpenRouter
+ * fallback in F164 Phase 3. Throws on any API failure (4xx/5xx, abort,
+ * network) so the caller can route to the next provider.
  */
-export function createVisionBackend(): DescribeImage | null {
-  const anthropicKey = getAnthropicKey();
-  if (anthropicKey) {
-    return async (pngBytes, context) => {
-      const base64 = Buffer.from(pngBytes).toString('base64');
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), VISION_TIMEOUT_MS);
-
-      try {
-        const res = await fetch('https://api.anthropic.com/v1/messages', {
-          method: 'POST',
-          signal: controller.signal,
-          headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': anthropicKey,
-            'anthropic-version': '2023-06-01',
-          },
-          body: JSON.stringify({
-            model: VISION_MODEL,
-            max_tokens: 200,
-            messages: [
+async function describeEmbeddedViaAnthropic(
+  pngBytes: Uint8Array | Buffer,
+  context: { page: number },
+): Promise<string | null> {
+  const apiKey = getAnthropicKey();
+  if (!apiKey) throw new Error('ANTHROPIC_API_KEY not set');
+  const buf = pngBytes instanceof Buffer ? pngBytes : Buffer.from(pngBytes);
+  const base64 = buf.toString('base64');
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), VISION_TIMEOUT_MS);
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: VISION_MODEL,
+        max_tokens: 200,
+        messages: [
+          {
+            role: 'user',
+            content: [
               {
-                role: 'user',
-                content: [
-                  {
-                    type: 'image',
-                    source: { type: 'base64', media_type: 'image/png', data: base64 },
-                  },
-                  {
-                    type: 'text',
-                    text:
-                      `Describe this image from page ${context.page} of a document in 1-2 short sentences.\n` +
-                      `Focus on content (diagrams, charts, labels, people, objects). Do not speculate.\n` +
-                      `If the image is decorative or contains no information, reply with exactly: "decorative".`,
-                  },
-                ],
+                type: 'image',
+                source: { type: 'base64', media_type: 'image/png', data: base64 },
+              },
+              {
+                type: 'text',
+                text:
+                  `Describe this image from page ${context.page} of a document in 1-2 short sentences.\n` +
+                  `Focus on content (diagrams, charts, labels, people, objects). Do not speculate.\n` +
+                  `If the image is decorative or contains no information, reply with exactly: "decorative".`,
               },
             ],
-          }),
-        });
+          },
+        ],
+      }),
+    });
 
-        if (!res.ok) {
-          const body = await res.text();
-          throw new Error(`vision API ${res.status}: ${body.slice(0, 200)}`);
-        }
-        const data = (await res.json()) as { content: Array<{ type: string; text: string }> };
-        const text = data.content
-          .filter((c) => c.type === 'text')
-          .map((c) => c.text)
-          .join(' ')
-          .trim();
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(`anthropic vision ${res.status}: ${body.slice(0, 200)}`);
+    }
+    const data = (await res.json()) as { content: Array<{ type: string; text: string }> };
+    const text = data.content
+      .filter((c) => c.type === 'text')
+      .map((c) => c.text)
+      .join(' ')
+      .trim();
 
-        if (!text || text.toLowerCase() === 'decorative') return null;
-        return text;
-      } finally {
-        clearTimeout(timer);
+    if (!text || text.toLowerCase() === 'decorative') return null;
+    return text;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * F164 Phase 3 — provider chain.
+ *
+ * **Beslutning (omvendt fra dagens kode)**: Anthropic-direct primær,
+ * OpenRouter fallback. Direct API er målt ~4x hurtigere end samme model
+ * via OpenRouter (ingen middleware-roundtrip, færre 400-fejl på base64-
+ * edge-cases). Fallback fyrer kun når Anthropic-call kaster — ikke når
+ * den returnerer `null` (= decorative sentinel, et legitimt resultat).
+ *
+ * Returns null if BOTH:
+ *   - No keys configured at all, OR
+ *   - Both providers throw (caller treats as 'failed' image)
+ *
+ * Each individual call honours VISION_TIMEOUT_MS via AbortController,
+ * so a hung Anthropic socket doesn't hold up the OpenRouter retry.
+ */
+export function createVisionBackend(): DescribeImage | null {
+  const hasAnthropic = getAnthropicKey().length > 0;
+  const hasOpenRouter = (process.env.OPENROUTER_API_KEY ?? '').length > 0;
+  if (!hasAnthropic && !hasOpenRouter) return null;
+
+  return async (pngBytes, context) => {
+    let firstError: unknown = null;
+    if (hasAnthropic) {
+      try {
+        return await describeEmbeddedViaAnthropic(pngBytes, context);
+      } catch (err) {
+        firstError = err;
+        if (!hasOpenRouter) throw err;
+        console.warn(
+          `[vision] anthropic failed, falling back to openrouter: ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
-    };
-  }
-
-  // Fall through: OpenRouter as Vision-provider when Anthropic is absent.
-  if (process.env.OPENROUTER_API_KEY) {
-    return (pngBytes, context) => describeEmbeddedViaOpenRouter(pngBytes, context);
-  }
-
-  return null;
+    }
+    if (hasOpenRouter) {
+      try {
+        return await describeEmbeddedViaOpenRouter(pngBytes, context);
+      } catch (err) {
+        // Both providers failed — surface the openrouter error, but
+        // include a hint about the anthropic error if it was the cause
+        // (gives operator a single message to debug from).
+        if (firstError) {
+          throw new Error(
+            `vision both-providers-failed: anthropic=${firstError instanceof Error ? firstError.message : String(firstError)} | openrouter=${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+        throw err;
+      }
+    }
+    // Unreachable given the guard above, but TS wants the explicit fallback.
+    return null;
+  };
 }

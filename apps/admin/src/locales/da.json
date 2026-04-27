@@ -90,6 +90,37 @@
       "status": "Status"
     }
   },
+  "jobs": {
+    "kind": {
+      "visionRerun": "Kør vision"
+    },
+    "abort": "Annullér job",
+    "background": "Kør i baggrunden",
+    "completed": "Færdig",
+    "failed": "Fejlede",
+    "aborted": "Annulleret",
+    "eta": "{time} tilbage",
+    "described": "Beskrevet",
+    "decorative": "Tom",
+    "failed_count": "Fejlet",
+    "cost": "Pris",
+    "estimate": "estimat",
+    "actual": "faktisk",
+    "titleCompleted": "{kind} — færdig",
+    "titleFailed": "{kind} — fejlede",
+    "titleAborted": "{kind} — annulleret",
+    "completedNoResult": "Færdig.",
+    "completionHeadline": "Færdig — {described} billeder fik en ny beskrivelse på {elapsed}.",
+    "completionHeadlineNoneDescribed": "Færdig — ingen nye beskrivelser tilføjet (ud af {total} forsøg på {elapsed}).",
+    "decorativeLine": "{n} billeder havde ikke noget meningsfuldt at beskrive — typisk små grafiske elementer eller tomme felter.",
+    "failedLine": "{n} billeder kunne ikke beskrives — som regel fordi de er for store (over 5 MB). Du kan prøve igen senere.",
+    "costLine": "Pris: {cost}",
+    "sampleGrid": "Eksempler",
+    "unknownError": "Ukendt fejl.",
+    "abortedSummary": "Du annullerede jobbet. Vi nåede {partial}. Det vi allerede havde beskrevet er bevaret.",
+    "badgeLabel": "{n} i baggrund",
+    "badgeTooltip": "{n} baggrundsjob kører — klik for at åbne igen"
+  },
   "common": {
     "loading": "Henter…",
     "cancel": "Annullér",
@@ -303,6 +334,7 @@
     "runVisionHint": "Kør Vision igen på denne kildes billeder der endnu ikke har beskrivelser",
     "bulkRetry": "Prøv igen ({n})",
     "bulkReingest": "Kør ingest ({n})",
+    "bulkRunVision": "Kør vision ({n})",
     "bulkArchive": "Arkivér ({n})",
     "neuronCount": "{n} Neuroner",
     "neuronCountOne": "1 Neuron",
@@ -310,8 +342,12 @@
     "bulk": {
       "retry": "Prøv igen",
       "reingest": "Kør ingest",
-      "archive": "Arkivér"
+      "archive": "Arkivér",
+      "runVisionLabel": "{n} kilder valgt",
+      "runVisionScope": "{n} kilder"
     },
+    "runVisionConfirmTitle": "Kør vision?",
+    "runVisionBody": "Vision AI analyserer, og beskriver billeder der endnu ikke har en beskrivelse. Jobbet kører i baggrunden — du ser live fremskridt, og kan skifte til at køre jobbet i baggrunden mens det arbejder.",
     "bulkDoneToast": "{kind} færdig — {ok} kilde(r) behandlet.",
     "bulkPartialToast": "{kind} delvist færdig — {ok} gennemført, {failed} fejlede.",
     "reingestTitle": "Kør ingest igen på denne kilde?",

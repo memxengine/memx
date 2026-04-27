@@ -8,11 +8,12 @@ import {
   restoreDocument,
   retryDocument,
   reingestDocument,
-  rerunVisionForDocument,
   getDocumentContent,
+  submitJob,
   api,
   ApiError,
 } from '../api';
+import { showJob } from '../lib/jobs-store';
 import { displayPath } from '../lib/display-path';
 import { UploadDropzone } from '../components/upload-dropzone';
 import { ProcessingIndicator } from '../components/processing-indicator';
@@ -92,11 +93,17 @@ export function SourcesPanel() {
   // should be an intentional click, not a drive-by.
   const [reingestTarget, setReingestTarget] = useState<Document | null>(null);
   const [reingestBusy, setReingestBusy] = useState(false);
-  // F161 follow-up — operator-only "Run Vision" button. Hidden unless
-  // engine has TRAIL_VISION_RERUN_UI=1 set (read from /me.features).
+  // F161 follow-up + F164 Phase 4 — "Run Vision" submits a job and hands
+  // off to JobProgressModal (rendered at app root). Per-row buttons no
+  // longer block; bulk action runs across all selected sources in one job.
+  // Hidden unless engine has TRAIL_VISION_RERUN_UI=1 (from /me.features).
   const [visionRerunEnabled, setVisionRerunEnabled] = useState(false);
-  const [visionBusyDocId, setVisionBusyDocId] = useState<string | null>(null);
-  const [visionToast, setVisionToast] = useState<string | null>(null);
+  const [visionConfirm, setVisionConfirm] = useState<{
+    docIds: string[];
+    label: string;
+  } | null>(null);
+  const [visionSubmitBusy, setVisionSubmitBusy] = useState(false);
+  const [visionError, setVisionError] = useState<string | null>(null);
 
   useEffect(() => {
     api<{ features?: { visionRerun?: boolean } }>('/api/v1/me')
@@ -105,27 +112,46 @@ export function SourcesPanel() {
   }, []);
 
   useEffect(() => {
-    if (!visionToast) return;
-    const t = setTimeout(() => setVisionToast(null), 5000);
-    return () => clearTimeout(t);
-  }, [visionToast]);
+    if (!visionError) return;
+    const tt = setTimeout(() => setVisionError(null), 6000);
+    return () => clearTimeout(tt);
+  }, [visionError]);
 
-  const onRunVision = useCallback(async (doc: Document) => {
-    if (visionBusyDocId) return;
-    setVisionBusyDocId(doc.id);
+  // Per-row action — opens the confirmation modal scoped to one doc.
+  const onRunVision = useCallback((doc: Document) => {
+    setVisionConfirm({ docIds: [doc.id], label: doc.title ?? doc.filename });
+  }, []);
+
+  // Bulk action — opens confirmation scoped to selected docs.
+  // Filters from allDocs (full list) since `docs` (filtered view) is
+  // declared further down — and we anyway only want source-kind ready
+  // rows, regardless of which tab the curator is on.
+  const onRunVisionBulk = useCallback(() => {
+    if (!allDocs) return;
+    const ids = allDocs
+      .filter((d) => selected.has(d.id) && d.kind === 'source' && d.status === 'ready' && !d.archived)
+      .map((d) => d.id);
+    if (ids.length === 0) return;
+    setVisionConfirm({ docIds: ids, label: t('sources.bulk.runVisionLabel', { n: ids.length }) });
+  }, [allDocs, selected]);
+
+  const confirmRunVision = useCallback(async () => {
+    if (!visionConfirm || visionSubmitBusy) return;
+    setVisionSubmitBusy(true);
     try {
-      const result = await rerunVisionForDocument(doc.id);
-      setVisionToast(
-        `Vision: ${result.described} described, ${result.skipped} skipped of ${result.rowsScanned} (${result.model})`,
-      );
+      const r = await submitJob({
+        kind: visionConfirm.docIds.length > 1 ? 'bulk-vision-rerun' : 'vision-rerun',
+        payload: { documentIds: visionConfirm.docIds, filter: 'null-only' },
+      });
+      setVisionConfirm(null);
+      showJob(r.id);
+      setSelected(new Set());
     } catch (err) {
-      setVisionToast(
-        err instanceof ApiError ? `Vision failed: ${err.message}` : `Vision failed: ${String(err)}`,
-      );
+      setVisionError(err instanceof ApiError ? err.message : String(err));
     } finally {
-      setVisionBusyDocId(null);
+      setVisionSubmitBusy(false);
     }
-  }, [visionBusyDocId]);
+  }, [visionConfirm, visionSubmitBusy]);
 
   const reload = useCallback(() => {
     if (!kbId) return;
@@ -433,6 +459,17 @@ export function SourcesPanel() {
               >
                 {bulkBusy === 'reingest' ? '…' : t('sources.bulkReingest', { n: selected.size })}
               </button>
+              {visionRerunEnabled ? (
+                <button
+                  type="button"
+                  onClick={onRunVisionBulk}
+                  disabled={bulkBusy !== null}
+                  class="text-[11px] font-mono text-[color:var(--color-accent)] hover:text-[color:var(--color-fg)] disabled:opacity-50 transition"
+                  title={t('sources.runVisionHint')}
+                >
+                  {t('sources.bulkRunVision', { n: selected.size })}
+                </button>
+              ) : null}
               <button
                 type="button"
                 onClick={() => runBulk('archive')}
@@ -460,9 +497,9 @@ export function SourcesPanel() {
         </div>
       ) : null}
 
-      {visionToast ? (
-        <div class="mb-3 px-3 py-2 rounded-md border border-[color:var(--color-accent)]/30 bg-[color:var(--color-accent)]/5 text-[color:var(--color-accent)] text-xs font-mono">
-          {visionToast}
+      {visionError ? (
+        <div class="mb-3 px-3 py-2 rounded-md border border-[color:var(--color-danger)]/30 bg-[color:var(--color-danger)]/5 text-[color:var(--color-danger)] text-xs font-mono">
+          {visionError}
         </div>
       ) : null}
 
@@ -478,7 +515,6 @@ export function SourcesPanel() {
             onRetry={onRetry}
             onReingest={onReingest}
             onRunVision={visionRerunEnabled ? onRunVision : undefined}
-            visionBusyDocId={visionBusyDocId}
             isSelected={selected.has(doc.id)}
             onToggleSelected={toggleSelected}
           />
@@ -544,6 +580,40 @@ export function SourcesPanel() {
           </div>
         ) : null}
       </Modal>
+
+      {/* F164 — Vision-rerun confirmation. Pre-flight estimate is best-effort:
+           we don't query NULL counts here (would block modal), so the cost line
+           reads "depends on remaining NULL images". The job-side counter is
+           authoritative once running. */}
+      <Modal
+        open={visionConfirm !== null}
+        title={t('sources.runVisionConfirmTitle')}
+        onClose={() => (!visionSubmitBusy ? setVisionConfirm(null) : undefined)}
+        footer={
+          <>
+            <ModalButton onClick={() => setVisionConfirm(null)} disabled={visionSubmitBusy}>
+              {t('common.cancel')}
+            </ModalButton>
+            <ModalButton onClick={confirmRunVision} disabled={visionSubmitBusy}>
+              {visionSubmitBusy ? '…' : t('sources.runVision')}
+            </ModalButton>
+          </>
+        }
+      >
+        {visionConfirm ? (
+          <div class="space-y-3">
+            <div>
+              <div class="text-[11px] font-mono uppercase tracking-wider text-[color:var(--color-fg-subtle)] mb-1">
+                {visionConfirm.docIds.length === 1 ? t('sources.title').toLowerCase() : t('sources.bulk.runVisionScope', { n: visionConfirm.docIds.length })}
+              </div>
+              <div class="text-sm font-medium break-all">{visionConfirm.label}</div>
+            </div>
+            <p class="text-sm text-[color:var(--color-fg-muted)] leading-relaxed">
+              {t('sources.runVisionBody')}
+            </p>
+          </div>
+        ) : null}
+      </Modal>
     </div>
   );
 }
@@ -558,7 +628,6 @@ interface RowProps {
   onReingest: (d: Document) => void;
   /** F161 — only set when TRAIL_VISION_RERUN_UI=1 on engine. */
   onRunVision?: (d: Document) => void;
-  visionBusyDocId?: string | null;
   isSelected: boolean;
   onToggleSelected: (id: string) => void;
 }
@@ -572,7 +641,6 @@ function SourceRow({
   onRetry,
   onReingest,
   onRunVision,
-  visionBusyDocId,
   isSelected,
   onToggleSelected,
 }: RowProps) {
@@ -704,11 +772,10 @@ function SourceRow({
             {onRunVision && doc.kind === 'source' && doc.status === 'ready' ? (
               <button
                 onClick={() => onRunVision(doc)}
-                disabled={visionBusyDocId === doc.id}
-                class="text-[11px] font-mono text-[color:var(--color-accent)] hover:text-[color:var(--color-fg)] disabled:opacity-50 transition"
+                class="text-[11px] font-mono text-[color:var(--color-accent)] hover:text-[color:var(--color-fg)] transition"
                 title={t('sources.runVisionHint')}
               >
-                {visionBusyDocId === doc.id ? '…' : t('sources.runVision').toLowerCase()}
+                {t('sources.runVision').toLowerCase()}
               </button>
             ) : null}
             <button
