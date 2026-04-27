@@ -276,6 +276,15 @@
     "title": "Kilder",
     "summary": "{n} kilde",
     "summaryPlural": "{n} kilder",
+    "duplicate": {
+      "title": "Filen findes allerede i denne Trail",
+      "body": "{newFilename} har præcis samme indhold som {existingFilename}, der allerede er en Kilde i denne Trail. Skip uploadet for at undgå en dublet, åbn den eksisterende Kilde, eller upload alligevel som en separat række.",
+      "openExisting": "Åbn eksisterende",
+      "uploadAnyway": "Upload alligevel",
+      "hint": "Detektion sker via SHA-256 af filens bytes — samme hash betyder byte-identisk indhold (selv én byte forskel ville ikke matche).",
+      "skipped": "skipped (dublet)",
+      "opened": "åbnede eksisterende"
+    },
     "empty": {
       "active": "Ingen kilder er under behandling.",
       "extracted": "Ingen kilder i extracted-men-tomme tilstand.",

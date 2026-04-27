@@ -163,6 +163,16 @@ export const documents = sqliteTable(
     // Stamped only on success (not error) so a flaky Neuron retries
     // next pass instead of getting stuck.
     lastContradictionScanSignature: text('last_contradiction_scan_signature'),
+    // F162 — SHA-256 hex of the original file bytes. Source-rows
+    // (kind='source') get hashed at upload time so the upload route
+    // can detect duplicates before writing storage or burning ingest
+    // credits. NULL on pre-F162 rows + on wiki/work rows; the
+    // backfill-content-hash bootstrap populates legacy NULL sources
+    // on next server start. App code enforces uniqueness per
+    // (tenant_id, knowledge_base_id, content_hash); the partial index
+    // (migration 0024) is for lookup speed only — no DB-level UNIQUE
+    // so force=true uploads can intentionally bypass.
+    contentHash: text('content_hash'),
     createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
     updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
   },

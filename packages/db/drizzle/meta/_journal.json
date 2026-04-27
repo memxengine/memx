@@ -169,6 +169,13 @@
       "when": 1778900000000,
       "tag": "0023_chat_persona_overrides",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1779000000000,
+      "tag": "0024_documents_content_hash",
+      "breakpoints": true
     }
   ]
 }

@@ -276,6 +276,15 @@
     "title": "Sources",
     "summary": "{n} source",
     "summaryPlural": "{n} sources",
+    "duplicate": {
+      "title": "This file is already in this Trail",
+      "body": "{newFilename} has the exact same content as {existingFilename}, which is already a Source in this Trail. Skip the upload to avoid a duplicate, open the existing Source, or upload anyway as a separate row.",
+      "openExisting": "Open existing",
+      "uploadAnyway": "Upload anyway",
+      "hint": "Detection is based on SHA-256 of the file bytes — same hash means byte-identical content (any difference, even a single byte, would not match).",
+      "skipped": "skipped (duplicate)",
+      "opened": "opened existing"
+    },
     "empty": {
       "active": "No sources currently being processed.",
       "extracted": "No sources in the extracted-but-empty state.",

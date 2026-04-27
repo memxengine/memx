@@ -781,29 +781,32 @@ export function createNeuron(args: {
 export async function uploadSource(
   kbId: string,
   file: File,
-  opts: { path?: string } = {},
+  opts: { path?: string; force?: boolean } = {},
 ): Promise<Document> {
   const form = new FormData();
   form.append('file', file);
   if (opts.path) form.append('path', opts.path);
 
-  const response = await fetch(
-    `/api/v1/knowledge-bases/${encodeURIComponent(kbId)}/documents/upload`,
-    {
-      method: 'POST',
-      credentials: 'include',
-      body: form,
-    },
-  );
+  const url =
+    `/api/v1/knowledge-bases/${encodeURIComponent(kbId)}/documents/upload` +
+    (opts.force ? '?force=true' : '');
+  const response = await fetch(url, {
+    method: 'POST',
+    credentials: 'include',
+    body: form,
+  });
   if (!response.ok) {
     let message = `${response.status} ${response.statusText}`;
+    let body: Record<string, unknown> | undefined;
     try {
-      const body = await response.json();
+      body = (await response.json()) as Record<string, unknown>;
       if (body.error) message = typeof body.error === 'string' ? body.error : JSON.stringify(body.error);
     } catch {
       // ignore
     }
-    throw new ApiError(response.status, message);
+    // F162 — pass full body so caller can read .code (e.g.
+    // 'duplicate_source') + .body (existingDocumentId, etc.).
+    throw new ApiError(response.status, message, body);
   }
   return (await response.json()) as Document;
 }

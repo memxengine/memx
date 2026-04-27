@@ -331,6 +331,8 @@ Mirror af F149's pluggable ingest pattern, anvendt på chat-routen. Abstraherer 
 |---|---------|--------|-------|------|
 | F159 | [Pluggable Chat Backends](features/F159-pluggable-chat-backends.md) | Planned | 1 | [plan](features/F159-pluggable-chat-backends.md) |
 | F160 | [Three-tier integration contract + audience-aware chat](features/F160-three-tier-integration-contract.md) | Planned | 1 | [plan](features/F160-three-tier-integration-contract.md) |
+| F161 | [Inline media in retrieval responses](features/F161-inline-media-in-retrieval.md) | Planned | 1 | [plan](features/F161-inline-media-in-retrieval.md) |
+| F162 | [Source dedup via SHA-256 checksum](features/F162-source-dedup-via-checksum.md) | Planned | 1 | [plan](features/F162-source-dedup-via-checksum.md) |
 
 ---
 

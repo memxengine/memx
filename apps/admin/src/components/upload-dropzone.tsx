@@ -1,6 +1,25 @@
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import { uploadSource, ApiError } from '../api';
 import type { Document } from '@trail/shared';
+import { Modal, ModalButton } from './modal';
+import { t } from '../lib/i18n';
+
+/**
+ * F162 — when upload-route returns 409 + code='duplicate_source', this
+ * holds the structured conflict info from the response body so the
+ * modal can show the existing Source's filename + offer the right
+ * actions (cancel / open existing / upload anyway via ?force=true).
+ */
+interface DuplicateConflict {
+  entryId: string;
+  file: File;
+  existingDocumentId: string;
+  existingFilename: string;
+  existingPath: string;
+  existingCreatedAt: string;
+  /** Resolver from the upload-loop awaiting a curator decision. */
+  resolve: (action: 'cancel' | 'force' | 'open-existing') => void;
+}
 
 /**
  * Window-wide drag-and-drop zone for uploading source documents.
@@ -23,8 +42,9 @@ export function UploadDropzone({
 }) {
   const [dragActive, setDragActive] = useState(false);
   const [queue, setQueue] = useState<
-    Array<{ id: string; name: string; state: 'pending' | 'uploading' | 'done' | 'error'; message?: string }>
+    Array<{ id: string; name: string; state: 'pending' | 'uploading' | 'done' | 'error' | 'skipped'; message?: string }>
   >([]);
+  const [conflict, setConflict] = useState<DuplicateConflict | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   // Nested dragenter/dragleave fire on every child crossing — a counter is
   // simpler and more reliable than rect-math or relatedTarget checks.
@@ -52,6 +72,68 @@ export function UploadDropzone({
           setQueue((prev) => prev.map((q) => (q.id === id ? { ...q, state: 'done' } : q)));
           onUploaded(doc);
         } catch (err) {
+          // F162 — duplicate detection. Server returns 409 with structured
+          // body when the file's SHA-256 matches an existing source in
+          // the same KB. Pause the loop, show the modal, await a curator
+          // decision (cancel / force-upload / open existing).
+          if (
+            err instanceof ApiError &&
+            err.status === 409 &&
+            err.code === 'duplicate_source' &&
+            err.body
+          ) {
+            const action = await new Promise<'cancel' | 'force' | 'open-existing'>(
+              (resolve) => {
+                setConflict({
+                  entryId: id,
+                  file,
+                  existingDocumentId: String(err.body!.existingDocumentId),
+                  existingFilename: String(err.body!.existingFilename),
+                  existingPath: String(err.body!.existingPath ?? '/'),
+                  existingCreatedAt: String(err.body!.existingCreatedAt ?? ''),
+                  resolve,
+                });
+              },
+            );
+            setConflict(null);
+            if (action === 'cancel') {
+              setQueue((prev) =>
+                prev.map((q) =>
+                  q.id === id
+                    ? { ...q, state: 'skipped', message: t('sources.duplicate.skipped') }
+                    : q,
+                ),
+              );
+              continue;
+            }
+            if (action === 'open-existing') {
+              setQueue((prev) =>
+                prev.map((q) =>
+                  q.id === id
+                    ? { ...q, state: 'skipped', message: t('sources.duplicate.opened') }
+                    : q,
+                ),
+              );
+              const docIdToOpen = String((err.body as Record<string, unknown>).existingDocumentId);
+              window.location.hash = ''; // Reset any deep-link state
+              window.location.assign(`/kb/${kbId}/sources?doc=${docIdToOpen}`);
+              return;
+            }
+            // action === 'force' — retry once with ?force=true.
+            try {
+              const doc = await uploadSource(kbId, file, { force: true });
+              setQueue((prev) =>
+                prev.map((q) => (q.id === id ? { ...q, state: 'done' } : q)),
+              );
+              onUploaded(doc);
+            } catch (retryErr) {
+              const msg = retryErr instanceof ApiError ? retryErr.message : String(retryErr);
+              setQueue((prev) =>
+                prev.map((q) => (q.id === id ? { ...q, state: 'error', message: msg } : q)),
+              );
+            }
+            continue;
+          }
           const msg = err instanceof ApiError ? err.message : String(err);
           setQueue((prev) =>
             prev.map((q) => (q.id === id ? { ...q, state: 'error', message: msg } : q)),
@@ -153,6 +235,8 @@ export function UploadDropzone({
                     ? 'text-[color:var(--color-success)]'
                     : q.state === 'error'
                     ? 'text-[color:var(--color-danger)]'
+                    : q.state === 'skipped'
+                    ? 'text-[color:var(--color-fg-muted)]'
                     : 'text-[color:var(--color-fg-subtle)]'
                 }
               >
@@ -160,6 +244,7 @@ export function UploadDropzone({
                 {q.state === 'uploading' && 'uploading…'}
                 {q.state === 'done' && '✓ done'}
                 {q.state === 'error' && `✗ ${q.message ?? 'failed'}`}
+                {q.state === 'skipped' && `⊘ ${q.message ?? 'skipped'}`}
               </span>
             </li>
           ))}
@@ -179,6 +264,58 @@ export function UploadDropzone({
           </div>
         </div>
       ) : null}
+
+      <Modal
+        open={conflict !== null}
+        title={t('sources.duplicate.title')}
+        onClose={() => conflict?.resolve('cancel')}
+        maxWidth="md"
+        footer={
+          conflict ? (
+            <>
+              <ModalButton onClick={() => conflict.resolve('cancel')}>
+                {t('common.cancel')}
+              </ModalButton>
+              <ModalButton onClick={() => conflict.resolve('open-existing')}>
+                {t('sources.duplicate.openExisting')}
+              </ModalButton>
+              <ModalButton variant="danger" onClick={() => conflict.resolve('force')}>
+                {t('sources.duplicate.uploadAnyway')}
+              </ModalButton>
+            </>
+          ) : null
+        }
+      >
+        {conflict ? (
+          <div class="space-y-3 text-sm">
+            <p>
+              {t('sources.duplicate.body', {
+                newFilename: conflict.file.name,
+                existingFilename: conflict.existingFilename,
+              })}
+            </p>
+            <div class="rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-bg-card)]/40 p-3 text-xs font-mono text-[color:var(--color-fg-muted)]">
+              <div>
+                <span class="text-[color:var(--color-fg-subtle)]">existing:</span>{' '}
+                {conflict.existingFilename}
+              </div>
+              <div>
+                <span class="text-[color:var(--color-fg-subtle)]">path:</span>{' '}
+                {conflict.existingPath}
+              </div>
+              {conflict.existingCreatedAt ? (
+                <div>
+                  <span class="text-[color:var(--color-fg-subtle)]">uploaded:</span>{' '}
+                  {new Date(conflict.existingCreatedAt).toLocaleString()}
+                </div>
+              ) : null}
+            </div>
+            <p class="text-[11px] text-[color:var(--color-fg-subtle)]">
+              {t('sources.duplicate.hint')}
+            </p>
+          </div>
+        ) : null}
+      </Modal>
     </>
   );
 }

@@ -19,6 +19,8 @@ const LIST_SQL = `
   SELECT kb.id, kb.tenant_id AS tenantId, kb.created_by AS createdBy,
          kb.name, kb.slug, kb.description, kb.language,
          kb.lint_policy AS lintPolicy,
+         kb.chat_persona_tool AS chatPersonaTool,
+         kb.chat_persona_public AS chatPersonaPublic,
          kb.created_at AS createdAt, kb.updated_at AS updatedAt,
          (SELECT COUNT(*) FROM documents d
             WHERE d.knowledge_base_id = kb.id

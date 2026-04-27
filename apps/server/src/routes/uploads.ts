@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { documents, type TrailDatabase } from '@trail/db';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
+import { createHash } from 'node:crypto';
 import { requireAuth, getUser, getTenant, getTrail } from '../middleware/auth.js';
 import { processPdf, processDocx, processPptx, processXlsx, dispatch, pickPipeline } from '@trail/pipelines';
 import { storage, sourcePath } from '../lib/storage.js';
@@ -92,6 +93,51 @@ uploadRoutes.post('/knowledge-bases/:kbId/documents/upload', async (c) => {
 
   const docId = crypto.randomUUID();
   const buffer = Buffer.from(await file.arrayBuffer());
+
+  // F162 — dedup. Compute hash BEFORE storage-write so a duplicate-
+  // upload doesn't waste disk on a blob we'll reject. Then query
+  // existing source-row in the same KB. Hit + no ?force=true → 409
+  // with structured info so admin UI can offer "open existing" or
+  // "upload anyway". App-level enforcement only — schema has a
+  // non-unique index for lookup-speed but no DB UNIQUE so the
+  // force=true escape needs no schema gymnastics.
+  const contentHash = createHash('sha256').update(buffer).digest('hex');
+  const force = c.req.query('force') === 'true';
+  if (!force) {
+    const existing = await trail.db
+      .select({
+        id: documents.id,
+        filename: documents.filename,
+        path: documents.path,
+        createdAt: documents.createdAt,
+      })
+      .from(documents)
+      .where(
+        and(
+          eq(documents.tenantId, tenant.id),
+          eq(documents.knowledgeBaseId, kbId),
+          eq(documents.kind, 'source'),
+          eq(documents.archived, false),
+          eq(documents.contentHash, contentHash),
+        ),
+      )
+      .get();
+    if (existing) {
+      return c.json(
+        {
+          error: 'A source with identical content already exists in this Trail.',
+          code: 'duplicate_source',
+          existingDocumentId: existing.id,
+          existingFilename: existing.filename,
+          existingPath: existing.path,
+          existingCreatedAt: existing.createdAt,
+          hint: 'Append ?force=true to upload anyway as a separate Source.',
+        },
+        409,
+      );
+    }
+  }
+
   await storage.put(sourcePath(tenant.id, kbId, docId, ext), buffer, file.type);
 
   const isText = TEXT_EXTENSIONS.has(ext);
@@ -112,6 +158,10 @@ uploadRoutes.post('/knowledge-bases/:kbId/documents/upload', async (c) => {
       status: initialStatus,
       tags: uploadTags?.join(', ') ?? null,
       metadata: connector ? JSON.stringify({ connector, sourceUrl }) : null,
+      // F162 — dedup hash. Set even on force-uploaded duplicates so the
+      // audit trail is complete; subsequent dedup-tjeks just bypass on
+      // ?force=true rather than hide the fact that the hash collided.
+      contentHash,
       // F145 — inline per-KB seq (see candidates.ts for the same pattern).
       seq: sql<number>`COALESCE((SELECT MAX(${documents.seq}) FROM ${documents} WHERE ${documents.knowledgeBaseId} = ${kbId}), 0) + 1`,
     })
