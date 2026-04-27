@@ -13,6 +13,8 @@
     "accountSettings": "Kontoindstillinger",
     "trails": "Trails",
     "glossary": "Ordforklaring",
+    "jobs": "Jobs",
+    "jobsHint": "Baggrunds-job-historik",
     "signOut": "Log ud",
     "theme": {
       "toggle": "Skift tema",
@@ -603,6 +605,40 @@
         "colCreated": "Oprettet",
         "neverUsed": "Aldrig"
       }
+    }
+  },
+  "jobsPanel": {
+    "title": "Baggrundsjob",
+    "summary": "{n} job i denne tenant",
+    "summaryPlural": "{n} jobs i denne tenant",
+    "statTotal": "I alt",
+    "statActive": "Aktive",
+    "statCompleted": "Færdige",
+    "statFailed": "Fejlede",
+    "statCost": "Pris i alt",
+    "kindFilter": "Type",
+    "kindAll": "alle",
+    "filter": {
+      "all": "Alle",
+      "active": "Aktive",
+      "completed": "Færdige",
+      "failed": "Fejlede",
+      "aborted": "Annullerede"
+    },
+    "empty": {
+      "all": "Ingen jobs endnu — start ét fra et kilde-panel.",
+      "active": "Intet kører lige nu.",
+      "completed": "Intet er færdigt endnu.",
+      "failed": "Ingen fejlede jobs (godt!).",
+      "aborted": "Ingen annullerede jobs."
+    },
+    "col": {
+      "kind": "Type",
+      "status": "Status",
+      "progress": "Fremskridt",
+      "created": "Oprettet",
+      "duration": "Varighed",
+      "cost": "Pris"
     }
   },
   "linkReport": {

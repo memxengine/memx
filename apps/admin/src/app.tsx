@@ -133,6 +133,15 @@ export function App({ children }: { children: ComponentChildren }) {
               </a>
               {me ? (
                 <a
+                  href="/jobs"
+                  class="text-[color:var(--color-fg-muted)] hover:text-[color:var(--color-fg)] transition"
+                  title={t('nav.jobsHint')}
+                >
+                  {t('nav.jobs')}
+                </a>
+              ) : null}
+              {me ? (
+                <a
                   href="/settings"
                   class="text-[color:var(--color-fg-muted)] hover:text-[color:var(--color-fg)] transition"
                   title={t('nav.accountSettings')}

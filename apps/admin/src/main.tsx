@@ -17,6 +17,7 @@ import { SettingsAccountPanel } from './panels/settings-account';
 import { CostPanel } from './panels/cost';
 import { QualityComparePanel } from './panels/quality-compare';
 import { LinkReportPanel } from './panels/link-report';
+import { JobsPanel } from './panels/jobs';
 import { NotFound } from './panels/not-found';
 import { initTheme } from './theme';
 import './index.css';
@@ -44,6 +45,7 @@ function Main() {
           <Route path="/kb/:kbId/settings" component={SettingsTrailPanel} />
           <Route path="/settings" component={SettingsAccountPanel} />
           <Route path="/glossary" component={GlossaryPanel} />
+          <Route path="/jobs" component={JobsPanel} />
           <Route path="/play" component={PlayPanel} />
           <Route default component={NotFound} />
         </Router>

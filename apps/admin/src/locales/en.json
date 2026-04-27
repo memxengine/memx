@@ -13,6 +13,8 @@
     "accountSettings": "Account settings",
     "trails": "Trails",
     "glossary": "Glossary",
+    "jobs": "Jobs",
+    "jobsHint": "Background job history",
     "signOut": "Sign out",
     "theme": {
       "toggle": "Toggle theme",
@@ -603,6 +605,40 @@
         "colCreated": "Created",
         "neverUsed": "Never"
       }
+    }
+  },
+  "jobsPanel": {
+    "title": "Background jobs",
+    "summary": "{n} job in this tenant",
+    "summaryPlural": "{n} jobs in this tenant",
+    "statTotal": "Total",
+    "statActive": "Active",
+    "statCompleted": "Done",
+    "statFailed": "Failed",
+    "statCost": "Total cost",
+    "kindFilter": "Kind",
+    "kindAll": "all",
+    "filter": {
+      "all": "All",
+      "active": "Active",
+      "completed": "Done",
+      "failed": "Failed",
+      "aborted": "Cancelled"
+    },
+    "empty": {
+      "all": "No jobs yet — kick one off from a sources panel.",
+      "active": "Nothing running right now.",
+      "completed": "Nothing has completed yet.",
+      "failed": "No failed jobs (good!).",
+      "aborted": "No cancelled jobs."
+    },
+    "col": {
+      "kind": "Kind",
+      "status": "Status",
+      "progress": "Progress",
+      "created": "Created",
+      "duration": "Duration",
+      "cost": "Cost"
     }
   },
   "linkReport": {
