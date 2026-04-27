@@ -9,6 +9,7 @@ import { recoverPendingSources } from './bootstrap/recover-pending-sources.js';
 import { seedDevCreditsOnBoot } from './bootstrap/dev-credits.js';
 import { backfillContentHash } from './bootstrap/backfill-content-hash.js';
 import { backfillDocumentImages } from './bootstrap/backfill-document-images.js';
+import { rerunVisionOnNull } from './bootstrap/rerun-vision.js';
 import { recoverIngestJobs, startBackpressureScheduler } from './services/ingest.js';
 import { startContradictionLint } from './services/contradiction-lint.js';
 import { backfillReferences, startReferenceExtractor } from './services/reference-extractor.js';
@@ -58,6 +59,10 @@ await backfillContentHash(trail);
 // docs with existing rows skipped. Same boot-window placement
 // argument as backfillContentHash.
 await backfillDocumentImages(trail);
+// F161 follow-up — opt-in Vision-rerun. OFF by default; only fires
+// when TRAIL_VISION_RERUN_NULL=1 is set. See rerun-vision.ts for
+// the env-flag contract + recommended rollout.
+await rerunVisionOnNull(trail);
 // F156 Phase 0 — top up every tenant to TRAIL_DEV_CREDITS if set.
 // Idempotent; only adds the delta needed to reach the target. Phase 2
 // replaces this with Stripe Checkout self-serve top-up.
