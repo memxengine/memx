@@ -604,6 +604,38 @@ export function listJobs(filter: { status?: string; kind?: string; limit?: numbe
   return api(`/api/v1/jobs${qs ? `?${qs}` : ''}`);
 }
 
+// F164 Phase 5 — image quality ratings (👍/👎 on Vision-described images).
+
+export type ImageRating = 'up' | 'down' | null;
+
+export function setImageRating(
+  documentId: string,
+  filename: string,
+  rating: ImageRating,
+): Promise<{ ok: boolean; rating: ImageRating }> {
+  return api(
+    `/api/v1/documents/${encodeURIComponent(documentId)}/images/${encodeURIComponent(
+      filename.replace(/^\//, ''),
+    )}/rating`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rating }),
+    },
+  );
+}
+
+export function getImageRating(
+  documentId: string,
+  filename: string,
+): Promise<{ rating: ImageRating }> {
+  return api(
+    `/api/v1/documents/${encodeURIComponent(documentId)}/images/${encodeURIComponent(
+      filename.replace(/^\//, ''),
+    )}/rating`,
+  );
+}
+
 // ── Search ───────────────────────────────────────────────────────
 
 export interface DocumentSearchHit {

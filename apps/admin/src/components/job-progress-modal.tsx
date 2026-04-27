@@ -20,7 +20,7 @@
 import { useSignal } from '@preact/signals';
 import { useEffect, useState } from 'preact/hooks';
 import { Modal, ModalButton } from './modal';
-import { abortJob } from '../api';
+import { abortJob, setImageRating, type ImageRating } from '../api';
 import { useJobProgress } from '../lib/use-job-progress';
 import { visibleJobId, backgroundJob, dismissJob } from '../lib/jobs-store';
 import { lockBodyScroll } from '../lib/scroll-lock';
@@ -172,10 +172,27 @@ function CompletedView({ state }: { state: ReturnType<typeof useJobProgress> }) 
     filename: string;
     description: string;
   } | null>(null);
+  // Local cache of ratings per image-filename so SampleTile + Lightbox
+  // share state. Optimistic updates: we flip the local map immediately
+  // on click, then the POST persists. Rollback on error reverts.
+  const [ratings, setRatings] = useState<Record<string, ImageRating>>({});
+
+  const onRate = async (img: { documentId: string; filename: string }, next: ImageRating) => {
+    const key = img.filename;
+    const prev = ratings[key] ?? null;
+    setRatings((r) => ({ ...r, [key]: next }));
+    try {
+      await setImageRating(img.documentId, img.filename, next);
+    } catch {
+      // Revert on failure
+      setRatings((r) => ({ ...r, [key]: prev }));
+    }
+  };
 
   if (!r) return <div>{t('jobs.completedNoResult')}</div>;
   const elapsed = computeElapsed(state.snapshot);
   const cost = state.snapshot?.costCentsActual ?? 0;
+  const ratingCounts = countRatings(ratings);
 
   return (
     <div class="space-y-4">
@@ -207,12 +224,28 @@ function CompletedView({ state }: { state: ReturnType<typeof useJobProgress> }) 
 
       {r.sampleImages?.length ? (
         <div>
-          <div class="text-[11px] font-mono uppercase tracking-wider text-[color:var(--color-fg-subtle)] mb-2">
-            {t('jobs.sampleGrid')}
+          <div class="flex items-baseline justify-between mb-2">
+            <div class="text-[11px] font-mono uppercase tracking-wider text-[color:var(--color-fg-subtle)]">
+              {t('jobs.sampleGrid')}
+            </div>
+            {ratingCounts.up + ratingCounts.down > 0 ? (
+              <div class="text-[11px] font-mono text-[color:var(--color-fg-subtle)]">
+                {t('jobs.ratingSummary', { up: ratingCounts.up, down: ratingCounts.down })}
+              </div>
+            ) : null}
           </div>
+          <p class="text-[11px] text-[color:var(--color-fg-subtle)] mb-2 italic">
+            {t('jobs.ratingHint')}
+          </p>
           <div class="grid grid-cols-3 gap-2">
             {r.sampleImages.map((img) => (
-              <SampleTile key={img.id} img={img} onOpen={() => setLightbox(img)} />
+              <SampleTile
+                key={img.id}
+                img={img}
+                rating={ratings[img.filename] ?? null}
+                onOpen={() => setLightbox(img)}
+                onRate={(next) => onRate(img, next)}
+              />
             ))}
           </div>
         </div>
@@ -223,11 +256,23 @@ function CompletedView({ state }: { state: ReturnType<typeof useJobProgress> }) 
           documentId={lightbox.documentId}
           filename={lightbox.filename}
           description={lightbox.description}
+          rating={ratings[lightbox.filename] ?? null}
+          onRate={(next) => onRate(lightbox, next)}
           onClose={() => setLightbox(null)}
         />
       ) : null}
     </div>
   );
+}
+
+function countRatings(map: Record<string, ImageRating>): { up: number; down: number } {
+  let up = 0;
+  let down = 0;
+  for (const v of Object.values(map)) {
+    if (v === 'up') up += 1;
+    else if (v === 'down') down += 1;
+  }
+  return { up, down };
 }
 
 function ErrorView({ state }: { state: ReturnType<typeof useJobProgress> }) {
@@ -269,12 +314,23 @@ function Counter({ label, value, tone }: { label: string; value: number; tone: '
 
 function SampleTile({
   img,
+  rating,
   onOpen,
+  onRate,
 }: {
   img: { id: string; documentId: string; filename: string; description: string };
+  rating: ImageRating;
   onOpen: () => void;
+  onRate: (next: ImageRating) => void;
 }) {
   const url = imageUrl(img.documentId, img.filename);
+  // Click on the rating buttons must not also trigger the parent
+  // open-lightbox button — stopPropagation the click.
+  const stop = (e: Event) => e.stopPropagation();
+  const toggle = (next: 'up' | 'down') => (e: MouseEvent) => {
+    e.stopPropagation();
+    onRate(rating === next ? null : next);
+  };
   return (
     <button
       type="button"
@@ -288,10 +344,48 @@ function SampleTile({
         loading="lazy"
         class="w-full h-full object-cover transition group-hover:scale-105"
       />
-      <div class="absolute inset-x-0 bottom-0 p-1.5 text-[10px] font-mono text-white bg-gradient-to-t from-black/80 to-transparent line-clamp-2 text-left">
+      <div class="absolute inset-x-0 bottom-0 p-1.5 text-[10px] font-mono text-white bg-gradient-to-t from-black/80 to-transparent line-clamp-2 text-left pr-14">
         {img.description.slice(0, 80)}
         {img.description.length > 80 ? '…' : ''}
       </div>
+      <div
+        class="absolute top-1.5 right-1.5 flex items-center gap-1"
+        onClick={stop}
+      >
+        <RatingPill active={rating === 'up'} variant="up" onClick={toggle('up')} />
+        <RatingPill active={rating === 'down'} variant="down" onClick={toggle('down')} />
+      </div>
+    </button>
+  );
+}
+
+function RatingPill({
+  active,
+  variant,
+  onClick,
+}: {
+  active: boolean;
+  variant: 'up' | 'down';
+  onClick: (e: MouseEvent) => void;
+}) {
+  const glyph = variant === 'up' ? '👍' : '👎';
+  const label = variant === 'up' ? t('jobs.thumbsUp') : t('jobs.thumbsDown');
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      class={
+        'inline-flex items-center justify-center w-7 h-7 rounded-full text-sm transition active:scale-90 ' +
+        (active
+          ? variant === 'up'
+            ? 'bg-[color:var(--color-success)]/30 ring-2 ring-[color:var(--color-success)]'
+            : 'bg-[color:var(--color-danger)]/30 ring-2 ring-[color:var(--color-danger)]'
+          : 'bg-black/40 hover:bg-black/60')
+      }
+    >
+      {glyph}
     </button>
   );
 }
@@ -308,11 +402,15 @@ function Lightbox({
   documentId,
   filename,
   description,
+  rating,
+  onRate,
   onClose,
 }: {
   documentId: string;
   filename: string;
   description: string;
+  rating: ImageRating;
+  onRate: (next: ImageRating) => void;
   onClose: () => void;
 }) {
   useEffect(() => {
@@ -360,7 +458,7 @@ function Lightbox({
         src={url}
         alt={description}
         onClick={(e) => e.stopPropagation()}
-        class="max-w-[90vw] max-h-[80vh] object-contain rounded-md cursor-default shadow-2xl"
+        class="max-w-[90vw] max-h-[75vh] object-contain rounded-md cursor-default shadow-2xl"
       />
 
       {description ? (
@@ -371,6 +469,40 @@ function Lightbox({
           {description}
         </div>
       ) : null}
+
+      <div
+        class="mt-4 flex items-center gap-3"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button
+          type="button"
+          onClick={() => onRate(rating === 'up' ? null : 'up')}
+          class={
+            'inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm transition active:scale-95 ' +
+            (rating === 'up'
+              ? 'bg-[color:var(--color-success)]/30 ring-2 ring-[color:var(--color-success)] text-white'
+              : 'bg-white/10 hover:bg-white/20 text-white')
+          }
+          aria-label={t('jobs.thumbsUp')}
+        >
+          <span class="text-lg">👍</span>
+          <span class="font-mono text-xs">{t('jobs.thumbsUp')}</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => onRate(rating === 'down' ? null : 'down')}
+          class={
+            'inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm transition active:scale-95 ' +
+            (rating === 'down'
+              ? 'bg-[color:var(--color-danger)]/30 ring-2 ring-[color:var(--color-danger)] text-white'
+              : 'bg-white/10 hover:bg-white/20 text-white')
+          }
+          aria-label={t('jobs.thumbsDown')}
+        >
+          <span class="text-lg">👎</span>
+          <span class="font-mono text-xs">{t('jobs.thumbsDown')}</span>
+        </button>
+      </div>
     </div>
   );
 }

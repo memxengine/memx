@@ -301,6 +301,34 @@ export const jobs = sqliteTable(
   ],
 );
 
+// ── Vision quality ratings (F164 Phase 5) ─────────────────────────────────────
+//
+// Curator 👍/👎 feedback on Vision-generated image descriptions, surfaced
+// from the JobProgressModal sample-grid + Lightbox. v1 = collect-only.
+// v1.5 plans: feed 👎-rated images back into prompt-tuning, compare
+// model variants by aggregate up/down rate.
+//
+// Unique(user_id, image_id) — one rating per curator per image. Re-vote
+// flips existing row via UPSERT. Cascade-delete via image and user FKs.
+export const visionQualityRatings = sqliteTable(
+  'vision_quality_ratings',
+  {
+    id: text('id').primaryKey(),
+    imageId: text('image_id').notNull().references(() => documentImages.id, { onDelete: 'cascade' }),
+    userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+    rating: text('rating', { enum: ['up', 'down'] }).notNull(),
+    model: text('model'),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+    updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (table) => [
+    uniqueIndex('idx_vqr_user_image').on(table.userId, table.imageId),
+    index('idx_vqr_image').on(table.imageId),
+    index('idx_vqr_tenant_rating').on(table.tenantId, table.rating),
+  ],
+);
+
 // ── Curation Queue ────────────────────────────────────────────────────────────
 
 export const queueCandidates = sqliteTable(
