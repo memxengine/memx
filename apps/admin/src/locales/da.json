@@ -299,6 +299,8 @@
     "retryHint": "Kør hele pipelinen igen (extract + ingest) mod de uploadede bytes",
     "reingest": "Kør ingest",
     "reingestHint": "Udtrækning lykkedes — klik for at køre trails LLM Neuron-compiler igen mod det udtrukne indhold",
+    "runVision": "Kør vision",
+    "runVisionHint": "Kør Vision igen på denne kildes billeder der endnu ikke har beskrivelser",
     "bulkRetry": "Prøv igen ({n})",
     "bulkReingest": "Kør ingest ({n})",
     "bulkArchive": "Arkivér ({n})",

@@ -8,7 +8,9 @@ import {
   restoreDocument,
   retryDocument,
   reingestDocument,
+  rerunVisionForDocument,
   getDocumentContent,
+  api,
   ApiError,
 } from '../api';
 import { displayPath } from '../lib/display-path';
@@ -90,6 +92,40 @@ export function SourcesPanel() {
   // should be an intentional click, not a drive-by.
   const [reingestTarget, setReingestTarget] = useState<Document | null>(null);
   const [reingestBusy, setReingestBusy] = useState(false);
+  // F161 follow-up — operator-only "Run Vision" button. Hidden unless
+  // engine has TRAIL_VISION_RERUN_UI=1 set (read from /me.features).
+  const [visionRerunEnabled, setVisionRerunEnabled] = useState(false);
+  const [visionBusyDocId, setVisionBusyDocId] = useState<string | null>(null);
+  const [visionToast, setVisionToast] = useState<string | null>(null);
+
+  useEffect(() => {
+    api<{ features?: { visionRerun?: boolean } }>('/api/v1/me')
+      .then((m) => setVisionRerunEnabled(!!m.features?.visionRerun))
+      .catch(() => setVisionRerunEnabled(false));
+  }, []);
+
+  useEffect(() => {
+    if (!visionToast) return;
+    const t = setTimeout(() => setVisionToast(null), 5000);
+    return () => clearTimeout(t);
+  }, [visionToast]);
+
+  const onRunVision = useCallback(async (doc: Document) => {
+    if (visionBusyDocId) return;
+    setVisionBusyDocId(doc.id);
+    try {
+      const result = await rerunVisionForDocument(doc.id);
+      setVisionToast(
+        `Vision: ${result.described} described, ${result.skipped} skipped of ${result.rowsScanned} (${result.model})`,
+      );
+    } catch (err) {
+      setVisionToast(
+        err instanceof ApiError ? `Vision failed: ${err.message}` : `Vision failed: ${String(err)}`,
+      );
+    } finally {
+      setVisionBusyDocId(null);
+    }
+  }, [visionBusyDocId]);
 
   const reload = useCallback(() => {
     if (!kbId) return;
@@ -424,6 +460,12 @@ export function SourcesPanel() {
         </div>
       ) : null}
 
+      {visionToast ? (
+        <div class="mb-3 px-3 py-2 rounded-md border border-[color:var(--color-accent)]/30 bg-[color:var(--color-accent)]/5 text-[color:var(--color-accent)] text-xs font-mono">
+          {visionToast}
+        </div>
+      ) : null}
+
       <ul class="space-y-2">
         {docs?.map((doc) => (
           <SourceRow
@@ -435,6 +477,8 @@ export function SourcesPanel() {
             onRestore={onRestore}
             onRetry={onRetry}
             onReingest={onReingest}
+            onRunVision={visionRerunEnabled ? onRunVision : undefined}
+            visionBusyDocId={visionBusyDocId}
             isSelected={selected.has(doc.id)}
             onToggleSelected={toggleSelected}
           />
@@ -512,6 +556,9 @@ interface RowProps {
   onRestore: (d: Document) => void;
   onRetry: (d: Document) => void;
   onReingest: (d: Document) => void;
+  /** F161 — only set when TRAIL_VISION_RERUN_UI=1 on engine. */
+  onRunVision?: (d: Document) => void;
+  visionBusyDocId?: string | null;
   isSelected: boolean;
   onToggleSelected: (id: string) => void;
 }
@@ -524,6 +571,8 @@ function SourceRow({
   onRestore,
   onRetry,
   onReingest,
+  onRunVision,
+  visionBusyDocId,
   isSelected,
   onToggleSelected,
 }: RowProps) {
@@ -650,6 +699,16 @@ function SourceRow({
                 title={t('sources.reingestHint')}
               >
                 {t('sources.reingest').toLowerCase()}
+              </button>
+            ) : null}
+            {onRunVision && doc.kind === 'source' && doc.status === 'ready' ? (
+              <button
+                onClick={() => onRunVision(doc)}
+                disabled={visionBusyDocId === doc.id}
+                class="text-[11px] font-mono text-[color:var(--color-accent)] hover:text-[color:var(--color-fg)] disabled:opacity-50 transition"
+                title={t('sources.runVisionHint')}
+              >
+                {visionBusyDocId === doc.id ? '…' : t('sources.runVision').toLowerCase()}
               </button>
             ) : null}
             <button

@@ -18,6 +18,9 @@ import { backfillLinkCheck, startLinkChecker } from './services/link-checker.js'
 import { startLintScheduler } from './services/lint-scheduler.js';
 import { startQueueBackfill } from './services/queue-backfill.js';
 import { startActionRecommender, backfillRecommendations } from './services/action-recommender.js';
+import { initJobRunner } from './services/jobs/runner.js';
+import { noopHandler } from './services/jobs/handlers/noop.js';
+import { visionRerunHandler } from './services/jobs/handlers/vision-rerun.js';
 
 const PORT = Number(process.env.PORT ?? 3031);
 
@@ -127,6 +130,18 @@ setTimeout(() => {
     console.error('[action-recommender] backfill failed:', err);
   });
 }, 60_000);
+
+// F164 — Background-job runner. Recovers zombies (status='running' but
+// heartbeat stale) before HTTP routes start accepting POST /jobs, so a
+// re-attaching admin tab sees the right state immediately. Phase 1
+// registers the noop handler only when explicitly opted-in via env;
+// real handlers (vision-rerun, bulk-vision-rerun) ship in Phase 2+4.
+const jobRunner = initJobRunner(trail);
+if (process.env.TRAIL_JOBS_NOOP_HANDLER === '1') {
+  jobRunner.register('noop', noopHandler);
+}
+jobRunner.register('vision-rerun', visionRerunHandler);
+await jobRunner.start();
 
 const app = createApp(trail);
 

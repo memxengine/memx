@@ -29,7 +29,16 @@ userRoutes.get('/me', async (c) => {
     .where(eq(users.id, user.id))
     .get();
 
-  return c.json(fullUser);
+  // F161 follow-up — feature flags driven by env, surfaced here so the
+  // admin UI can conditionally render dev/operator-only actions
+  // (e.g. the "Run Vision" button on source-rows). Admin reads this
+  // at boot via apps/admin's /me fetch and stores in app state.
+  return c.json({
+    ...fullUser,
+    features: {
+      visionRerun: process.env.TRAIL_VISION_RERUN_UI === '1',
+    },
+  });
 });
 
 userRoutes.post('/onboarding/complete', async (c) => {

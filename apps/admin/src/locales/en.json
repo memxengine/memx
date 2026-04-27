@@ -299,6 +299,8 @@
     "retryHint": "Re-run the full pipeline (extract + ingest) against the uploaded bytes",
     "reingest": "Re-ingest",
     "reingestHint": "Extraction was successful — click to re-run trail's LLM Neuron compiler against the extracted content",
+    "runVision": "Run Vision",
+    "runVisionHint": "Re-run Vision on this source's images that don't yet have descriptions",
     "bulkRetry": "Retry ({n})",
     "bulkReingest": "Re-ingest ({n})",
     "bulkArchive": "Archive ({n})",

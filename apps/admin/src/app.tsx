@@ -21,6 +21,8 @@ interface Me {
   tenantSlug: string;
   tenantName: string;
   tenantPlan: string;
+  /** F161 follow-up — operator-set env-flags surfaced to the UI. */
+  features?: { visionRerun?: boolean };
 }
 
 export function App({ children }: { children: ComponentChildren }) {

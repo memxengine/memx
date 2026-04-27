@@ -255,6 +255,52 @@ export const documentImages = sqliteTable(
   ],
 );
 
+// ── Background jobs (F164) ────────────────────────────────────────────────────
+//
+// Generic long-running operations: vision-rerun (first consumer),
+// bulk-vision-rerun, future ingest/contradiction-scan/etc. Designed
+// for crash-recovery via heartbeat (status='running' AND
+// last_heartbeat_at < now-60s → reset to 'pending'), cooperative abort
+// (abort_requested=1 + AbortController signal), and SSE-streamed
+// progress (the runner persists progress JSON; SSE just relays).
+//
+// Separate from ingest_jobs (F143) on purpose — ingest_jobs has
+// domain-specific columns (file_size, page_count, ingest_phase) that
+// don't translate to a Vision-rerun. Two specialised tables sharing
+// a few invariants is cleaner than one polymorphic table with NULL
+// columns half the time.
+export const jobs = sqliteTable(
+  'jobs',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+    knowledgeBaseId: text('knowledge_base_id').references(() => knowledgeBases.id, { onDelete: 'cascade' }),
+    userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    kind: text('kind').notNull(),
+    status: text('status', {
+      enum: ['pending', 'running', 'paused', 'completed', 'failed', 'aborted'],
+    }).notNull().default('pending'),
+    payload: text('payload').notNull(),
+    progress: text('progress'),
+    result: text('result'),
+    errorMessage: text('error_message'),
+    parentJobId: text('parent_job_id'),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+    startedAt: text('started_at'),
+    finishedAt: text('finished_at'),
+    lastHeartbeatAt: text('last_heartbeat_at'),
+    abortRequested: integer('abort_requested').notNull().default(0),
+    costCentsEstimated: integer('cost_cents_estimated'),
+    costCentsActual: integer('cost_cents_actual'),
+  },
+  (table) => [
+    index('idx_jobs_tenant_status').on(table.tenantId, table.status),
+    index('idx_jobs_kb_status').on(table.knowledgeBaseId, table.status),
+    index('idx_jobs_parent').on(table.parentJobId),
+    index('idx_jobs_running_heartbeat').on(table.status, table.lastHeartbeatAt),
+  ],
+);
+
 // ── Curation Queue ────────────────────────────────────────────────────────────
 
 export const queueCandidates = sqliteTable(

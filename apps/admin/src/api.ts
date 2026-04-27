@@ -505,6 +505,22 @@ export function reingestDocument(
   return api(`/api/v1/documents/${encodeURIComponent(docId)}/reingest`, { method: 'POST' });
 }
 
+/**
+ * F161 follow-up — re-run Vision on this source's NULL-description
+ * images. Returns counts: rowsScanned (NULL rows attempted),
+ * described (got a non-empty description), skipped (decorative
+ * sentinel or storage-blob-missing), model (provider-id used).
+ *
+ * Server-side gated by TRAIL_VISION_RERUN_UI=1; absence of the env
+ * returns 404 here. Admin reads `features.visionRerun` from /me to
+ * decide whether to render the button at all.
+ */
+export function rerunVisionForDocument(
+  docId: string,
+): Promise<{ rowsScanned: number; described: number; skipped: number; model: string }> {
+  return api(`/api/v1/documents/${encodeURIComponent(docId)}/rerun-vision`, { method: 'POST' });
+}
+
 // ── Search ───────────────────────────────────────────────────────
 
 export interface DocumentSearchHit {

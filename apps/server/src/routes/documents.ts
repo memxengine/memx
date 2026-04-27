@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { documents, knowledgeBases, documentChunks, wikiEvents, queueCandidates, documentReferences } from '@trail/db';
+import { documents, documentImages, knowledgeBases, documentChunks, wikiEvents, queueCandidates, documentReferences, jobs as jobsTable } from '@trail/db';
 import {
   CreateNoteSchema,
   UpdateDocumentSchema,
@@ -21,6 +21,13 @@ import {
 import { triggerIngest } from '../services/ingest.js';
 import { storage, sourcePath } from '../lib/storage.js';
 import { recordAccess } from '../services/access-tracker.js';
+import { isNull } from 'drizzle-orm';
+import { createVisionBackend, getActiveVisionModel } from '../services/vision.js';
+import { getJobRunner } from '../services/jobs/runner.js';
+import type {
+  VisionRerunPayload,
+  VisionRerunResult,
+} from '../services/jobs/handlers/vision-rerun.js';
 
 /**
  * Order-clause builder for the documents list. Keeps the route handler
@@ -609,6 +616,97 @@ documentRoutes.post('/documents/:docId/reingest', async (c) => {
   });
 
   return c.json({ id: doc.id, status: 'processing' }, 202);
+});
+
+/**
+ * F161 follow-up — re-run Vision on a single source's NULL-description
+ * images. Operator-facing alternative to the boot-time
+ * TRAIL_VISION_RERUN_NULL flag for cases where a curator wants to fix
+ * one specific source without restarting the engine or running a
+ * batch sweep.
+ *
+ * Gated behind TRAIL_VISION_RERUN_UI=1 so the route is invisible (404)
+ * unless the operator opts in. Admin's /me echoes the same flag in
+ * its features field so the UI can hide/show the "Run Vision"
+ * button accordingly.
+ *
+ * Idempotent — only updates rows where vision_description IS NULL.
+ * "Decorative" results stamp vision_at + vision_model so the row is
+ * marked-as-scanned even when no description is stored.
+ */
+documentRoutes.post('/documents/:docId/rerun-vision', async (c) => {
+  if (process.env.TRAIL_VISION_RERUN_UI !== '1') {
+    return c.json({ error: 'Not found' }, 404);
+  }
+
+  const trail = getTrail(c);
+  const tenant = getTenant(c);
+  const user = getUser(c);
+  const docId = c.req.param('docId');
+
+  const doc = await trail.db
+    .select()
+    .from(documents)
+    .where(and(eq(documents.id, docId), eq(documents.tenantId, tenant.id)))
+    .get();
+  if (!doc) return c.json({ error: 'Document not found' }, 404);
+  if (doc.kind !== 'source') {
+    return c.json({ error: 'Only source documents have images to re-Vision' }, 400);
+  }
+
+  // F164 Phase 2 — thin wrapper. Old admin button expects a synchronous
+  // { rowsScanned, described, skipped, model } shape; we keep it by
+  // submitting a 'vision-rerun' job, polling its status to completion,
+  // then translating the new result shape back. Phase 4 frontend will
+  // call POST /jobs directly + SSE subscribe; this wrapper sticks around
+  // until that ships, then we delete it.
+  const runner = getJobRunner();
+  const jobId = await runner.submit<VisionRerunPayload>({
+    kind: 'vision-rerun',
+    tenantId: tenant.id,
+    knowledgeBaseId: doc.knowledgeBaseId,
+    userId: user.id,
+    payload: { documentIds: [docId], filter: 'null-only' },
+  });
+
+  // Poll until terminal. Generous timeout — 224 images @ ~1s each (with
+  // concurrency=4) should finish in <60s, but a giant doc could take
+  // longer. Cap at 15 min to avoid hung connections.
+  const POLL_INTERVAL_MS = 500;
+  const TIMEOUT_MS = 15 * 60 * 1000;
+  const deadline = Date.now() + TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    const job = await trail.db
+      .select()
+      .from(jobsTable)
+      .where(eq(jobsTable.id, jobId))
+      .get();
+    if (!job) break;
+    if (job.status === 'completed') {
+      const result = job.result ? (JSON.parse(job.result) as VisionRerunResult) : null;
+      return c.json({
+        rowsScanned: result?.total ?? 0,
+        described: result?.described ?? 0,
+        // Old shape's "skipped" lumps decorative + failed together —
+        // both are "we tried but no description landed". Frontend
+        // doesn't distinguish them today.
+        skipped: (result?.decorative ?? 0) + (result?.failed ?? 0),
+        model: result?.model ?? getActiveVisionModel(),
+        jobId,
+      });
+    }
+    if (job.status === 'failed' || job.status === 'aborted') {
+      return c.json(
+        {
+          error: job.errorMessage ?? `Vision-rerun job ${job.status}`,
+          jobId,
+        },
+        500,
+      );
+    }
+    await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+  }
+  return c.json({ error: 'Vision-rerun job timeout (still running, check /jobs)', jobId }, 504);
 });
 
 documentRoutes.post('/documents/bulk-delete', async (c) => {
