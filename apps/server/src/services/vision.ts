@@ -2,6 +2,18 @@ import type { DescribeImage } from '@trail/pipelines';
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY ?? '';
 const VISION_MODEL = process.env.VISION_MODEL ?? 'claude-haiku-4-5-20251001';
+
+/**
+ * F161 — return the active vision-model name so persistImagesFromExtraction
+ * can stamp `vision_model` on document_images rows. Falls back to OpenRouter
+ * model when ANTHROPIC_API_KEY is missing (matches `createVisionBackend`'s
+ * resolution order).
+ */
+export function getActiveVisionModel(): string {
+  return process.env.ANTHROPIC_API_KEY
+    ? VISION_MODEL
+    : process.env.VISION_MODEL_OPENROUTER ?? 'anthropic/claude-haiku-4.5';
+}
 const VISION_TIMEOUT_MS = Number(process.env.VISION_TIMEOUT_MS ?? 20_000);
 
 // F25/F156 prep — vision pricing per 1M tokens (April 2026).

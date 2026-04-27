@@ -213,6 +213,48 @@ export const documentChunks = sqliteTable(
   ],
 );
 
+// ── F161 — Document images (PDF-extracted + standalone image-uploads) ─────
+//
+// First-class media-table. PDF pipeline (F08) extracts each embedded
+// image, writes bytes to storage, runs Vision-callback for ≥100×100px
+// images, and now ALSO inserts a row here. Image pipeline (F25) does
+// the same for standalone uploads. Vision-description persists as
+// structured data so we can search it (FTS5), re-run with newer
+// models without full re-ingest, and audit cost.
+//
+// content_hash enables image-dedup at the metadata layer (same logo
+// in two PDFs = same hash; storage-level CAS deferred to Phase 2).
+//
+// Foreign keys are tenant + KB + parent document — cascade-delete
+// when source is removed so we never leak orphan image-rows.
+export const documentImages = sqliteTable(
+  'document_images',
+  {
+    id: text('id').primaryKey(),
+    documentId: text('document_id').notNull().references(() => documents.id, { onDelete: 'cascade' }),
+    tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+    knowledgeBaseId: text('knowledge_base_id').notNull().references(() => knowledgeBases.id, { onDelete: 'cascade' }),
+    filename: text('filename').notNull(),
+    storagePath: text('storage_path').notNull(),
+    contentHash: text('content_hash').notNull(),
+    sizeBytes: integer('size_bytes').notNull(),
+    page: integer('page'),
+    width: integer('width').notNull(),
+    height: integer('height').notNull(),
+    visionDescription: text('vision_description'),
+    visionModel: text('vision_model'),
+    visionAt: text('vision_at'),
+    visionCostCents: integer('vision_cost_cents'),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+    updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (table) => [
+    index('idx_doc_images_document').on(table.documentId),
+    index('idx_doc_images_kb').on(table.tenantId, table.knowledgeBaseId),
+    index('idx_doc_images_hash').on(table.tenantId, table.knowledgeBaseId, table.contentHash),
+  ],
+);
+
 // ── Curation Queue ────────────────────────────────────────────────────────────
 
 export const queueCandidates = sqliteTable(

@@ -4,8 +4,10 @@ import { eq, and } from 'drizzle-orm';
 import { basename } from 'node:path';
 import { requireAuth, getTenant, getTrail } from '../middleware/auth.js';
 import { storage, imagePath } from '../lib/storage.js';
+import { defaultAudienceForAuth, isVisibleToAudience } from '../services/audience.js';
+import type { AppBindings } from '../app.js';
 
-export const imageRoutes = new Hono();
+export const imageRoutes = new Hono<AppBindings>();
 
 imageRoutes.use('*', requireAuth);
 
@@ -20,11 +22,25 @@ imageRoutes.get('/documents/:docId/images/:filename', async (c) => {
   }
 
   const doc = await trail.db
-    .select({ id: documents.id, knowledgeBaseId: documents.knowledgeBaseId })
+    .select({
+      id: documents.id,
+      knowledgeBaseId: documents.knowledgeBaseId,
+      path: documents.path,
+      tags: documents.tags,
+    })
     .from(documents)
     .where(and(eq(documents.id, docId), eq(documents.tenantId, tenant.id)))
     .get();
   if (!doc) return c.json({ error: 'Not found' }, 404);
+
+  // F161 — audience-aware visibility check. Bearer-keys default to
+  // `tool` audience; heuristic + internal-tagged Neuron's images
+  // become 404 instead of 200, preventing URL-guess bypass of the
+  // F160 audience-filter on /search and /retrieve.
+  const audience = defaultAudienceForAuth(c.get('authType'));
+  if (!isVisibleToAudience(audience, doc.path, doc.tags)) {
+    return c.json({ error: 'Not found' }, 404);
+  }
 
   const data = await storage.get(imagePath(tenant.id, doc.knowledgeBaseId, docId, filename));
   if (!data) return c.json({ error: 'Image not found' }, 404);

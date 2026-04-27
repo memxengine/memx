@@ -7,9 +7,10 @@ import { processPdf, processDocx, processPptx, processXlsx, dispatch, pickPipeli
 import { storage, sourcePath } from '../lib/storage.js';
 import { chunkText, storeChunks } from '../services/chunker.js';
 import { triggerIngest } from '../services/ingest.js';
-import { createVisionBackend, describeImageAsSource } from '../services/vision.js';
+import { createVisionBackend, describeImageAsSource, getActiveVisionModel } from '../services/vision.js';
 import { transcribeAudio } from '../services/transcription.js';
 import { resolveKbId } from '@trail/core';
+import { persistImagesFromExtraction } from '../services/document-images.js';
 
 const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
 // Silent hangs in pdfjs-dist on malformed PDFs are the single worst failure
@@ -309,6 +310,33 @@ export async function processFileAsync(
       `[audio] ${filename}: ${result.markdown.length} chars transcribed, cost=${cost}¢` +
         (result.extractModel ? ` (${result.extractModel})` : ''),
     );
+  }
+
+  // F161 — persist extracted images to document_images so /retrieve,
+  // image-search, and Vision-rerun work on structured data instead of
+  // markdown alt-text. Pipelines that don't return images[] (docx,
+  // xlsx, audio, etc.) just skip — persistImagesFromExtraction is a
+  // no-op on empty arrays. Idempotent on re-ingest (deletes prior
+  // rows for this docId before inserting fresh).
+  if (Array.isArray(result.images) && result.images.length > 0) {
+    try {
+      const visionModel = getActiveVisionModel();
+      await persistImagesFromExtraction(
+        trail,
+        docId,
+        tenantId,
+        kbId,
+        result.images,
+        visionModel,
+      );
+    } catch (err) {
+      // Don't fail the whole ingest if image-persist hiccups; the
+      // bytes are still in storage and backfill will pick them up
+      // next boot.
+      console.warn(
+        `[F161] persistImagesFromExtraction failed for ${docId}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 
   // Title — pipeline result first, then strip extension from filename.

@@ -8,6 +8,7 @@ import { seedMissingGlossaryNeurons } from './bootstrap/F102-seed-glossary-neuro
 import { recoverPendingSources } from './bootstrap/recover-pending-sources.js';
 import { seedDevCreditsOnBoot } from './bootstrap/dev-credits.js';
 import { backfillContentHash } from './bootstrap/backfill-content-hash.js';
+import { backfillDocumentImages } from './bootstrap/backfill-document-images.js';
 import { recoverIngestJobs, startBackpressureScheduler } from './services/ingest.js';
 import { startContradictionLint } from './services/contradiction-lint.js';
 import { backfillReferences, startReferenceExtractor } from './services/reference-extractor.js';
@@ -52,6 +53,11 @@ await recoverPendingSources(trail);
 // (which happens later in this file) so a fresh upload doesn't race
 // the backfill on the same row.
 await backfillContentHash(trail);
+// F161 — populate document_images for legacy PDFs. Storage scan +
+// PNG-header dim parse + alt-text from compiled markdown. Idempotent;
+// docs with existing rows skipped. Same boot-window placement
+// argument as backfillContentHash.
+await backfillDocumentImages(trail);
 // F156 Phase 0 — top up every tenant to TRAIL_DEV_CREDITS if set.
 // Idempotent; only adds the delta needed to reach the target. Phase 2
 // replaces this with Stripe Checkout self-serve top-up.

@@ -22,7 +22,7 @@
  */
 
 import { Hono } from 'hono';
-import { documents, knowledgeBases } from '@trail/db';
+import { documents, documentImages, knowledgeBases } from '@trail/db';
 import { and, eq, inArray } from 'drizzle-orm';
 import { requireAuth, getTenant, getTrail } from '../middleware/auth.js';
 import { canonicaliseTag, parseTags, kbPrefix } from '@trail/shared';
@@ -42,6 +42,11 @@ const DEFAULT_TOP_K = 5;
 const DEFAULT_MAX_CHARS = 2000;
 const HARD_TOP_K_CAP = 25;
 const HARD_MAX_CHARS = 8000;
+// F161 — image-budget. Default keeps prompt-stuffing manageable; cap
+// stops a malicious caller from forcing a huge images[] array on a
+// document with many extracted images.
+const DEFAULT_MAX_IMAGES = 10;
+const HARD_MAX_IMAGES_CAP = 50;
 
 interface RetrieveBody {
   query?: unknown;
@@ -49,6 +54,7 @@ interface RetrieveBody {
   maxChars?: unknown;
   topK?: unknown;
   tagFilter?: unknown;
+  maxImages?: unknown;
 }
 
 retrieveRoutes.post('/knowledge-bases/:kbId/retrieve', async (c) => {
@@ -79,6 +85,7 @@ retrieveRoutes.post('/knowledge-bases/:kbId/retrieve', async (c) => {
   // fragile to "I sent 1000 instead of the max 25" goofs.
   const topK = clampInt(body.topK, DEFAULT_TOP_K, 1, HARD_TOP_K_CAP);
   const maxChars = clampInt(body.maxChars, DEFAULT_MAX_CHARS, 1, HARD_MAX_CHARS);
+  const maxImages = clampInt(body.maxImages, DEFAULT_MAX_IMAGES, 0, HARD_MAX_IMAGES_CAP);
 
   const tagFilter = parseTagFilter(body.tagFilter);
 
@@ -193,11 +200,61 @@ retrieveRoutes.post('/knowledge-bases/:kbId/retrieve', async (c) => {
   }
   const formattedContext = sections.join('\n\n');
 
+  // F161 — query document_images for the documents represented in
+  // includedChunks. Returns images-per-document with absolute URLs
+  // ready to drop into a site-LLM context (or proxy through the
+  // consumer's own /api/trail-image/[...] route — see
+  // INTEGRATION-API.md). maxImages caps the array size; we sort by
+  // (documentId, filename) so the same query returns deterministic
+  // ordering across calls. Skipped entirely when maxImages=0.
+  let images: Array<{
+    documentId: string;
+    filename: string;
+    url: string;
+    alt: string;
+    page: number | null;
+    width: number;
+    height: number;
+  }> = [];
+  if (maxImages > 0 && includedChunks.length > 0) {
+    const docIdsForImages = Array.from(
+      new Set(includedChunks.map((c) => c.documentId)),
+    );
+    const imageRows = await trail.db
+      .select({
+        documentId: documentImages.documentId,
+        filename: documentImages.filename,
+        page: documentImages.page,
+        width: documentImages.width,
+        height: documentImages.height,
+        visionDescription: documentImages.visionDescription,
+      })
+      .from(documentImages)
+      .where(
+        and(
+          eq(documentImages.tenantId, tenant.id),
+          inArray(documentImages.documentId, docIdsForImages),
+        ),
+      )
+      .all();
+    const baseUrl = new URL(c.req.url).origin;
+    images = imageRows.slice(0, maxImages).map((row) => ({
+      documentId: row.documentId,
+      filename: row.filename,
+      url: `${baseUrl}/api/v1/documents/${row.documentId}/images/${row.filename.replace(/^\//, '')}`,
+      alt: row.visionDescription ?? '',
+      page: row.page,
+      width: row.width,
+      height: row.height,
+    }));
+  }
+
   return c.json({
     chunks: includedChunks,
     formattedContext,
     totalChars,
     hitCount: includedChunks.length,
+    images,
   });
 });
 

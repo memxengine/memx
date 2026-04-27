@@ -22,6 +22,8 @@ import {
   type RetrieveResponse,
   type ChatOptions,
   type ChatResponse,
+  type ImageSearchOptions,
+  type ImageSearchResponse,
   TrailApiError,
 } from './types.js';
 
@@ -90,8 +92,32 @@ export class TrailClient {
           ...(opts.maxChars !== undefined ? { maxChars: opts.maxChars } : {}),
           ...(opts.topK !== undefined ? { topK: opts.topK } : {}),
           ...(opts.tagFilter !== undefined ? { tagFilter: opts.tagFilter } : {}),
+          ...(opts.maxImages !== undefined ? { maxImages: opts.maxImages } : {}),
         }),
       },
+    );
+  }
+
+  /**
+   * F161 — image-search. FTS5 over vision-generated descriptions of
+   * PDF-extracted + standalone-uploaded images. Empty `query` returns
+   * latest-first browse. Audience-filter excludes images attached to
+   * heuristic + internal-tagged Neurons. Image URLs are absolute and
+   * Bearer-protected — render via a proxy route on the consumer's
+   * server (see INTEGRATION-API.md "Rendering images").
+   */
+  async searchImages(
+    knowledgeBaseId: string,
+    opts: ImageSearchOptions = {},
+  ): Promise<ImageSearchResponse> {
+    const params = new URLSearchParams();
+    if (opts.query) params.set('q', opts.query);
+    if (opts.audience) params.set('audience', opts.audience);
+    if (opts.limit !== undefined) params.set('limit', String(opts.limit));
+    const qs = params.toString();
+    return this.request<ImageSearchResponse>(
+      `/api/v1/knowledge-bases/${encodeURIComponent(knowledgeBaseId)}/images${qs ? `?${qs}` : ''}`,
+      { method: 'GET' },
     );
   }
 

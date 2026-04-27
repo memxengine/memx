@@ -62,6 +62,8 @@ export interface RetrieveOptions {
   topK?: number;
   /** AND-semantics tag filter. */
   tagFilter?: string[];
+  /** F161 — hard upper-bound on `images[]` length. Default 10, max 50, set 0 to skip. */
+  maxImages?: number;
 }
 
 export interface RetrieveChunk {
@@ -76,12 +78,65 @@ export interface RetrieveChunk {
   rank: number;
 }
 
+/**
+ * F161 — image extracted from a parent document (PDF page-image,
+ * standalone image-upload). URL is absolute and ready to fetch with
+ * the same Bearer token used to call retrieve. Browsers can NOT load
+ * `<img src={url}>` directly because the GET requires Authorization
+ * header; consumers proxy through their own server (see
+ * `INTEGRATION-API.md` "Rendering images" section).
+ */
+export interface RetrieveImage {
+  documentId: string;
+  filename: string;
+  /** Absolute URL — `${TRAIL_API_BASE}/api/v1/documents/.../images/...`. Bearer required. */
+  url: string;
+  /** Vision-generated description (1-2 sentences) or empty string when none. */
+  alt: string;
+  /** PDF page-number for embedded images; null for standalone uploads. */
+  page: number | null;
+  width: number;
+  height: number;
+}
+
 export interface RetrieveResponse {
   chunks: RetrieveChunk[];
   /** Pre-stitched markdown context block. Drop directly into your site-LLM's prompt. */
   formattedContext: string;
   totalChars: number;
   hitCount: number;
+  /** F161 — images attached to the documents in `chunks`. Up to `maxImages`. */
+  images: RetrieveImage[];
+}
+
+// ── F161 — Image search ──────────────────────────────────────────────
+
+export interface ImageSearchOptions {
+  /** FTS5 query against vision_description. Empty = browse mode (latest first). */
+  query?: string;
+  /** Default `tool` for Bearer auth. Filters images attached to non-visible Neurons. */
+  audience?: Audience;
+  /** 1–50; default 20. */
+  limit?: number;
+}
+
+export interface ImageSearchHit {
+  id: string;
+  documentId: string;
+  filename: string;
+  /** Absolute URL — see RetrieveImage.url for proxy/Bearer notes. */
+  url: string;
+  alt: string;
+  page: number | null;
+  width: number;
+  height: number;
+  /** Vision-model that produced `alt`, or null if unknown (legacy backfill). */
+  visionModel: string | null;
+  createdAt: string;
+}
+
+export interface ImageSearchResponse {
+  hits: ImageSearchHit[];
 }
 
 // ── Lag 2/3: Chat ────────────────────────────────────────────────────

@@ -174,11 +174,38 @@ prompt — ingen second-pass `read`-kald nødvendigt.
 }
 ```
 
-**Tre vigtige garantier:**
+**Response også med `images[]`-array** (F161):
+
+```json
+{
+  "chunks": [...],
+  "formattedContext": "...",
+  "totalChars": 1843,
+  "hitCount": 3,
+  "images": [
+    {
+      "documentId": "doc_...",
+      "filename": "page1-fig1.png",
+      "url": "https://app.trailmem.com/api/v1/documents/doc_.../images/page1-fig1.png",
+      "alt": "Foto af zoneterapeut der arbejder med klients fod",
+      "page": 1,
+      "width": 800,
+      "height": 600
+    }
+  ]
+}
+```
+
+`images[]` indeholder alle PDF-extracted + standalone-uploaded billeder tilknyttet de documents `chunks` kommer fra. URL er absolut og **kræver Bearer på request** — `<img src="...">` virker IKKE direkte fra browser. Se [Rendering images](#rendering-images) sektionen nedenfor for proxy-mønster.
+
+`maxImages`-parameter kontrollerer array-størrelsen (default 10, cap 50, sæt 0 for at skippe billeder helt).
+
+**Fire vigtige garantier:**
 
 1. **`formattedContext.length === totalChars`** — du kan budgettere uden at parse.
 2. **Højere-rank chunks først** — vi tilføjer indtil næste chunk ville sprænge `maxChars`, så du får de mest relevante chunks fremfor mange laverelevant ones.
-3. **Audience-filter er hård** — heuristic-Neurons og `internal`-tagged docs er aldrig i `tool`/`public`-resultater, end ikke ved direkte seqId-lookup.
+3. **Audience-filter er hård** — heuristic-Neurons og `internal`-tagged docs er aldrig i `tool`/`public`-resultater, end ikke ved direkte seqId-lookup eller direkte image-URL-gæt.
+4. **Image-URLs er Bearer-protected** — selv hvis URL'en lækker, kan ingen browser åbne billedet uden token. Proxy-mønster nedenfor.
 
 **Quickstart eksempel — site-LLM-orchestrator (Anthropic SDK):**
 
@@ -217,6 +244,96 @@ if (toolUse.name === 'trail_retrieve') {
   // Send tilbage som tool_result; LLM bruger ctx som baggrund.
 }
 ```
+
+### `GET /api/v1/knowledge-bases/:kbId/images`
+
+F161 — image-search over Vision-genererede beskrivelser. Bruges når site-LLM eller curator vil finde billeder om et bestemt emne ud over hvad `/retrieve` allerede returnerer (fx galleri-view, "vis mig fotos af X", admin-browse).
+
+**Query parameters**
+
+| Param | Type | Default | Notes |
+|---|---|---|---|
+| `q` | string | — | FTS5 query mod `vision_description`. Tom = browse mode (nyeste først). |
+| `audience` | enum | `tool` for Bearer | Same semantics som `/search`. |
+| `limit` | int | 20 | Max 50. |
+
+**Response (200)**
+
+```json
+{
+  "hits": [
+    {
+      "id": "dim_...",
+      "documentId": "doc_...",
+      "filename": "page1-fig1.png",
+      "url": "https://app.trailmem.com/api/v1/documents/.../images/page1-fig1.png",
+      "alt": "Foto af zoneterapeut der arbejder med klients fod",
+      "page": 1,
+      "width": 800,
+      "height": 600,
+      "visionModel": "claude-haiku-4-5-20251001",
+      "createdAt": "2026-04-27T12:34:56Z"
+    }
+  ]
+}
+```
+
+`visionModel` kan være `null` på legacy backfill-rows hvor vi ikke ved hvilken model producerede beskrivelsen.
+
+## Rendering images
+
+Trail's billed-routes kræver Bearer-auth. Det betyder browser's `<img src="https://app.trailmem.com/...">` **ikke virker** — browser sender ikke custom Authorization-headers på image-tags. Tre konsekvenser:
+
+1. Du kan ikke direkte indsætte image-URLs fra `/retrieve.images` eller `/search-images` i en `<img>`-tag på din site.
+2. CORS-forhindringer: cross-origin image-bytes med credentials kræver `crossOrigin="use-credentials"` plus eksplicit allow-credentials på Trail's side, og leaker token-state hvis det går galt.
+3. **Den rigtige løsning er en server-side proxy** på din side der fetcher med Bearer + streamer bytes tilbage som same-origin response.
+
+**Next.js eksempel** (`app/api/trail-image/[docId]/[filename]/route.ts`):
+
+```ts
+export async function GET(req, { params }) {
+  const url =
+    `${process.env.TRAIL_API_BASE}/api/v1/documents/${params.docId}/images/${params.filename}`;
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${process.env.TRAIL_API_KEY}` },
+  });
+  if (!res.ok) {
+    return new Response('Not found', { status: res.status });
+  }
+  return new Response(res.body, {
+    headers: {
+      'Content-Type': res.headers.get('content-type') ?? 'application/octet-stream',
+      // Image-bytes er immutable per content-hash, så lang cache er sikker.
+      'Cache-Control': 'public, max-age=86400, immutable',
+    },
+  });
+}
+```
+
+**Rewrite Trail-URLs til din proxy-route** før render. Hvis du bruger `images[]`-arrayet (anbefalet — struktureret data) fremfor at parse markdown:
+
+```ts
+function proxyUrl(image: { documentId: string; filename: string }): string {
+  return `/api/trail-image/${image.documentId}/${encodeURIComponent(image.filename.replace(/^\//, ''))}`;
+}
+
+// I din React/Preact-render:
+{retrieveResponse.images.map((img) => (
+  <img key={img.documentId + img.filename} src={proxyUrl(img)} alt={img.alt}
+       width={img.width} height={img.height} />
+))}
+```
+
+Hvis du i stedet vil rendere markdown direkte fra `formattedContext` (som kan indeholde `![alt](trail-url)`-syntaks), kør en regex-rewrite før render:
+
+```ts
+const rendered = formattedContext.replace(
+  /!\[([^\]]*)\]\((https?:\/\/[^)]+\/api\/v1\/documents\/([^/]+)\/images\/([^)]+))\)/g,
+  (_, alt, _url, docId, filename) => `![${alt}](/api/trail-image/${docId}/${filename})`,
+);
+```
+
+**Token-leak**: Trail-tokenet (`TRAIL_API_KEY`) lever KUN i `process.env` på din server — den tager aldrig ud i browser-bundlet. Proxy-routen er den eneste touch-point.
 
 ## Lag 2/3 — Chat (LLM på Trail-siden)
 
